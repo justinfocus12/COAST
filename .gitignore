@@ -1,0 +1,11 @@
+.*.swp
+*.png
+__pycache__/
+.ipynb_checkpoints
+*.npy
+*.nc
+*.npz
+*.out
+*.nfs*
+*.jld2
+*.gz
