@@ -745,11 +745,11 @@ function regression2distn_linear_uniform(coefs::Vector{Float64}, input_radius::F
     return ccdf,pdf
 end
 
-function regression2distn_linear_uniform(coefs::Vector{Float64}, residmse::Float64, input_radius::Float64, levels::Vector{Float64})
-    Nsamp = 10000
+function regression2distn_linear_uniform(coefs::Vector{Float64}, residmse::Float64, input_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
+    Nsamp = size(U,1) #10000
     seed = 89281
     rng = Random.MersenneTwister(seed)
-    U = Random.rand(rng, Float64, (Nsamp,2))
+    #U = Random.rand(rng, Float64, (Nsamp,2))
     radius = sqrt.(U[:,1])
     angle = 2pi.*U[:,2]
     X = radius .* cos.(angle)
@@ -768,11 +768,11 @@ function regression2distn_linear_uniform(coefs::Vector{Float64}, residmse::Float
     return ccdf,pdf
 end
 
-function regression2distn_linear_uniform(coefs::Vector{Float64}, resid_range::Vector{Float64}, input_radius::Float64, levels::Vector{Float64})
-    Nsamp = 10000
+function regression2distn_linear_uniform(coefs::Vector{Float64}, resid_range::Vector{Float64}, input_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
+    Nsamp = size(U,1) #10000
     seed = 89281
     rng = Random.MersenneTwister(seed)
-    U = Random.rand(rng, Float64, (Nsamp,2))
+    #U = Random.rand(rng, Float64, (Nsamp,2))
     radius = input_radius .* sqrt.(U[:,1])
     angle = 2pi.*U[:,2]
     X = radius .* cos.(angle)
@@ -791,15 +791,16 @@ function regression2distn_linear_uniform(coefs::Vector{Float64}, resid_range::Ve
     return ccdf,pdf
 end
 
-function regression2distn_quadratic_uniform(coefs::Vector{Float64}, input_radius::Float64, levels::Vector{Float64})
-    return regression2distn_quadratic_uniform(coefs, 0.0, input_radius, levels)
+function regression2distn_quadratic_uniform(coefs::Vector{Float64}, input_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
+    return regression2distn_quadratic_uniform(coefs, 0.0, input_radius, levels, U)
 end
 
-function regression2distn_quadratic_uniform(coefs::Vector{Float64}, residmse::Float64, input_radius::Float64, levels::Vector{Float64})
+function regression2distn_quadratic_uniform(coefs::Vector{Float64}, residmse::Float64, input_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
     # exhaustively sample the disc
 
-    Nsamp = 40000
-    U = QMC.sample(Nsamp, zeros(Float64, 2), ones(Float64, 2), QMC.LatticeRuleSample())'
+    #Nsamp = 40000
+    #U = QMC.sample(Nsamp, zeros(Float64, 2), ones(Float64, 2), QMC.LatticeRuleSample())'
+    Nsamp = size(U,1)
     radius = input_radius .* sqrt.(U[:,1])
     angle = 2pi.*U[:,2]
     X = radius .* cos.(angle)
@@ -819,11 +820,11 @@ function regression2distn_quadratic_uniform(coefs::Vector{Float64}, residmse::Fl
     return ccdf,pdf
 end
 
-function regression2distn_quadratic_uniform(coefs::Vector{Float64}, resid_range::Vector{Float64}, input_radius::Float64, levels::Vector{Float64})
+function regression2distn_quadratic_uniform(coefs::Vector{Float64}, resid_range::Vector{Float64}, input_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
     # exhaustively sample the disc
 
-    Nsamp = 10000
-    U = QMC.sample(Nsamp, zeros(Float64, 2), ones(Float64, 2), QMC.LatticeRuleSample())'
+    Nsamp = size(U,1) #10000
+    #U = QMC.sample(Nsamp, zeros(Float64, 2), ones(Float64, 2), QMC.LatticeRuleSample())'
     radius = input_radius .* sqrt.(U[:,1])
     angle = 2pi.*U[:,2]
     X = radius .* cos.(angle)
@@ -842,16 +843,16 @@ function regression2distn_quadratic_uniform(coefs::Vector{Float64}, resid_range:
     pdf = -diff(ccdf) ./ diff(levels)
     return ccdf,pdf
 end
-function regression2distn_quadratic_bump(coefs::Vector{Float64}, input_radius::Float64, levels::Vector{Float64})
-    return regression2distn_quadratic_bump(coefs, 0.0, input_radius, levels)
+function regression2distn_quadratic_bump(coefs::Vector{Float64}, scale::Float64, support_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
+    return regression2distn_quadratic_bump(coefs, 0.0, scale, support_radius, levels, U)
 end
 
-function regression2distn_quadratic_bump(coefs::Vector{Float64}, residmse::Float64, scale::Float64, support_radius::Float64, levels::Vector{Float64})
+function regression2distn_quadratic_bump(coefs::Vector{Float64}, residmse::Float64, scale::Float64, support_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
     # exhaustively sample the disc
 
-    Nsamp = 40000
-    U = QMC.sample(Nsamp, zeros(Float64, 2), ones(Float64, 2), QMC.LatticeRuleSample())'
-    radius = input_radius .* sqrt.(U[:,1])
+    Nsamp = size(U,1) #1024 
+    #U = QMC.sample(Nsamp, zeros(Float64, 2), ones(Float64, 2), QMC.LatticeRuleSample())'
+    radius = support_radius .* sqrt.(U[:,1])
     angle = 2pi.*U[:,2]
     X = radius .* cos.(angle)
     Y = radius .* sin.(angle)
@@ -866,21 +867,22 @@ function regression2distn_quadratic_bump(coefs::Vector{Float64}, residmse::Float
         F .+= sqrt(residmse).*Random.randn(rng, Float64, (Nsamp,))
     end
     R2 = X.^2 .+ Y.^2
-    W = exp.(-0.5*(R2./support_radius^2) ./ (1 .- R2./(scale^2)))
+    W = exp.(-0.5*(R2./scale^2) ./ (1 .- R2./(support_radius^2)))
     ccdf = vec(sum(W .* (F .> levels'); dims=1))./sum(W)
+    @assert all(isfinite.(ccdf))
     pdf = -diff(ccdf) ./ diff(levels)
     return ccdf,pdf
 end
 
-function regression2distn_linear_bump(coefs::Vector{Float64}, scale::Float64, support_radius::Float64, levels::Vector{Float64})
-    return regression2distn_linear_bump(coefs, 0.0, scale, support_radius, levels)
+function regression2distn_linear_bump(coefs::Vector{Float64}, scale::Float64, support_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
+    return regression2distn_linear_bump(coefs, 0.0, scale, support_radius, levels, U)
 
 end
-function regression2distn_linear_bump(coefs::Vector{Float64}, residmse::Float64, scale::Float64, support_radius::Float64, levels::Vector{Float64})
+function regression2distn_linear_bump(coefs::Vector{Float64}, residmse::Float64, scale::Float64, support_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
     # exhaustively sample the disc
 
-    Nsamp = 40000
-    U = QMC.sample(Nsamp, zeros(Float64, 2), ones(Float64, 2), QMC.LatticeRuleSample())'
+    Nsamp = size(U,1) #40000
+    #U = QMC.sample(Nsamp, zeros(Float64, 2), ones(Float64, 2), QMC.LatticeRuleSample())'
     radius = support_radius .* sqrt.(U[:,1])
     angle = 2pi.*U[:,2]
     X = radius .* cos.(angle)
@@ -895,9 +897,10 @@ function regression2distn_linear_bump(coefs::Vector{Float64}, residmse::Float64,
         F .+= sqrt(residmse).*Random.randn(rng, Float64, (Nsamp,))
     end
     R2 = X.^2 .+ Y.^2
-    W = exp.(-0.5*(R2./support_radius^2) ./ (1 .- R2./(scale^2)))
+    W = exp.(-0.5*(R2./scale^2) ./ (1 .- R2./(support_radius^2)))
     ccdf = vec(sum(W .* (F .> levels'); dims=1))./sum(W)
     pdf = -diff(ccdf) ./ diff(levels)
+    @assert all(isfinite.(ccdf))
     return ccdf,pdf
 end
 # ------------ Other statistics utilities -----------

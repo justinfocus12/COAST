@@ -16,6 +16,7 @@ import KernelDensity
 import JLD2
 import QuasiMonteCarlo as QMC
 import Extremes as Ext
+import Infiltrator as IFT
 
 using CairoMakie
 
@@ -34,8 +35,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     todo = Dict(
                 "upgrade_ensemble" =>                               0,
                 "update_paths" =>                                   0,
-                "compute_dns_objective" =>                          1,
-                "plot_dns_objective_stats" =>                       1,
+                "compute_dns_objective" =>                          0,
+                "plot_dns_objective_stats" =>                       0,
                 "fit_dns_pot" =>                                    0, 
                 "anchor" =>                                         1,
                 "sail" =>                                           1, 
@@ -43,7 +44,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "remove_pngs" =>                                    0,
                 "regress_lead_dependent_risk_polynomial" =>         1, 
                 "plot_objective" =>                                 1, 
-                "mix_COAST_distributions_polynomial" =>             1,
+                "mix_COAST_distributions_polynomial" =>             0,
                 "plot_COAST_mixture" =>                             0,
                 "mixture_COAST_phase_diagram" =>                    0,
                 # vestigial or hibernating
@@ -464,9 +465,9 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
     if todo["plot_COAST_mixture"] == 1
         todosub = Dict(
-                       "gains_topt" =>              0,
-                       "rainbow_pdfs" =>            0,
-                       "mixed_pdfs" =>              1,
+                       "gains_topt" =>              1,
+                       "rainbow_pdfs" =>            1,
+                       "mixed_pdfs" =>              0,
                       )
 
         ytgtstr = @sprintf("%.2f", cfg.target_yPerL*sdm.Ly)
@@ -475,9 +476,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         (
          levels,levels_mid,
          dsts,rsps,mixobjs,distn_scales,
-         ccdfs,pdfs,ccdf_ancs,pdf_ancs,
-         fdivs_ancs,fdivs,
-         gpdpar_ancs,gpdpar,
+         ccdfs,pdfs,
+         fdivs,
          mixcrits,iltmixs,
          ccdfmixs,pdfmixs,
         ) = (JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed.jld2"),"r") do f
@@ -492,12 +492,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     # output distributions 
                     f["ccdfs"],# ccdfs
                     f["pdfs"],# pdfs
-                    f["ccdf_ancs"],# ccdf_ancs
-                    f["pdf_ancs"],# pdf_ancs
-                    f["fdivs_ancs"],# fdivs_ancs
                     f["fdivs"],# fdivs
-                    f["gpdpar_ancs"],# gpdpar_ancs
-                    f["gpdpar"],# gpdpar
                     f["mixcrits"],# mixcrits
                     f["iltmixs"],# iltmixs
                     f["ccdfmixs"],# ccdfmixs
@@ -505,27 +500,34 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                    )
              end
             )
-        thresh_dns,scale_dns,shape_dns,peaks_dns,_,ccdf_at_thresh_dns,ccdf_gpd_dns_coarse = JLD2.jldopen(joinpath(resultdir,"GPD_dns.jld2"), "r") do f
-            return (
-                f["thresh"],
-                f["scale"],
-                f["shape"],
-                f["peak_vals"],
-                f["levels"],
-                f["ccdf_at_thresh"],
-                f["ccdf_GPD_xall"]
-           )
-        end
+        (
+         tgrid_ancgen,
+         Roft_ancgen_seplon,
+         Rccdf_ancgen_seplon,
+         Rccdf_ancgen_agglon,
+         tgrid_valid,
+         Roft_valid_seplon,
+         Rccdf_valid_seplon,
+         Rccdf_valid_agglon,
+        ) = (
+             JLD2.jldopen(joinpath(resultdir,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
+                 return (
+                         f["tgrid_ancgen"], # tgrid_ancgen
+                         f["Roft_ancgen_seplon"], # Roft_ancgen_seplon
+                         f["Rccdf_ancgen_seplon"], # Rccdf_ancgen_seplon
+                         f["Rccdf_ancgen_agglon"], # Rccdf_ancgen_seplon
+                         f["tgrid_valid"], # tgrid_valid
+                         f["Roft_valid_seplon"], # Roft_valid_seplon
+                         f["Rccdf_valid_seplon"], # Rccdf_valid_seplon
+                         f["Rccdf_valid_agglon"], # Rccdf_valid_agglon
+                        )
+             end
+            )
+        thresh = Rccdf_valid_agglon[argmin(abs.(ccdf_levels .- thresh_cquantile))] 
+        pdf_valid_agglon = -diff(Rccdf_valid_agglon) ./ diff(ccdf_levels)
+
         # ------------- Plots -----------------------
         # For each distribution type, plot the PDFs along the top and a row for each mixing criterion
-        GPD_dns = Dists.GeneralizedPareto(thresh_dns, scale_dns, shape_dns)
-        ccthresh = ccdf_at_thresh_dns
-        ccdf_gpd_dns = Dists.ccdf.(GPD_dns, levels) .* ccthresh
-        pdf_gpd_dns = Dists.pdf.(GPD_dns, levels_mid) .* ccthresh
-        GPD_ancs = Dists.GeneralizedPareto(thresh_dns, gpdpar_ancs["scale_gpd"], gpdpar_ancs["shape_gpd"])
-        ccdf_gpd_ancs = ccthresh .* Dists.ccdf.(GPD_ancs, levels)
-        pdf_gpd_ancs = ccthresh .* Dists.pdf.(GPD_ancs, levels_mid)
-
         epsilon = 1e-6
         ylims = (thresh, max(max_score, levels[end]))
         clipccdf(x) = (x <= epsilon ? NaN : x)
@@ -545,7 +547,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     for i_scl = 1:Nscales
                         scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
                         i_mcobj = 1
-                        for (i_mc,mc) in enumerate(keys(mixobjs))
+                        for (i_mc,mc) in enumerate(["ent"])
                             fig = Figure(size=(600,400))
                             lout = fig[1:2,1] = GridLayout()
                             ax1 = Axis(lout[1,1], xlabel=L"$-$AST", ylabel=L"$$%$(mixcrit_labels[mc])", xlabelvisible=false, xticklabelsvisible=false, title=L"$$Target lat. %$(ytgtstr), Box size %$(rxystr), Scale %$(scalestr)")
@@ -609,10 +611,10 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                             for (i_scl,scl) in enumerate(distn_scales[dst])
                                 lines!(ax, pdfs[dst][rsp][:,i_leadtime, i_anc, i_scl], levels_mid; color=i_scl,colorrange=(0,length(distn_scales[dst])), colormap=:managua)
                             end
-                            lines!(ax, pdf_gpd_dns, levels_mid; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
+                            #lines!(ax, pdf_valid_agglon, levels_mid; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
                             hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linewidth=1.0)
                             idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
-                            scatter!(ax, maximum(pdf_gpd_dns).*ones(length(idx_desc)), coast.desc_Rmax[i_anc][idx_desc]; color=:firebrick, markersize=10)
+                            #scatter!(ax, maximum(pdf_valid_agglon).*ones(length(idx_desc)), coast.desc_Rmax[i_anc][idx_desc]; color=:firebrick, markersize=10)
                             ylims!(ax, ylims...)
                         end
                         for (i_mc,mc) in enumerate(mixcrits2plot)

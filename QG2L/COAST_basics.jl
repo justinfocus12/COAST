@@ -24,7 +24,7 @@ function ConfigCOAST(
         follow_time_ph::Float64 = 20.0,
         peak_prebuffer_time_ph::Float64 = 30.0,
         dtRmax_max_ph::Float64 = 4.0,
-        num_init_conds_max::Int64 = 4,
+        num_init_conds_max::Int64 = 24,
         num_perts_max_per_lead_time::Int64 = 16,
         target_field::String = "conc1",
         target_xPerL::Float64 = 0.5,
@@ -511,6 +511,11 @@ function set_sail!(
     else
         add_descendant!(coast, ens, parent, mem, new_obj_val, pert_seq, cfg.dtRmax_max)
     end
+    # garbage collection
+    sf_hist = nothing
+    conc_hist = nothing
+    sf_hist_the = nothing
+    GC.gc()
 end
 
 function desc_by_leadtime(coast::COASTState, i_anc::Int64, leadtime::Int64, sdm::QG2L.SpaceDomain)

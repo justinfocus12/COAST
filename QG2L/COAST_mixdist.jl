@@ -105,19 +105,22 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
 
     # Combine based on Rsq and other indicators 
     #
+    # pre-allocate the QMC sequence
+    Nsamp_reg2dist = 1024
+    U_reg2dist = collect(transpose(QMC.sample(Nsamp_reg2dist, zeros(Float64, 2), ones(Float64, 2), QMC.LatticeRuleSample())))
     function r2dfun(d,r,s)
         # Below, resid might refer to either a single MSE value or a range. 
         if "b" == d # bump function
             if "1" == r
-                return ((coefs,resid)->QG2L.regression2distn_linear_bump(coefs, s, support_radius, levels))
+                return ((coefs,resid)->QG2L.regression2distn_linear_bump(coefs, s, support_radius, levels, U_reg2dist))
             elseif "2" == r
-                return ((coefs,resid)->QG2L.regression2distn_quadratic_bump(coefs, s, support_radius, levels))
+                return ((coefs,resid)->QG2L.regression2distn_quadratic_bump(coefs, s, support_radius, levels, U_reg2dist))
             end
         elseif "u" == d
             if "1" == r
                 return ((coefs,resid)->QG2L.regression2distn_linear_uniform(coefs, s, levels))
             elseif "2" == r
-                return ((coefs,resid)->QG2L.regression2distn_quadratic_uniform(coefs, s, levels))
+                return ((coefs,resid)->QG2L.regression2distn_quadratic_uniform(coefs, s, levels, U_reg2dist))
             elseif "1+u" == r
                 return ((coefs,resid)->QG2L.regression2distn_linear_uniform(coefs, resid, s, levels))
             elseif "1+g" == r
@@ -150,7 +153,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
             resid_range = zeros(Float64,2)
             resid_arg = NaN
             for i_scl = 1:length(distn_scales[dst])
-            #for (i_scl,scl) in enumerate(distn_scales[dst])
+                println("Starting scale $(i_scl)")
                 scl = distn_scales[dst][i_scl]
                 Threads.@threads for i_anc = 1:Nanc
                 #for i_anc = 1:Nanc
