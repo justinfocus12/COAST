@@ -72,12 +72,6 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     time_spinup_dns_ph = 500.0
     cfgstr = strrep_ConfigCOAST(cfg)
     exptdir_COAST = joinpath(expt_supdir,"COAST_$(cfgstr)_$(pertopstr)")
-    obj_fun_registry = Dict(
-                            "sf2" => obj_fun_COAST_sf2,
-                            "conc1" => obj_fun_COAST_conc1,
-                            "conc2" => obj_fun_COAST_conc2,
-                            "eke1" => obj_fun_COAST_eke1,
-                           )
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,distn_scales,
@@ -87,7 +81,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     @show xstride_valid_dns
     r2thresh = r2threshes[1]
     # Parameters related to the target
-    obj_fun_COAST = obj_fun_COAST_registrar(cfg.target_field, sdm, cop, cfg.target_xPerL, cfg.target_rxPerL, cfg.target_yPerL, cfg.target_ryPerL)
+    obj_fun_COAST_from_file,obj_fun_COAST_from_histories = obj_fun_COAST_registrar(cfg.target_field, sdm, cop, cfg.target_xPerL, cfg.target_rxPerL, cfg.target_yPerL, cfg.target_ryPerL)
     ensdir_COAST = joinpath(exptdir_COAST,"ensemble_data")
     ensfile_COAST = joinpath(ensdir_COAST,"ens.jld2")
     coastfile_COAST = joinpath(ensdir_COAST,"coast.jld2") 
@@ -155,7 +149,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         # Collect a whole family of parameterized functions 
         Nxshifts = div(sdm.Nx, xstride_valid_dns)
         xshifts = collect(range(0,Nxshifts-1,step=1).*xstride_valid_dns)
-        obj_fun_COAST_xshifts = [obj_fun_COAST_registrar(cfg.target_field, sdm, cop, cfg.target_xPerL+xshift/sdm.Nx, cfg.target_rxPerL, cfg.target_yPerL, cfg.target_ryPerL) for xshift=xshifts]
+        obj_fun_COAST_xshifts = [obj_fun_COAST_registrar(cfg.target_field, sdm, cop, cfg.target_xPerL+xshift/sdm.Nx, cfg.target_rxPerL, cfg.target_yPerL, cfg.target_ryPerL)[1] for xshift=xshifts]
 
         hist_filenames = [ens_dns.trajs[mem].history for mem=1:Nmem]
         tfins = [ens_dns.trajs[mem].tfin for mem=1:Nmem]
@@ -323,7 +317,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
             println("Preparing initial condition for i_anc $(i_anc)")
             init_cond_file = joinpath(init_cond_dir,"init_cond_anc$(i_anc).jld2")
             prehistory_file = joinpath(init_cond_dir,"init_cond_prehistory_anc$(i_anc).jld2")
-            init_prep = prepare_init_cond_from_dns(ens_dns, obj_fun_COAST, cfg, sdm, cop, php, pertop, init_cond_file, prehistory_file, new_peak_frontier_time, thresh; num_peaks_to_skip=0)
+            init_prep = prepare_init_cond_from_dns(ens_dns, obj_fun_COAST_from_file, cfg, sdm, cop, php, pertop, init_cond_file, prehistory_file, new_peak_frontier_time, thresh; num_peaks_to_skip=0)
             if isnothing(init_prep)
                 println("WARNING ran out of peaks to boost")
                 cfg.num_init_conds_max = i_anc-1
@@ -361,10 +355,17 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
 
     if todo["sail"] == 1
+        # pre-allocate  
+        # TODO if we extend this to multi-threading, must allocate separately per thread 
+        tgrid = zeros(Int64, cfg.lead_time_max + cfg.follow_time)
+        sf_the = QG2L.FlowField(sdm.Nx, sdm.Ny)
+        sf_hist = QG2L.FlowFieldHistory(tgrid, sdm.Nx, sdm.Ny)
+        sf_hist_the = QG2L.FlowFieldHistory(tgrid, sdm.Nx, sdm.Ny)
+        conc_hist = zeros(Float64, (sdm.Nx, sdm.Ny, 2, length(tgrid)))
         while !coast.terminate
             num_members_max = cfg.num_init_conds_max * (1 + cfg.num_perts_max)
             println("About to extend Ensemble to $(EM.get_Nmem(ens)+1) members, out of $(num_members_max)")
-            set_sail!(ens, coast, rng, obj_fun_COAST, ensdir_COAST, cfg, cop, pertop, sdm, php, )
+            set_sail!(ens, coast, rng, obj_fun_COAST_from_file, obj_fun_COAST_from_histories, ensdir_COAST, cfg, cop, pertop, sdm, php, )
             Nmem = EM.get_Nmem(ens)
             ancs = Graphs.inneighbors(ens.famtree, Nmem)
             if length(ancs) > 0

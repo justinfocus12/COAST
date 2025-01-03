@@ -24,8 +24,8 @@ function ConfigCOAST(
         follow_time_ph::Float64 = 20.0,
         peak_prebuffer_time_ph::Float64 = 30.0,
         dtRmax_max_ph::Float64 = 4.0,
-        num_init_conds_max::Int64 = 24,
-        num_perts_max_per_lead_time::Int64 = 16,
+        num_init_conds_max::Int64 = 3,
+        num_perts_max_per_lead_time::Int64 = 6,
         target_field::String = "conc1",
         target_xPerL::Float64 = 0.5,
         target_rxPerL::Float64 = 1/64,
@@ -105,6 +105,9 @@ function COASTState(pert_dim::Int64)
     peak_times_upper_bounds = Vector{Int64}([])
     Nsamp = 1024
     pert_seq_qmc = QMC.sample(Nsamp, zeros(Float64, pert_dim), ones(Float64, pert_dim), QMC.LatticeRuleSample())
+    if all(pert_seq_qmc[:,1] .== 0.0)
+        pert_seq_qmc = pert_seq_qmc[:,2:end]
+    end
     #@show U[:,1:6]
     #@show vcat(U,-U)[:,1:6]
     #Usym = reshape(vcat(U,-U), (pert_dim,2*Nsamp))./2
@@ -260,23 +263,32 @@ end
 function obj_fun_COAST_registrar(target_field::String, sdm::QG2L.SpaceDomain, cop::QG2L.ConstantOperators, xPerL::Float64, rxPerL::Float64, yPerL::Float64, ryPerL::Float64)
     if "conc1" == target_field
         iz = 1
-        obj_fun = QG2L.obs_fun_conc_hist
+        field_fun_from_file = QG2L.obs_fun_conc_hist
+        field_fun_from_histories = (sf_hist,conc_hist) -> conc_hist[:,:,iz,:]
     elseif "conc2" == target_field
         iz = 1
-        obj_fun = QG2L.obs_fun_conc_hist
+        field_fun_from_file = QG2L.obs_fun_conc_hist
+        field_fun_from_histories = (sf_hist,conc_hist) -> conc_hist[:,:,iz,:]
     elseif "sf2" == target_field
         iz = 2
-        obj_fun = QG2L.obs_fun_sf_hist
+        field_fun_from_file = QG2L.obs_fun_sf_hist
+        field_fun_from_histories = (sf_hist,conc_hist) -> sf_hist.ox[:,:,iz,:]
     elseif "eke1" == target_field
         iz = 1
-        obj_fun = QG2L.obs_fun_eke_hist
+        field_fun_from_file = QG2L.obs_fun_eke_hist
+        field_fun_from_histories = (sf_hist,conc_hist) -> QG2L.obs_fun_eke_hist(sf_hist.tgrid, sf_hist.ok, sdm, cop)[:,:,iz,:]
     end
     weights = QG2L.horz_avg_filter(sdm.Nx, sdm.Ny, xPerL, rxPerL, yPerL, ryPerL)
-    function obj_fun_horz_avg(f::JLD2.JLDFile)
-        u = obj_fun(f, sdm, cop)[:,:,iz,:] 
+    function field_fun_horz_avg_from_file(f::JLD2.JLDFile)
+        u = field_fun_from_file(f, sdm, cop)[:,:,iz,:] 
         return vec(sum(u .* weights; dims=[1,2]))
     end
-    return obj_fun_horz_avg
+    function field_fun_horz_avg_from_histories(sf_hist::QG2L.FlowFieldHistory,conc_hist::Array{Float64,4})
+        u = field_fun_from_histories(sf_hist,conc_hist)
+        return vec(sum(u .* weights; dims=[1,2]))
+    end
+    return field_fun_horz_avg_from_file,field_fun_horz_avg_from_histories
+
 end
 
 
@@ -413,7 +425,8 @@ function set_sail!(
         ens::EM.Ensemble,
         coast::COASTState,
         rng::Random.AbstractRNG,
-        obj_fun_COAST::Function,
+        obj_fun_COAST_from_file::Function,
+        obj_fun_COAST_from_histories::Function,
         # Save-out location
         ensdir::String,
         # Parameters
@@ -422,6 +435,12 @@ function set_sail!(
         pertop::QG2L.PerturbationOperator,
         sdm::QG2L.SpaceDomain,
         php::QG2L.PhysicalParams,
+        ;
+        # allocations
+        sf_the::Union{Nothing,QG2L.FlowField} = nothing,
+        sf_hist::Union{Nothing,QG2L.FlowFieldHistory} = nothing,
+        sf_hist_the::Union{Nothing,QG2L.FlowFieldHistory} = nothing,
+        conc_hist::Union{Nothing,Array{Float64}} = nothing,
     )
     Nmem = EM.get_Nmem(ens)
     mem = Nmem+1
@@ -484,16 +503,25 @@ function set_sail!(
     tfin = floor(Int, flow_init.tph/sdm.tu) + cfg.lead_time_max + cfg.follow_time
     # -------------- The integration ---------------------
     println("Starting to integrate member $(mem)")
-    flow_next,sf_hist,sf_hist_the,conc_hist = QG2L.integrate(flow_init, tfin, pert_seq, pertop, cop, sdm, php; nonlinear=true)
-    println("done")
+    flow_next,sf_hist,sf_hist_the,conc_hist = QG2L.integrate(flow_init, tfin, pert_seq, pertop, cop, sdm, php; nonlinear=true, sf_the=sf_the, sf_hist=sf_hist, sf_hist_the=sf_hist_the, conc_hist=conc_hist)
+    println("done integrating")
     # ----------------------------------------------------
+    println("Starting to write history")
     QG2L.write_history(sf_hist, conc_hist, history_file)
     QG2L.write_state(flow_next, term_cond_file)
+    println("Finished writing history")
+    println("Starting to increment ensemble")
     traj = EM.Trajectory(flow_init.tph, tfin, init_cond_file, pert_seq_file, term_cond_file, history_file)
     EM.add_trajectory!(ens, traj; parent=parent)
-    new_obj_val = JLD2.jldopen(history_file, "r") do f
-        return obj_fun_COAST(f)
+    println("Finished incrementing ensemble")
+    println("Starting to evaluate objective")
+    new_obj_val = obj_fun_COAST_from_histories(sf_hist,conc_hist)
+    if false
+        new_obj_val = JLD2.jldopen(history_file, "r") do f
+            return obj_fun_COAST_from_file(f)
+        end
     end
+    println("Finished evaluating objective")
     if mem_is_ancestor
         add_ancestor!(coast, ens, mem, cfg, new_obj_val)
         i_anc = length(coast.ancestors)
@@ -512,10 +540,14 @@ function set_sail!(
         add_descendant!(coast, ens, parent, mem, new_obj_val, pert_seq, cfg.dtRmax_max)
     end
     # garbage collection
-    sf_hist = nothing
-    conc_hist = nothing
-    sf_hist_the = nothing
-    GC.gc()
+    if false
+        println("Starting garbage collection")
+        sf_hist = nothing
+        conc_hist = nothing
+        sf_hist_the = nothing
+        GC.gc()
+        println("Finished garbage collection")
+    end
 end
 
 function desc_by_leadtime(coast::COASTState, i_anc::Int64, leadtime::Int64, sdm::QG2L.SpaceDomain)

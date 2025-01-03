@@ -92,6 +92,11 @@ function integrate(
         ;
         nonlinear::Bool = true,
         verbose::Bool = false,
+        # allocations
+        sf_the::Union{Nothing,FlowField} = nothing,
+        sf_hist::Union{Nothing,FlowFieldHistory} = nothing,
+        sf_hist_the::Union{Nothing,FlowFieldHistory} = nothing,
+        conc_hist::Union{Nothing,Array{Float64}} = nothing,
     )
 
     tphinit = flow_init.tph
@@ -107,10 +112,17 @@ function integrate(
 
     Nt = tfin - floor(Int, tphinit/sdm.tu) #round(Int, (tfin-tinit)/dt_save)
     tgrid = collect((tfin-Nt+1):1:tfin) #range(tinit,tfin,length=Nt+1)[2:end])
-    sf_hist = FlowFieldHistory(tgrid, sdm.Nx, sdm.Ny)
-    sf_hist_the = FlowFieldHistory(tgrid, sdm.Nx, sdm.Ny)
-    conc_hist = zeros(Float64, (sdm.Nx, sdm.Ny, 2, Nt))
-    sf_the = FlowField(sdm.Nx, sdm.Ny)
+    # optionally allocate
+    if (isnothing(sf_hist) || isnothing(sf_hist_the) || isnothing(conc_hist))
+        sf_hist = FlowFieldHistory(tgrid, sdm.Nx, sdm.Ny)
+        sf_hist_the = FlowFieldHistory(tgrid, sdm.Nx, sdm.Ny)
+        conc_hist = zeros(Float64, (sdm.Nx, sdm.Ny, 2, Nt))
+        sf_the = FlowField(sdm.Nx, sdm.Ny)
+    else
+        sf_hist.tgrid .= tgrid
+        sf_hist_the.tgrid .= tgrid
+    end
+
     tph = tphinit
     i_save = 1
     i_print = 1
