@@ -294,7 +294,24 @@ function compute_local_objective_and_stats_zonsym(hist_filenames::Vector{String}
     return (tgridreq,Roft_seplon,Rccdf_seplon,Rccdf_agglon)
 end
 
-function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, thresh_cquantile::Float64)
+function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thresh::Vector{Float64}, prebuffer::Int64, postbuffer::Int64, initbuffer::Int64)
+    # first entry of levels_geq_thresh is thresh itself 
+    Nt,Nlon = size(Roft_seplon)
+    Nlev = length(levels_geq_thresh)
+    @show Nlev
+    ccdf_pot_seplon = zeros(Float64, (Nlev,Nlon))
+    ccdf_pot_agglon = zeros(Float64, Nlev)
+    num_peaks_total = 0
+    for i_lon = 1:Nlon
+        peak_vals,peak_tidx,upcross_tidx,downcross_tidx = peaks_over_threshold(Roft_seplon[:,i_lon], levels_geq_thresh[1], prebuffer, postbuffer, initbuffer)
+        num_peaks_exceeding_level = sum(peak_vals .> levels_geq_thresh'; dims=1)[1,:]
+        ccdf_pot_seplon[:,i_lon] .= num_peaks_exceeding_level ./ length(peak_vals)
+        num_peaks_total += length(peak_vals)
+        ccdf_pot_agglon .+= num_peaks_exceeding_level
+    end
+    ccdf_pot_agglon ./= num_peaks_total
+    return (ccdf_pot_seplon, ccdf_pot_agglon)
+end
 
 function compute_local_GPD_params_zonsym_multiple_fits(hist_filenames::Vector{String}, obs_fun_xshiftable::Function, prebuffer_time::Int64, follow_time::Int64, initbuffer::Int64, Nxshifts::Int64, xstride::Int64, figdir::String, obs_label)
     # should return a scalar 

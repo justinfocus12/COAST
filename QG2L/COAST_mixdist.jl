@@ -49,8 +49,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                     )
          end
         )
-    i_thresh_level = argmin(abs.(ccdf_levels .- thresh_cquantile))
-    thresh = Rccdf_valid_agglon[i_thresh_level] 
+    thresh = Rccdf_valid_agglon[i_thresh_cquantile] 
     pdf_valid_agglon = -diff(Rccdf_valid_agglon) ./ diff(ccdf_levels)
     levels = Rccdf_valid_agglon
     levels_mid = 0.5 .* (levels[1:end-1] .+ levels[2:end])
@@ -181,15 +180,17 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                             error()
                         end
                         ccdf,pdf = r2dfun(dst,rsp,scl)(coefs[:,i_leadtime,i_anc], resid_arg)
-                        ccdf[1:i_thresh_level-1] .= 1.0
-                        pdf[1:i_thresh_level-1] .= 0.0
-                        adjustment = (ccdf[i_thresh_level] > 1e-6 ? thresh_cquantile/ccdf[i_thresh_level] : 0)
+                        adjustment = (ccdf[i_thresh_cquantile] > 1e-10 ? thresh_cquantile/ccdf[i_thresh_cquantile] : 0)
                         ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= ccdf .* adjustment
                         pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= pdf .* adjustment
+                        ccdfs[dst][rsp][1:i_thresh_cquantile-1,i_leadtime,i_anc,i_scl] .= thresh_cquantile
+                        pdfs[dst][rsp][1:i_thresh_cquantile-1,i_leadtime,i_anc,i_scl] .= 0.0
+                        #@show ccdfs[dst][rsp][i_thresh_cquantile,i_leadtime,i_anc,i_scl]
+                        #IFT.@infiltrate true
                         if !(all(isfinite.(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])) && all(isfinite.(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])))
                             println("non-finite pdf or ccdf")
                             display(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])
-                            display(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= ccdf .* adjustment)
+                            display(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])
                             @show i_anc, adjustment, ccdf[1] 
                             error()
                         end
@@ -225,6 +226,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 end
                 # Now average together the PDFs and CCDFs based on the criteria from above 
                 println("Starting to sum together pdfs and ccdfs")
+                #IFT.@infiltrate ((dst=="b")&(rsp=="2"))
                 for mc = ("ent","lt") #keys(mixobjs)
                     for i_anc = 1:Nanc
                         for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
@@ -241,6 +243,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         end
                     end
                 end
+                #IFT.@infiltrate ((dst=="b")&(rsp=="2")&(i_scl==2))
                 println("Starting to compute fdivs")
                 for mc = ("ent","lt") #keys(mixobjs)
                     for (i_mcobj,mcobj) in enumerate(mixobjs[mc])

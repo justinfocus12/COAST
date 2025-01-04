@@ -4,7 +4,7 @@
 #SBATCH -N 1
 #SBATCH -t 0-6:00
 #SBATCH -p sched_mit_pog_r8
-#SBATCH --exclude=node2422
+#SBATCH --exclude=node2422,2420
 #SBATCH -e /orcd/archive/pog/001/ju26596/COAST/QG2L/logs/dns_%A_%a_error.out
 #SBATCH -o /orcd/archive/pog/001/ju26596/COAST/QG2L/logs/dns_%A_%a_output.out
 #SBATCH --mem-per-cpu=64GB

@@ -35,14 +35,15 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     todo = Dict(
                 "upgrade_ensemble" =>                               0,
                 "update_paths" =>                                   0,
+                "plot_pertop" =>                                    0,
                 "compute_dns_objective" =>                          1,
                 "plot_dns_objective_stats" =>                       1,
                 "fit_dns_pot" =>                                    0, 
                 "anchor" =>                                         1,
                 "sail" =>                                           1, 
                 "remove_pngs" =>                                    0,
-                "regress_lead_dependent_risk_polynomial" =>         1, 
-                "plot_objective" =>                                 1, 
+                "regress_lead_dependent_risk_polynomial" =>         0, 
+                "plot_objective" =>                                 0, 
                 "mix_COAST_distributions_polynomial" =>             1,
                 "plot_COAST_mixture" =>                             1,
                 "mixture_COAST_phase_diagram" =>                    0,
@@ -54,7 +55,18 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                )
 
     php,sdm = QG2L.expt_config()
-    cop,pertop = QG2L.expt_setup(php, sdm)
+    cop_pertop_file = joinpath(expt_supdir,"cop_pertop.jld2")
+    if isfile(cop_pertop_file)
+        cop,pertop = JLD2.jldopen(cop_pertop_file, "r") do f
+            return f["cop"],f["pertop"]
+        end
+    else
+        cop,pertop = QG2L.expt_setup(php, sdm)
+        JLD2.jldopen(cop_pertop_file, "w") do f
+            f["cop"] = cop
+            f["pertop"] = pertop
+        end
+    end
     @show pertop.pert_dim
     phpstr = QG2L.strrep_PhysicalParams(php)
     sdmstr = QG2L.strrep_SpaceDomain(sdm)
@@ -99,7 +111,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     mkpath(resultdir)
     mkpath(figdir)
 
-    if todo["remove_pngs"] == 1
+    if 1 == todo["remove_pngs"]
         for filename = readdir(figdir, join=true)
             if endswith(filename,"png") && (!startswith(filename,"GPD"))
                 rm(filename)
@@ -107,7 +119,9 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         end
     end
 
-    QG2L.plot_PerturbationOperator(pertop, sdm, figdir)
+    if 1 == todo["plot_pertop"]
+        QG2L.plot_PerturbationOperator(pertop, sdm, figdir)
+    end
 
     if (!isfile(ensfile_COAST)) || overwrite_ensemble
         println("Starting afresh")
@@ -168,7 +182,12 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
          tgrid_valid,Roft_valid_seplon,
          Rccdf_valid_seplon,Rccdf_valid_agglon
         ) = QG2L.compute_local_objective_and_stats_zonsym(hist_filenames, tfins, tinitreq, tfinreq, obj_fun_COAST_xshifts, ccdf_levels)
-        # after choosing the threshold, 
+        # after choosing the threshold, collect the peaks thereover 
+        levels = Rccdf_valid_agglon
+        levels_mid = 0.5 .* (levels[1:end-1] .+ levels[2:end])
+        buffers = (cfg.peak_prebuffer_time, cfg.follow_time, cfg.lead_time_max)
+        ccdf_pot_valid_seplon,ccdf_pot_valid_agglon = QG2L.compute_local_pot_zonsym(Roft_valid_seplon, levels[i_thresh_cquantile:end], buffers...)
+        ccdf_pot_ancgen_seplon,ccdf_pot_ancgen_agglon = QG2L.compute_local_pot_zonsym(Roft_ancgen_seplon, levels[i_thresh_cquantile:end], buffers...)
         
 
         JLD2.jldopen(joinpath(resultdir,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "w") do f
@@ -176,10 +195,14 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
             f["Roft_ancgen_seplon"] = Roft_ancgen_seplon
             f["Rccdf_ancgen_seplon"] = Rccdf_ancgen_seplon
             f["Rccdf_ancgen_agglon"] = Rccdf_ancgen_agglon
+            f["ccdf_pot_ancgen_seplon"] = ccdf_pot_ancgen_seplon
+            f["ccdf_pot_ancgen_agglon"] = ccdf_pot_ancgen_agglon
             f["tgrid_valid"] = tgrid_valid
             f["Roft_valid_seplon"] = Roft_valid_seplon
             f["Rccdf_valid_seplon"] = Rccdf_valid_seplon
             f["Rccdf_valid_agglon"] = Rccdf_valid_agglon
+            f["ccdf_pot_valid_seplon"] = ccdf_pot_valid_seplon
+            f["ccdf_pot_valid_agglon"] = ccdf_pot_valid_agglon
         end
     else
         (
@@ -187,10 +210,14 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
          Roft_ancgen_seplon,
          Rccdf_ancgen_seplon,
          Rccdf_ancgen_agglon,
+         ccdf_pot_ancgen_seplon,
+         ccdf_pot_ancgen_agglon,
          tgrid_valid,
          Roft_valid_seplon,
          Rccdf_valid_seplon,
          Rccdf_valid_agglon,
+         ccdf_pot_valid_seplon,
+         ccdf_pot_valid_agglon,
         ) = (
              JLD2.jldopen(joinpath(resultdir,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
                  return (
@@ -198,10 +225,14 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                          f["Roft_ancgen_seplon"], # Roft_ancgen_seplon
                          f["Rccdf_ancgen_seplon"], # Rccdf_ancgen_seplon
                          f["Rccdf_ancgen_agglon"], # Rccdf_ancgen_seplon
+                         f["ccdf_pot_ancgen_seplon"],
+                         f["ccdf_pot_ancgen_agglon"],
                          f["tgrid_valid"], # tgrid_valid
                          f["Roft_valid_seplon"], # Roft_valid_seplon
                          f["Rccdf_valid_seplon"], # Rccdf_valid_seplon
                          f["Rccdf_valid_agglon"], # Rccdf_valid_agglon
+                         f["ccdf_pot_valid_seplon"],
+                         f["ccdf_pot_valid_agglon"],
                         )
              end
             )
@@ -211,9 +242,12 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         fig = Figure()
         lout = fig[1,1] = GridLayout()
         axhist = Axis(lout[1,1], xlabel="Intensity", ylabel="PDF", yscale=log10)
-        axquant = Axis(lout[2,1], xlabel="Intensity", ylabel="CCDF", yscale=log10)
+        axccdf = Axis(lout[2,1], xlabel="Intensity", ylabel="CCDF", yscale=log10)
         bin_edges = collect(range(0,1,200))
         bin_centers = 0.5 .* (bin_edges[2:end] .+ bin_edges[1:end-1])
+        levels = Rccdf_valid_agglon
+        levels_mid = 0.5 .* (levels[1:end-1] .+ levels[2:end])
+        thresh_cquantile = ccdf_levels[i_thresh_cquantile]
         Nxshifts = div(sdm.Nx, xstride_valid_dns)
         (pdfs_ancgen,pdfs_valid) = (zeros(Float64, (length(bin_centers),Nxshifts)) for _=1:2)
         for i_lon = 1:Nxshifts
@@ -227,9 +261,11 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
         lines!(axhist, bin_centers, zero2nan(SB.mean(pdfs_ancgen; dims=2)[:,1]); color=:cyan, linewidth=2)
         lines!(axhist, bin_centers, zero2nan(SB.mean(pdfs_valid; dims=2)[:,1]); color=:black, linewidth=2)
-        lines!(axquant, zero2nan(SB.mean(Rccdf_ancgen_seplon; dims=2)[:,1]), ccdf_levels; color=:cyan, linewidth=2)
-        lines!(axquant, zero2nan(SB.mean(Rccdf_valid_seplon; dims=2)[:,1]), ccdf_levels; color=:black, linewidth=2)
-        lines!(axquant, zero2nan(Rccdf_valid_agglon), ccdf_levels; color=:gray, alpha=0.5, linewidth=3)
+        lines!(axccdf, zero2nan(SB.mean(Rccdf_ancgen_seplon; dims=2)[:,1]), ccdf_levels; color=:cyan, linewidth=2)
+        scatterlines!(axccdf, levels[i_thresh_cquantile:end], thresh_cquantile.*zero2nan(SB.mean(ccdf_pot_ancgen_seplon; dims=2)[:,1]); color=:cyan)
+        scatterlines!(axccdf, levels[i_thresh_cquantile:end], thresh_cquantile.*zero2nan(SB.mean(ccdf_pot_valid_seplon; dims=2)[:,1]); color=:black)
+        lines!(axccdf, zero2nan(SB.mean(Rccdf_valid_seplon; dims=2)[:,1]), ccdf_levels; color=:black, linewidth=2)
+        lines!(axccdf, zero2nan(Rccdf_valid_agglon), ccdf_levels; color=:gray, alpha=0.5, linewidth=3)
         for q = [0.05,0.95]
             qancgen = zero2nan(QG2L.quantile_sliced(pdfs_ancgen, q, 2)[:,1])
             qvalid = zero2nan(QG2L.quantile_sliced(pdfs_valid, q, 2)[:,1])
@@ -237,13 +273,17 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
             lines!(axhist, bin_centers, qancgen; color=:cyan, linestyle=(:dot,:dense))
             qancgen = zero2nan(QG2L.quantile_sliced(Rccdf_ancgen_seplon, q, 2)[:,1])
             qvalid = zero2nan(QG2L.quantile_sliced(Rccdf_valid_seplon, q, 2)[:,1])
-            lines!(axquant, qvalid, ccdf_levels; color=:black, linestyle=(:dot,:dense))
-            lines!(axquant, qancgen, ccdf_levels; color=:cyan, linestyle=(:dot,:dense))
+            lines!(axccdf, qvalid, ccdf_levels; color=:black, linestyle=(:dot,:dense))
+            lines!(axccdf, qancgen, ccdf_levels; color=:cyan, linestyle=(:dot,:dense))
             println("For q = $(q), qancgen = ")
             display(qancgen')
+            ccancgen = thresh_cquantile.*zero2nan(QG2L.quantile_sliced(ccdf_pot_ancgen_seplon, q, 2)[:,1])
+            ccvalid = thresh_cquantile.*zero2nan(QG2L.quantile_sliced(ccdf_pot_valid_seplon, q, 2)[:,1])
+            scatter!(axccdf, levels[i_thresh_cquantile:end], ccancgen; color=:black)
+            scatter!(axccdf, levels[i_thresh_cquantile:end], ccvalid; color=:cyan)
         end
 
-        linkxaxes!(axhist, axquant)
+        linkxaxes!(axhist, axccdf)
         save(joinpath(figdir,"histograms_ancgen_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
         
         
@@ -382,6 +422,9 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 Serialization.serialize(f, rng)
             end
             save_COASTState(coast, coastfile_COAST)
+            if mod(Nmem,100) == 0
+                GC.gc()
+            end
         end
     end
     adjust_scores!(coast, ens, cfg, sdm)
@@ -529,8 +572,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         )
              end
             )
-        i_thresh_level = argmin(abs.(ccdf_levels .- thresh_cquantile))
-        thresh = Rccdf_valid_agglon[i_thresh_level] 
+        thresh = Rccdf_valid_agglon[i_thresh_cquantile] 
         pdf_valid_agglon = - diff(ccdf_levels) ./ diff(Rccdf_valid_agglon)
         pdf_valid_seplon = - diff(ccdf_levels) ./ diff(Rccdf_valid_seplon; dims=1)
         #IFT.@infiltrate true
@@ -621,7 +663,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                             for (i_scl,scl) in enumerate(distn_scales[dst])
                                 lines!(ax, pdfs[dst][rsp][:,i_leadtime, i_anc, i_scl], levels_mid; color=i_scl,colorrange=(0,length(distn_scales[dst])), colormap=:managua)
                             end
-                            lines!(ax, pdf_valid_agglon[i_thresh_level:end], levels_mid[i_thresh_level:end]; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
+                            lines!(ax, pdf_valid_agglon[i_thresh_cquantile:end], levels_mid[i_thresh_level:end]; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
                             hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linewidth=1.0)
                             idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
                             scatter!(ax, maximum(pdfs[dst][rsp][:,i_leadtime, i_anc, :]).*ones(length(idx_desc)), coast.desc_Rmax[i_anc][idx_desc]; color=:firebrick, markersize=10)
@@ -657,14 +699,39 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 end
                 # ----------------- Mixed-ancestor plots -----------------
                 if 1 == todosub["mixed_pdfs"]
-
-
+                    boot_midlohi_pdf(p,avg=false) = begin
+                        pmid = clippdf.((avg ? SB.mean(p; dims=2) : p)[:,1])
+                        plo,phi = (clippdf.(QG2L.quantile_sliced(p, q, 2)[:,1]) for q=(0.05,0.95))
+                        return (pmid,plo,phi)
+                    end
+                    boot_midlohi_ccdf(cc,avg=false) = begin
+                        ccmid = clipccdf.((avg ? SB.mean(cc; dims=2) : cc)[:,1])
+                        cclo,cchi = (clipccdf.(QG2L.quantile_sliced(cc, q, 2)[:,1]) for q=(0.05,0.95))
+                        return (ccmid,cclo,cchi)
+                    end
+                    levels_exc = levels[i_thresh_cquantile:end]
+                    levels_exc_mid = 0.5 .* (levels_exc[1:end-1] .+ levels_exc[2:end])
+                    # Straight tails (not peaks)
+                    # ancestors
+                    Rccdf_ancgen_pt,Rccdf_ancgen_lo,Rccdf_ancgen_hi = boot_midlohi_ccdf(Rccdf_ancgen_seplon)
+                    pdf_ancgen_seplon = -diff(ccdf_levels) ./ diff(Rccdf_ancgen_seplon, dims=1)
+                    pdf_ancgen_pt,pdf_ancgen_lo,pdf_ancgen_hi = boot_midlohi_pdf(pdf_ancgen_seplon)
+                    # validation
+                    Rccdf_valid_pt,Rccdf_valid_lo,Rccdf_valid_hi = boot_midlohi_ccdf(Rccdf_valid_seplon, true)
+                    pdf_valid_seplon = -diff(ccdf_levels) ./ diff(Rccdf_valid_seplon, dims=1)
+                    pdf_valid_pt,pdf_valid_lo,pdf_valid_hi = boot_midlohi_pdf(pdf_valid_seplon, true)
+                    # peaks over thresholds 
+                    # ancestors
+                    ccdf_pot_ancgen_pt,ccdf_pot_ancgen_lo,ccdf_pot_ancgen_hi = boot_midlohi_ccdf(ccdf_pot_ancgen_seplon)
+                    pdf_pot_ancgen_seplon = -diff(ccdf_pot_ancgen_seplon; dims=1) ./ diff(levels_exc)
+                    pdf_pot_ancgen_pt,pdf_pot_ancgen_lo,pdf_pot_ancgen_hi = boot_midlohi_pdf(pdf_pot_ancgen_seplon)
+                    # validation
+                    ccdf_pot_valid_pt,ccdf_pot_valid_lo,ccdf_pot_valid_hi = boot_midlohi_ccdf(ccdf_pot_valid_seplon, true)
+                    pdf_pot_valid_seplon = -diff(ccdf_pot_valid_seplon; dims=1) ./ diff(levels_exc)
+                    pdf_pot_valid_pt,pdf_pot_valid_lo,pdf_pot_valid_hi = boot_midlohi_pdf(pdf_pot_valid_seplon, true)
 
                     for i_scl = 1:length(distn_scales[dst])
                         scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
-                        pdf_ancgen_seplon = -diff(ccdf_levels) ./ diff(Rccdf_ancgen_seplon, dims=1)
-                        pdf_ancgen_pt = pdf_ancgen_seplon[:,1]
-                        pdf_ancgen_lo,pdf_ancgen_hi = (QG2L.quantile_sliced(pdf_ancgen_seplon, q, 2) for q=(0.05,0.95))
 
                         i_boot = 1
                         ilt_tv_sync = argmin(fdivs[dst][rsp]["lt"]["tv"][i_boot,:,i_scl])
@@ -673,18 +740,6 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         tpstr = @sprintf("%.1f",leadtimes[ilt_tv_sync]*sdm.tu)
                         tvsyncstr = @sprintf("%.3f",tv_sync)
                         tvcondstr = @sprintf("%.3f",tv_cond)
-                        boot_midlohi_pdf(p) = begin
-                            pmid = clippdf.(p[:,1])
-                            plo = clippdf.(mapslices(pp->SB.quantile(pp,0.05), p; dims=2)[:,1])
-                            phi = clippdf.(mapslices(pp->SB.quantile(pp,0.95), p; dims=2)[:,1])
-                            return (pmid,plo,phi)
-                        end
-                        boot_midlohi_ccdf(p) = begin
-                            pmid = clipccdf.(p[:,1])
-                            plo = clipccdf.(mapslices(pp->SB.quantile(pp,0.05), p; dims=2)[:,1])
-                            phi = clipccdf.(mapslices(pp->SB.quantile(pp,0.95), p; dims=2)[:,1])
-                            return (pmid,plo,phi)
-                        end
                             
                         pdf_cond_mid,pdf_cond_lo,pdf_cond_hi = boot_midlohi_pdf(pdfmixs[dst][rsp]["ent"][:,:,1,i_scl])
                         pdf_sync_mid,pdf_sync_lo,pdf_sync_hi = boot_midlohi_pdf(pdfmixs[dst][rsp]["lt"][:,:,ilt_tv_sync,i_scl])
@@ -695,13 +750,11 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         lout = fig[1,1] = GridLayout()
                         ax = Axis(lout[1,1]; xscale=log10, xlabel="CCDF", ylabel=L"$$Severity", title=L"$$Target lat. %$(ytgtstr), Box size %$(rxystr), Scale %$(scalestr)")
                         lines!(ax, clipccdf.(ccdf_levels), levels; color=:black, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Long DNS"))
-                        lines!(ax, clipccdf.(ccdf_levels), Rccdf_ancgen_seplon[:,1]; color=:chocolate3, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Short DNS"))
+                        lines!(ax, clipccdf.(ccdf_levels), Rccdf_ancgen_pt; color=:chocolate3, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Short DNS"))
                         lines!(ax, ccdf_sync_mid, levels; color=:cyan, linestyle=:solid, label="AST: $(tpstr)\nTV from DNS=$(tvsyncstr)", linewidth=2)
-                        #lines!(ax, ccdf_sync_lo, levels; color=:cyan, linestyle=:solid, linewidth=1)
-                        #lines!(ax, ccdf_sync_hi, levels; color=:cyan, linestyle=:solid, linewidth=1)
+                        scatterlines!(ax, thresh_cquantile.*ccdf_pot_valid_pt, levels[i_thresh_cquantile:end]; color=:black)
+                        scatterlines!(ax, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; color=:chocolate3)
                         lines!(ax, ccdf_cond_mid, levels; color=:firebrick, linestyle=:solid, linewidth=2, label="AST: Max. CondEnt\nTV from DNS =$(tvcondstr)")
-                        #lines!(ax, ccdf_coast_lo, levels; color=:firebrick, linestyle=:solid, linewidth=1)
-                        #lines!(ax, ccdf_coast_hi, levels; color=:firebrick, linestyle=:solid, linewidth=1)
                         lout[1,2] = Legend(fig, ax; framevisible=true)
                         colsize!(lout, 1, Relative(2/3))
                         save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(i_scl).png"), fig)
@@ -712,6 +765,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         lines!(ax, clippdf.(pdf_valid_agglon), levels_mid; color=:black, linestyle=:solid)
                         lines!(ax, pdf_sync_mid, levels_mid; color=:cyan, linestyle=:solid, label="AST: $(tpstr)\nTV from DNS=$(tvsyncstr)", linewidth=2)
                         lines!(ax, clippdf.(pdf_valid_seplon[:,1]), levels_mid; color=:chocolate3, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Short DNS"))
+                        scatterlines!(ax, thresh_cquantile.*pdf_pot_valid_pt, levels_exc_mid; color=:black)
+                        scatterlines!(ax, thresh_cquantile.*pdf_pot_ancgen_pt, levels_exc_mid; color=:chocolate3)
                         #lines!(ax, pdf_sync_lo, levels_mid; color=:cyan, linestyle=:solid, linewidth=1)
                         #lines!(ax, pdf_sync_hi, levels_mid; color=:cyan, linestyle=:solid, linewidth=1)
                         lines!(ax, pdf_cond_mid, levels_mid; color=:firebrick, linestyle=:solid, linewidth=2, label="AST: Max. CondEnt\nTV from DNS =$(tvcondstr)")
