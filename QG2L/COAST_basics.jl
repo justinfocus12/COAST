@@ -24,8 +24,8 @@ function ConfigCOAST(
         follow_time_ph::Float64 = 20.0,
         peak_prebuffer_time_ph::Float64 = 30.0,
         dtRmax_max_ph::Float64 = 4.0,
-        num_init_conds_max::Int64 = 3,
-        num_perts_max_per_lead_time::Int64 = 6,
+        num_init_conds_max::Int64 = 8,
+        num_perts_max_per_lead_time::Int64 = 12,
         target_field::String = "conc1",
         target_xPerL::Float64 = 0.5,
         target_rxPerL::Float64 = 1/64,
@@ -645,7 +645,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     fdivnames = ("chi2","tv")
     Nboot = 1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    thresh_cquantile = 1/(2^5)
+    thresh_cquantile = 1/(2^8)
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000
@@ -703,8 +703,8 @@ function regress_lead_dependent_risk_linear_quadratic(coast::COASTState, ens::EM
                 Xpert[i_desc,:] .= amplitude .* [cos(phase), sin(phase)]
                 Ypert[i_desc] = coast.desc_Rmax[i_anc][idx_desc[i_desc]]
             end
-            coefs_linear[:,i_leadtime,i_anc],residmse_linear[i_leadtime,i_anc],rsquared_linear[i_leadtime,i_anc],resid_range_linear[:,i_leadtime,i_anc] = QG2L.linear_regression_2d(Xpert, Ypert)
-            coefs_quadratic[:,i_leadtime,i_anc],residmse_quadratic[i_leadtime,i_anc],rsquared_quadratic[i_leadtime,i_anc],resid_range_quadratic[:,i_leadtime,i_anc] = QG2L.quadratic_regression_2d(Xpert, Ypert)
+            coefs_linear[:,i_leadtime,i_anc],residmse_linear[i_leadtime,i_anc],rsquared_linear[i_leadtime,i_anc],resid_range_linear[:,i_leadtime,i_anc] = QG2L.linear_regression_2d(Xpert, Ypert; intercept=coast.anc_Rmax[i_anc])
+            coefs_quadratic[:,i_leadtime,i_anc],residmse_quadratic[i_leadtime,i_anc],rsquared_quadratic[i_leadtime,i_anc],resid_range_quadratic[:,i_leadtime,i_anc] = QG2L.quadratic_regression_2d(Xpert, Ypert; intercept=coast.anc_Rmax[i_anc])
             eigs = QG2L.quadratic_regression_2d_eigs(coefs_quadratic[:,i_leadtime,i_anc])
             hessian_eigvals[:,i_leadtime,i_anc] .= eigs[1]
             hessian_eigvecs[:,:,i_leadtime,i_anc] .= eigs[2]

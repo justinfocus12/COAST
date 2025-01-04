@@ -48,7 +48,8 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                     )
          end
         )
-    thresh = Rccdf_valid_agglon[argmin(abs.(ccdf_levels .- thresh_cquantile))] 
+    i_thresh_level = argmin(abs.(ccdf_levels .- thresh_cquantile))
+    thresh = Rccdf_valid_agglon[i_thresh_level] 
     pdf_valid_agglon = -diff(Rccdf_valid_agglon) ./ diff(ccdf_levels)
     levels = Rccdf_valid_agglon
     levels_mid = 0.5 .* (levels[1:end-1] .+ levels[2:end])
@@ -179,7 +180,9 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                             error()
                         end
                         ccdf,pdf = r2dfun(dst,rsp,scl)(coefs[:,i_leadtime,i_anc], resid_arg)
-                        adjustment = (ccdf[1] > 1e-6 ? thresh_cquantile/ccdf[1] : 0)
+                        ccdf[1:i_thresh_level-1] .= 1.0
+                        pdf[1:i_thresh_level-1] .= 0.0
+                        adjustment = (ccdf[i_thresh_level] > 1e-6 ? thresh_cquantile/ccdf[i_thresh_level] : 0)
                         ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= ccdf .* adjustment
                         pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= pdf .* adjustment
                         if !(all(isfinite.(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])) && all(isfinite.(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])))
@@ -193,7 +196,6 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         mixcrits[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = leadtimes[i_leadtime]
                         mixcrits[dst][rsp]["r2"][i_leadtime,i_anc,i_scl] = (rsp in ["1","1+u","1+g"] ? rsquared_linear : rsquared_quadratic)[i_leadtime,i_anc]
                         mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = sum(max.(0, levels_mid .- thresh) .* pdf .* dlev)
-                        pdfrect = pdf .* (levels_mid .> thresh)
                         # weight the entropy by the probability of exceeding the threshold 
                         mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun(pdf .* (levels[1:end-1] .> thresh))
                         mixcrits[dst][rsp]["went"][i_leadtime,i_anc,i_scl] = sum(pdf .* dlev .* (levels[1:end-1] .> thresh)) * QG2L.entropy_fun(pdf .* (levels_mid .> thresh))
@@ -221,6 +223,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                     end
                 end
                 # Now average together the PDFs and CCDFs based on the criteria from above 
+                println("Starting to sum together pdfs and ccdfs")
                 for mc = ("ent",) #keys(mixobjs)
                     for i_anc = 1:Nanc
                         for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
@@ -237,6 +240,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         end
                     end
                 end
+                println("Starting to compute fdivs")
                 for mc = ("ent",) #keys(mixobjs)
                     for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                         for i_boot = 1:Nboot+1

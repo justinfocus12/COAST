@@ -38,14 +38,14 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "compute_dns_objective" =>                          0,
                 "plot_dns_objective_stats" =>                       0,
                 "fit_dns_pot" =>                                    0, 
-                "anchor" =>                                         1,
-                "sail" =>                                           1, 
+                "anchor" =>                                         0,
+                "sail" =>                                           0, 
                 "plot_contour_divergence" =>                        0,
                 "remove_pngs" =>                                    0,
-                "regress_lead_dependent_risk_polynomial" =>         1, 
-                "plot_objective" =>                                 1, 
+                "regress_lead_dependent_risk_polynomial" =>         0, 
+                "plot_objective" =>                                 0, 
                 "mix_COAST_distributions_polynomial" =>             0,
-                "plot_COAST_mixture" =>                             0,
+                "plot_COAST_mixture" =>                             1,
                 "mixture_COAST_phase_diagram" =>                    0,
                 # vestigial or hibernating
                 "plot_dispersion_metrics" =>                        0,
@@ -71,13 +71,14 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     obj_label,short_obj_label = label_objective(cfg)
     time_spinup_dns_ph = 500.0
     cfgstr = strrep_ConfigCOAST(cfg)
-    exptdir_COAST = joinpath(expt_supdir,"COAST_$(cfgstr)_$(pertopstr)")
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,distn_scales,
      fdivnames,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,thresh_cquantile
     ) = expt_config_COAST_analysis(cfg,pertop)
+    threshstr = @sprintf("thrt%d", round(Int, 1/thresh_cquantile))
+    exptdir_COAST = joinpath(expt_supdir,"COAST_$(cfgstr)_$(pertopstr)_$(threshstr)")
     @show xstride_valid_dns
     r2thresh = r2threshes[1]
     # Parameters related to the target
@@ -419,7 +420,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         rxystr = @sprintf("%.3f",cfg.target_ryPerL*sdm.Ly)
         ytgtstr = @sprintf("%.2f",cfg.target_yPerL*sdm.Ly)
         todosub = Dict(
-                       "plot_spaghetti" =>              1,
+                       "plot_spaghetti" =>              0,
                        "plot_response" =>               1,
                       )
         @show idx_anc_strat
@@ -453,7 +454,6 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     figdir
                    )
             end
-            # ---------------- Plot fit coefficients --------------
         end
     end
 
@@ -461,10 +461,12 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
 
     if todo["mix_COAST_distributions_polynomial"] == 1
+        println("About to mix COAST distributions")
         mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir)
+        println("Finished mixing")
     end
-
-    if todo["plot_COAST_mixture"] == 1
+    if 1 == todo["plot_COAST_mixture"]
+        println("Aabout to plot COAST mixtures")
         todosub = Dict(
                        "gains_topt" =>              1,
                        "rainbow_pdfs" =>            1,
@@ -524,8 +526,10 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         )
              end
             )
-        thresh = Rccdf_valid_agglon[argmin(abs.(ccdf_levels .- thresh_cquantile))] 
-        pdf_valid_agglon = -diff(Rccdf_valid_agglon) ./ diff(ccdf_levels)
+        i_thresh_level = argmin(abs.(ccdf_levels .- thresh_cquantile))
+        thresh = Rccdf_valid_agglon[i_thresh_level] 
+        pdf_valid_agglon = - diff(ccdf_levels) ./ diff(Rccdf_valid_agglon)
+        #IFT.@infiltrate true
 
         # ------------- Plots -----------------------
         # For each distribution type, plot the PDFs along the top and a row for each mixing criterion
@@ -544,8 +548,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
                 # --------------- Dependence between (lead time chosen by criteria) and (score) ---------
                 if 1 == todosub["gains_topt"]
-                    #Threads.@threads for i_scl = 1:Nscales
-                    for i_scl = 1:Nscales
+                    Threads.@threads for i_scl = 1:Nscales
+                    #for i_scl = 1:Nscales
                         scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
                         i_mcobj = 1
                         for (i_mc,mc) in enumerate(["ent"])
@@ -553,7 +557,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                             lout = fig[1:2,1] = GridLayout()
                             ax1 = Axis(lout[1,1], xlabel=L"$-$AST", ylabel=L"$$%$(mixcrit_labels[mc])", xlabelvisible=false, xticklabelsvisible=false, title=L"$$Target lat. %$(ytgtstr), Box size %$(rxystr), Scale %$(scalestr)")
                             ax2 = Axis(lout[2,1], xlabel=L"$-\mathrm{AST}$", ylabel=L"$$Severity", title="", titlevisible=false)
-                            @show iltmixs[dst][rsp][mc][i_mcobj,:,i_scl]
+                            #@show iltmixs[dst][rsp][mc][i_mcobj,:,i_scl]
                             for i_anc = 1:Nanc
                                 i_leadtime = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl]
                                 if i_leadtime == 0
@@ -594,6 +598,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     mixcrits_ylabels = [L"$R_2^2$",L"$$CondEnt"]
                     Nleadtimes2plot = Nleadtime
                     Threads.@threads for i_anc = idx_anc_strat
+                    #for i_anc = idx_anc_strat
                         t0str = @sprintf("%d", coast.anc_tRmax[i_anc])
                         fig = Figure(size=(100*Nleadtime,100*(3+length(mixcrits2plot))))
                         lout = fig[1,1] = GridLayout()
@@ -607,15 +612,16 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                             if i_col == 1
                                 ltstr = L"$-\mathrm{AST} = $%$(ltstr)"
                             end
-                            lblargs = Dict(:ylabelvisible=>(i_col==1), :yticklabelsvisible=>(i_col==1), :xlabelvisible=>false, :xticklabelsvisible=>false, :ylabelsize=>20, :xlabelsize=>20, :title=>L"%$(ltstr)", :xgridvisible=>false, :ygridvisible=>false, :titlealign=>:right)
+                            lblargs = Dict(:ylabelvisible=>(i_col==1), :yticklabelsvisible=>(i_col==1), :xlabelvisible=>false, :xticklabelsvisible=>true, :ylabelsize=>20, :xlabelsize=>20, :title=>L"%$(ltstr)", :xgridvisible=>false, :ygridvisible=>false, :titlealign=>:right)
                             ax = Axis(lout_pdfs[1,i_col]; xlabel=L"$$PDF", ylabel=L"$$Intensity", lblargs...)
                             for (i_scl,scl) in enumerate(distn_scales[dst])
                                 lines!(ax, pdfs[dst][rsp][:,i_leadtime, i_anc, i_scl], levels_mid; color=i_scl,colorrange=(0,length(distn_scales[dst])), colormap=:managua)
                             end
-                            #lines!(ax, pdf_valid_agglon, levels_mid; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
+                            lines!(ax, pdf_valid_agglon[i_thresh_level:end], levels_mid[i_thresh_level:end]; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
                             hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linewidth=1.0)
                             idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
-                            #scatter!(ax, maximum(pdf_valid_agglon).*ones(length(idx_desc)), coast.desc_Rmax[i_anc][idx_desc]; color=:firebrick, markersize=10)
+                            scatter!(ax, maximum(pdfs[dst][rsp][:,i_leadtime, i_anc, :]).*ones(length(idx_desc)), coast.desc_Rmax[i_anc][idx_desc]; color=:firebrick, markersize=10)
+                            #IFT.@infiltrate true
                             ylims!(ax, ylims...)
                         end
                         for (i_mc,mc) in enumerate(mixcrits2plot)

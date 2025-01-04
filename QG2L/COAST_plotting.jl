@@ -151,13 +151,13 @@ function plot_objective_response_linquad(
                 c = coefs_linear[:,i_leadtime,i_anc]
                 p1 = amplitude*cos(phase)
                 p2 = amplitude*sin(phase)
-                c[1] + c[2]*p1 + c[3]*p2
+                QG2L.linear_model_2d([p1 p2], c)[1]
             end
             Rmax_pred_quadratic[i_desc] = let
                 c = coefs_quadratic[:,i_leadtime,i_anc]
                 p1 = amplitude*cos(phase)
                 p2 = amplitude*sin(phase)
-                c[1] + c[2]*p1 + c[3]*p2 + c[4]*p1^2 + c[5]*p1*p2 + c[6]*p2^2
+                QG2L.quadratic_model_2d([p1 p2], c)[1]
             end
             scorekwargs[:color] = color_lin
             scatter!(ax1d, Rmax_pred_linear[i_desc], coast.desc_Rmax[i_anc][idx_desc[i_desc]]; scorekwargs...)
@@ -181,17 +181,12 @@ function plot_objective_response_linquad(
         arc!(ax2d, Point2f(0,0), Amax, 0, 2pi; color=:gray, alpha=0.5)
         #arc!(ax2d, Point2f(0,0), Amax, 0, 2pi; color=:black)
         # Plot contours of the quadratic response function 
-        p1grid = collect(range(-Amax,Amax; length=30))
-        p2grid = collect(range(-Amax,Amax; length=30))
-        response_surface_linear = let
-            c = coefs_linear[:,i_leadtime,i_anc]
-            r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
-        end
-        response_surface_quadratic = let 
-            c = coefs_quadratic[:,i_leadtime,i_anc]
-            r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
-            r += c[4].*p1grid.^2 .+ c[5].*p1grid.*transpose(p2grid) .+ c[6].*transpose(p2grid.^2)
-        end
+        Ngrid = 30
+        p1grid = collect(range(-Amax,Amax; length=Ngrid))
+        p2grid = collect(range(-Amax,Amax; length=Ngrid))
+        p12grid = hcat(vec(p1grid .* ones((1,Ngrid))), vec(ones(Ngrid) .* p2grid'))
+        response_surface_linear = reshape(QG2L.linear_model_2d(p12grid, coefs_linear[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
+        response_surface_quadratic = reshape(QG2L.quadratic_model_2d(p12grid, coefs_quadratic[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
         max_dR = max((maximum(abs.(r.-coast.anc_Rmax[i_anc])) for r=(response_surface_linear, response_surface_quadratic))...)
         vmin = coast.anc_Rmax[i_anc] - max_dR
         vmax = coast.anc_Rmax[i_anc] + max_dR
@@ -215,6 +210,7 @@ function plot_objective_response_linquad(
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_linear[:,i_anc]; color=color_lin, label="Linear")
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_quadratic[:,i_anc]; color=color_quad, label="Quadratic")
     hlines!(ax_r2, r2thresh; color=:gray)
+    ylims!(ax_r2, 0.0, 1.0)
     #lout_r2[2,1] = Legend(fig, ax_r2; nbanks=2, framevisible=false, labelsize=8)
     #rowsize!(lout_r2, 1, Relative(6/7))
 
@@ -227,6 +223,7 @@ function plot_objective_response_linquad(
     rowsize!(lout, 3, Relative(1/5))
 
     save(joinpath(figdir,"objective_response_anc$(i_anc)_linquad.png"), fig)
+    println("Saved linquad for i_anc $(i_anc)")
 end
 
 function plot_fit_coefs() # HIBERNATING

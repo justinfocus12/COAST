@@ -652,17 +652,34 @@ end
 function quadratic_model_2d(X::Matrix{Float64}, coefs::Vector{Float64})
     @assert size(X,2) == 2 # each column is a feature 
     Y = (
-         coefs[1] 
+         coefs[1]
          .+ coefs[2] .* X[:,1] .+ coefs[3] .* X[:,2]
          .+ coefs[4] .* X[:,1].^2 .+ coefs[5] .* X[:,1] .* X[:,2] .+ coefs[6] .* X[:,2].^2
         )
     return Y
 end
+function quadratic_model_2d_zero_intercept(X::Matrix{Float64}, coefs::Vector{Float64})
+    @assert size(X,2) == 2 # each column is a feature 
+    Y = (
+         coefs[1] .* X[:,1] .+ coefs[2] .* X[:,2]
+         .+ coefs[3] .* X[:,1].^2 .+ coefs[4] .* X[:,1] .* X[:,2] .+ coefs[5] .* X[:,2].^2
+        )
+    return Y
+end
 
-function quadratic_regression_2d(X::Matrix{Float64}, Y::Vector{Float64})
-    coefs_init_guess = zeros(Float64, 6)
-    fit = LsqFit.curve_fit(quadratic_model_2d, X, Y, coefs_init_guess)
+function quadratic_regression_2d(X::Matrix{Float64}, Y::Vector{Float64}; intercept::Union{Nothing,Float64}=nothing)
+    if isnothing(intercept)
+        regression_fun = quadratic_model_2d
+        coefs_init_guess = zeros(Float64, 6)
+    else
+        regression_fun = ((x,c) -> intercept .+ quadratic_model_2d_zero_intercept(x,c))
+        coefs_init_guess = zeros(Float64, 5)
+    end
+    fit = LsqFit.curve_fit(regression_fun, X, Y, coefs_init_guess)
     coefs = LsqFit.coef(fit)
+    if !isnothing(intercept)
+        pushfirst!(coefs, intercept)
+    end
     mse = SB.mean(fit.resid.^2)
     rsquared = 1 - mse/SB.var(Y, corrected=false)
     resid_range = [extrema(fit.resid)...]
@@ -671,17 +688,36 @@ end
 
 function linear_model_2d(X::Matrix{Float64}, coefs::Vector{Float64})
     @assert size(X,2) == 2 # each column is a feature 
+    # TODO enforce it goes through zero 
     Y = (
-         coefs[1] 
+         coefs[1]
          .+ coefs[2] .* X[:,1] .+ coefs[3] .* X[:,2]
         )
     return Y
 end
 
-function linear_regression_2d(X::Matrix{Float64}, Y::Vector{Float64})
-    coefs_init_guess = zeros(Float64, 3)
-    fit = LsqFit.curve_fit(linear_model_2d, X, Y, coefs_init_guess)
+function linear_model_2d_zero_intercept(X::Matrix{Float64}, coefs::Vector{Float64})
+    @assert size(X,2) == 2 # each column is a feature 
+    # TODO enforce it goes through zero 
+    Y = (
+         coefs[1] .* X[:,1] .+ coefs[2] .* X[:,2]
+        )
+    return Y
+end
+
+function linear_regression_2d(X::Matrix{Float64}, Y::Vector{Float64}; intercept::Union{Nothing,Float64} = nothing)
+    if isnothing(intercept)
+        regression_fun = linear_model_2d
+        coefs_init_guess = zeros(Float64, 3)
+    else
+        regression_fun = ((x, c) -> intercept .+ linear_model_2d_zero_intercept(x, c))
+        coefs_init_guess = zeros(Float64, 2)
+    end
+    fit = LsqFit.curve_fit(regression_fun, X, Y, coefs_init_guess)
     coefs = LsqFit.coef(fit)
+    if !isnothing(intercept)
+        pushfirst!(coefs, intercept)
+    end
     mse = SB.mean(fit.resid.^2)
     rsquared = 1 - mse/SB.var(Y, corrected=false)
     resid_range = [extrema(fit.resid)...]
@@ -705,7 +741,7 @@ end
 function regression2distn_linear_gaussian(coefs::Vector{Float64}, residmse::Float64, input_std::Float64, levels::Vector{Float64})
     # Gaussian input means Gaussian output
     output_mean = coefs[1]
-    output_var = input_std^2 * sum(coefs[2:3].^2) + residmse
+    output_var = input_std^2 * sum(coefs[3:4].^2) + residmse
     D = Dists.Normal(output_mean, sqrt(output_var))
     ccdf = Dists.ccdf.(D, levels)
     @assert maximum(diff(ccdf)) <= 0
@@ -754,10 +790,7 @@ function regression2distn_linear_uniform(coefs::Vector{Float64}, residmse::Float
     angle = 2pi.*U[:,2]
     X = radius .* cos.(angle)
     Y = radius .* sin.(angle)
-    F = vec(
-            coefs[1] 
-            .+ coefs[2].*X .+ coefs[3].*Y
-           )
+    F = vec(linear_model_2d(hcat(X,Y), coefs))
     if residmse > 0
         F .+= sqrt(residmse).*Random.randn(rng, Float64, (Nsamp,))
     end
@@ -777,10 +810,7 @@ function regression2distn_linear_uniform(coefs::Vector{Float64}, resid_range::Ve
     angle = 2pi.*U[:,2]
     X = radius .* cos.(angle)
     Y = radius .* sin.(angle)
-    F = vec(
-            coefs[1] 
-            .+ coefs[2].*X .+ coefs[3].*Y
-           )
+    F = vec(linear_model_2d(hcat(X,Y)))
     if resid_range[2] > resid_range[1]
         F .+= resid_range[1] .+ (resid_range[2]-resid_range[1]).*Random.rand(rng, Float64, (Nsamp,))
     end
@@ -804,11 +834,7 @@ function regression2distn_quadratic_uniform(coefs::Vector{Float64}, residmse::Fl
     angle = 2pi.*U[:,2]
     X = radius .* cos.(angle)
     Y = radius .* sin.(angle)
-    F = vec(
-            coefs[1] 
-            .+ coefs[2].*X .+ coefs[3].*Y
-            .+ coefs[4].*X.^2 .+ coefs[5].*X.*Y .+ coefs[6].*Y.^2
-           )
+    F = vec(quadratic_model_2d(hcat(X,Y), coefs))
     if residmse > 0
         seed = 89281
         rng = Random.MersenneTwister(seed)
@@ -827,11 +853,7 @@ function regression2distn_quadratic_uniform(coefs::Vector{Float64}, resid_range:
     angle = 2pi.*U[:,2]
     X = radius .* cos.(angle)
     Y = radius .* sin.(angle)
-    F = vec(
-            coefs[1] 
-            .+ coefs[2].*X .+ coefs[3].*Y
-            .+ coefs[4].*X.^2 .+ coefs[5].*X.*Y .+ coefs[6].*Y.^2
-           )
+    F = vec(quadratic_model_2d(hcat(X,Y), coefs))
     if resid_range[2] > resid_range[1]
         seed = 89281
         rng = Random.MersenneTwister(seed)
@@ -853,11 +875,7 @@ function regression2distn_quadratic_bump(coefs::Vector{Float64}, residmse::Float
     angle = 2pi.*U[:,2]
     X = radius .* cos.(angle)
     Y = radius .* sin.(angle)
-    F = vec(
-            coefs[1] 
-            .+ coefs[2].*X .+ coefs[3].*Y
-            .+ coefs[4].*X.^2 .+ coefs[5].*X.*Y .+ coefs[6].*Y.^2
-           )
+    F = vec(quadratic_model_2d(hcat(X,Y),coefs))
     if residmse > 0
         seed = 89281
         rng = Random.MersenneTwister(seed)
@@ -883,10 +901,7 @@ function regression2distn_linear_bump(coefs::Vector{Float64}, residmse::Float64,
     angle = 2pi.*U[:,2]
     X = radius .* cos.(angle)
     Y = radius .* sin.(angle)
-    F = vec(
-            coefs[1] 
-            .+ coefs[2].*X .+ coefs[3].*Y
-           )
+    F = vec(linear_model_2d(hcat(X,Y),coefs))
     if residmse > 0
         seed = 89281
         rng = Random.MersenneTwister(seed)
