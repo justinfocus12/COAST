@@ -645,12 +645,12 @@ function expt_config_COAST_analysis(cfg,pertop)
     fdivnames = ("chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    thresh_cquantile = 1/(2^8)
+    i_thresh_cquantile = 8
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000
     xstride_valid_dns = 1
-    return (leadtimes, r2threshes, distns, rsps, mixobjs, mixcrit_labels, mixobj_labels, distn_scales, fdivnames,Nboot,ccdf_levels,time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,thresh_cquantile)
+    return (leadtimes, r2threshes, distns, rsps, mixobjs, mixcrit_labels, mixobj_labels, distn_scales, fdivnames,Nboot,ccdf_levels,time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile)
 end
 
 function expt_config_metaCOAST_analysis(; i_expt=nothing)
@@ -685,12 +685,13 @@ function regress_lead_dependent_risk_linear_quadratic(coast::COASTState, ens::EM
         anc = coast.ancestors[i_anc]
         println("Thread $(Threads.threadid()) dealing with ancestor $(i_anc) out of $(Nanc)")
         descendants = Graphs.outneighbors(ens.famtree, anc)
+        Xpert = zeros(Float64, (cfg.max_perts_per_leadtime+1, 2))
+        Ypert = zeros(Float64, cfg.max-perts_per_leadtime+1)
         for (i_leadtime,leadtime) in enumerate(leadtimes)
             tpert = coast.anc_tRmax[i_anc] - leadtime
             idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
-            Xpert = zeros((length(idx_desc)+1,2))
-            Ypert = zeros(length(idx_desc)+1)
-            Ypert[end] = coast.anc_Rmax[i_anc]
+            Ndesc = length(idx_desc)
+            Ypert[Ndesc+1] = coast.anc_Rmax[i_anc]
             for (i_desc,desc) in enumerate(descendants[idx_desc])
                 pert = QG2L.read_perturbation_sequence(ens.trajs[desc].forcing).perts[1]
                 i_pert_dim = 2*i_mode_sf-1
@@ -703,8 +704,8 @@ function regress_lead_dependent_risk_linear_quadratic(coast::COASTState, ens::EM
                 Xpert[i_desc,:] .= amplitude .* [cos(phase), sin(phase)]
                 Ypert[i_desc] = coast.desc_Rmax[i_anc][idx_desc[i_desc]]
             end
-            coefs_linear[:,i_leadtime,i_anc],residmse_linear[i_leadtime,i_anc],rsquared_linear[i_leadtime,i_anc],resid_range_linear[:,i_leadtime,i_anc] = QG2L.linear_regression_2d(Xpert, Ypert; intercept=coast.anc_Rmax[i_anc])
-            coefs_quadratic[:,i_leadtime,i_anc],residmse_quadratic[i_leadtime,i_anc],rsquared_quadratic[i_leadtime,i_anc],resid_range_quadratic[:,i_leadtime,i_anc] = QG2L.quadratic_regression_2d(Xpert, Ypert; intercept=coast.anc_Rmax[i_anc])
+            coefs_linear[:,i_leadtime,i_anc],residmse_linear[i_leadtime,i_anc],rsquared_linear[i_leadtime,i_anc],resid_range_linear[:,i_leadtime,i_anc] = QG2L.linear_regression_2d(Xpert[1:Ndesc+1,:], Ypert[1:Ndesc+1]; intercept=coast.anc_Rmax[i_anc])
+            coefs_quadratic[:,i_leadtime,i_anc],residmse_quadratic[i_leadtime,i_anc],rsquared_quadratic[i_leadtime,i_anc],resid_range_quadratic[:,i_leadtime,i_anc] = QG2L.quadratic_regression_2d(Xpert[1:Ndesc+1,:], Ypert[1:Ndesc+1]; intercept=coast.anc_Rmax[i_anc])
             eigs = QG2L.quadratic_regression_2d_eigs(coefs_quadratic[:,i_leadtime,i_anc])
             hessian_eigvals[:,i_leadtime,i_anc] .= eigs[1]
             hessian_eigvecs[:,:,i_leadtime,i_anc] .= eigs[2]

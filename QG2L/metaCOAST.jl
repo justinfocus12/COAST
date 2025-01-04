@@ -53,8 +53,9 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,distn_scales,
      fdivnames,Nboot,ccdf_levels,
-     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,thresh_cquantile
+     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile
     ) = expt_config_COAST_analysis(cfgs[1],pertop)
+    thresh_cquantile = ccdf_levels[i_thresh_cquantile]
 
     if 1 == todo["plot_ccdfs_latdep"]
         Rccdfs_ancgen = zeros(Float64, (length(ccdf_levels),Nytgt))

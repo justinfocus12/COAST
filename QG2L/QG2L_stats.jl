@@ -283,16 +283,18 @@ function compute_local_objective_and_stats_zonsym(hist_filenames::Vector{String}
     @show memfirst,memlast,tinitreq,tfinreq
     Rfun_seplon(f::JLD2.JLDFile) = reduce(hcat, (obs_fun(f) for obs_fun=obs_fun_xshifts))
     Roft_seplon = reduce(vcat, compute_observable_ensemble(hist_filenames[memfirst:memlast], Rfun_seplon)) # (timesteps) x (longitudes) vector
+    Nt,Nlon = size(Roft_seplon)
     tinit = tfins[memfirst] - (size(Roft_seplon,1) - (tfins[memlast]-tfins[memfirst]))
     @show tinit,tfins[memfirst],tfins[memlast],size(Roft_seplon)
     @assert tinitreq >= tinit
     tidx = (tinitreq - tinit + 1):1:(tfinreq - tinit)
     Rccdf_seplon = reduce(vcat, (quantile_sliced(Roft_seplon, 1-ccdf_level, 1) for ccdf_level=ccdf_levels))
-    #@show Rccdf_seplon
     Rccdf_agglon = [SB.quantile(vec(Roft_seplon), 1-ccdf_level) for ccdf_level=ccdf_levels]
     tgridreq = collect((tinitreq+1):1:tfinreq)
     return (tgridreq,Roft_seplon,Rccdf_seplon,Rccdf_agglon)
 end
+
+function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, thresh_cquantile::Float64)
 
 function compute_local_GPD_params_zonsym_multiple_fits(hist_filenames::Vector{String}, obs_fun_xshiftable::Function, prebuffer_time::Int64, follow_time::Int64, initbuffer::Int64, Nxshifts::Int64, xstride::Int64, figdir::String, obs_label)
     # should return a scalar 

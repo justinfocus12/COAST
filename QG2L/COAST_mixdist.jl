@@ -3,8 +3,9 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,distn_scales,
      fdivnames,Nboot,ccdf_levels,
-     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,thresh_cquantile
+     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile
     ) = expt_config_COAST_analysis(cfg,pertop)
+    thresh_cquantile = ccdf_levels[i_thresh_cquantile]
     Nleadtime = length(leadtimes)
     Nr2th = length(r2threshes)
     (

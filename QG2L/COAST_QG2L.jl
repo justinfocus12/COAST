@@ -35,12 +35,11 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     todo = Dict(
                 "upgrade_ensemble" =>                               0,
                 "update_paths" =>                                   0,
-                "compute_dns_objective" =>                          0,
-                "plot_dns_objective_stats" =>                       0,
+                "compute_dns_objective" =>                          1,
+                "plot_dns_objective_stats" =>                       1,
                 "fit_dns_pot" =>                                    0, 
                 "anchor" =>                                         1,
                 "sail" =>                                           1, 
-                "plot_contour_divergence" =>                        0,
                 "remove_pngs" =>                                    0,
                 "regress_lead_dependent_risk_polynomial" =>         1, 
                 "plot_objective" =>                                 1, 
@@ -48,6 +47,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "plot_COAST_mixture" =>                             1,
                 "mixture_COAST_phase_diagram" =>                    0,
                 # vestigial or hibernating
+                "plot_contour_divergence" =>                        0,
                 "plot_dispersion_metrics" =>                        0,
                 "quantify_dispersion" =>                            0,
                 "plot_risk_regression_polynomial" =>                0,
@@ -75,8 +75,9 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,distn_scales,
      fdivnames,Nboot,ccdf_levels,
-     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,thresh_cquantile
+     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile
     ) = expt_config_COAST_analysis(cfg,pertop)
+    thresh_cquantile = ccdf_levels[i_thresh_cquantile]
     threshstr = @sprintf("thrt%d", round(Int, 1/thresh_cquantile))
     exptdir_COAST = joinpath(expt_supdir,"COAST_$(cfgstr)_$(pertopstr)_$(threshstr)")
     @show xstride_valid_dns
@@ -167,6 +168,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
          tgrid_valid,Roft_valid_seplon,
          Rccdf_valid_seplon,Rccdf_valid_agglon
         ) = QG2L.compute_local_objective_and_stats_zonsym(hist_filenames, tfins, tinitreq, tfinreq, obj_fun_COAST_xshifts, ccdf_levels)
+        # after choosing the threshold, 
+        
 
         JLD2.jldopen(joinpath(resultdir,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "w") do f
             f["tgrid_ancgen"] = tgrid_ancgen
@@ -302,7 +305,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     end
 
     # --------------- THE KING OF THRESHES -----------
-    thresh = Rccdf_valid_agglon[argmin(abs.(ccdf_levels .- thresh_cquantile))] 
+    thresh = Rccdf_valid_agglon[i_thresh_cquantile] 
     # ------------------------------------------------
 
 
@@ -420,7 +423,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         rxystr = @sprintf("%.3f",cfg.target_ryPerL*sdm.Ly)
         ytgtstr = @sprintf("%.2f",cfg.target_yPerL*sdm.Ly)
         todosub = Dict(
-                       "plot_spaghetti" =>              0,
+                       "plot_spaghetti" =>              1,
                        "plot_response" =>               1,
                       )
         @show idx_anc_strat
@@ -841,6 +844,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
 
     if todo["mixture_COAST_phase_diagram"] == 1
+        # TODO upgrade
         ytgtstr = @sprintf("%.2f", cfg.target_yPerL*sdm.Ly)
         rxystr = @sprintf("%.3f", cfg.target_ryPerL*sdm.Ly)
         # ------------- Lead-time parameterized ---------------
