@@ -213,7 +213,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         first_inceedance = findfirst(mixcrits[dst][rsp]["r2"][:,i_anc,i_scl] .< r2thresh)
                         iltmixs[dst][rsp]["r2"][i_r2thresh,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
                     end
-                    for mc = ("ent",)
+                    for mc = ("ent","lt")
                         # SUBJECT TO R^2 > some threshold
                         first_inceedance = let
                             r2 = mixcrits[dst][rsp]["r2"][:,i_anc,i_scl]
@@ -224,7 +224,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 end
                 # Now average together the PDFs and CCDFs based on the criteria from above 
                 println("Starting to sum together pdfs and ccdfs")
-                for mc = ("ent",) #keys(mixobjs)
+                for mc = ("ent","lt") #keys(mixobjs)
                     for i_anc = 1:Nanc
                         for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                             ilt = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl] 
@@ -241,7 +241,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                     end
                 end
                 println("Starting to compute fdivs")
-                for mc = ("ent",) #keys(mixobjs)
+                for mc = ("ent","lt") #keys(mixobjs)
                     for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                         for i_boot = 1:Nboot+1
                             for fdivname = fdivnames

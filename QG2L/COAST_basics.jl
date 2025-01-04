@@ -18,13 +18,13 @@ end
 function ConfigCOAST(
         tu,
         ;
-        lead_time_min_ph::Float64 = 6.0,
+        lead_time_min_ph::Float64 = 4.0,
         lead_time_max_ph::Float64 = 30.0,
         lead_time_inc_ph::Float64 = 2.0, 
         follow_time_ph::Float64 = 20.0,
         peak_prebuffer_time_ph::Float64 = 30.0,
         dtRmax_max_ph::Float64 = 4.0,
-        num_init_conds_max::Int64 = 8,
+        num_init_conds_max::Int64 = 16,
         num_perts_max_per_lead_time::Int64 = 12,
         target_field::String = "conc1",
         target_xPerL::Float64 = 0.5,
@@ -643,7 +643,7 @@ function expt_config_COAST_analysis(cfg,pertop)
                         "g" => Rmin .+ (Rmax-Rmin).*[0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0],
                        )
     fdivnames = ("chi2","tv")
-    Nboot = 1000
+    Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
     thresh_cquantile = 1/(2^8)
     time_ancgen_dns_ph = 4000
