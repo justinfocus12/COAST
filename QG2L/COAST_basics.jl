@@ -670,6 +670,7 @@ function regress_lead_dependent_risk_linear_quadratic(coast::COASTState, ens::EM
     Nanc = length(coast.ancestors)
     leadtimes = collect(range(cfg.lead_time_min, cfg.lead_time_max; step=cfg.lead_time_inc))
     Ntpert = length(leadtimes)
+    num_perts_max_per_leadtime = div(cfg.num_perts_max, Ntpert)
     coefs_linear = zeros(Float64, (3,Ntpert,Nanc))
     resid_range_linear = zeros(Float64, (2,Ntpert,Nanc))
     residmse_linear = zeros(Float64, (Ntpert,Nanc))
@@ -685,8 +686,8 @@ function regress_lead_dependent_risk_linear_quadratic(coast::COASTState, ens::EM
         anc = coast.ancestors[i_anc]
         println("Thread $(Threads.threadid()) dealing with ancestor $(i_anc) out of $(Nanc)")
         descendants = Graphs.outneighbors(ens.famtree, anc)
-        Xpert = zeros(Float64, (cfg.max_perts_per_leadtime+1, 2))
-        Ypert = zeros(Float64, cfg.max-perts_per_leadtime+1)
+        Xpert = zeros(Float64, (cfg.num_perts_max+1, 2))
+        Ypert = zeros(Float64, cfg.num_perts_max+1)
         for (i_leadtime,leadtime) in enumerate(leadtimes)
             tpert = coast.anc_tRmax[i_anc] - leadtime
             idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)

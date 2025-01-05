@@ -37,16 +37,17 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "update_paths" =>                                   0,
                 "plot_pertop" =>                                    0,
                 "compute_dns_objective" =>                          0,
-                "plot_dns_objective_stats" =>                       0,
+                "plot_dns_objective_stats" =>                       1,
                 "anchor" =>                                         0,
                 "sail" =>                                           0, 
-                "regress_lead_dependent_risk_polynomial" =>         0, 
-                "plot_objective" =>                                 0, 
-                "mix_COAST_distributions_polynomial" =>             0,
+                "regress_lead_dependent_risk_polynomial" =>         1, 
+                "plot_objective" =>                                 1, 
+                "mix_COAST_distributions_polynomial" =>             1,
                 "plot_COAST_mixture" =>                             1,
                 "mixture_COAST_phase_diagram" =>                    1,
+                # Danger zone 
+                "remove_pngs" =>                                    1,
                 # vestigial or hibernating
-                "remove_pngs" =>                                    0,
                 "fit_dns_pot" =>                                    0, 
                 "plot_contour_divergence" =>                        0,
                 "plot_dispersion_metrics" =>                        0,
@@ -516,7 +517,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         println("Aabout to plot COAST mixtures")
         todosub = Dict(
                        "gains_topt" =>              1,
-                       "rainbow_pdfs" =>            0,
+                       "rainbow_pdfs" =>            1,
                        "mixed_pdfs" =>              1,
                       )
 
