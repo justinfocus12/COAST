@@ -591,7 +591,7 @@ function expt_config_COAST(; i_expt=nothing)
     vbl_param_arrs = [target_yPerLs, target_rs]
     cartinds = CartesianIndices(tuple((length(arr) for arr in vbl_param_arrs)...))
     if isnothing(i_expt) || i_expt == 0
-        ci_expt = CartesianIndex(6,2)
+        ci_expt = CartesianIndex(6,1)
     else
         ci_expt = cartinds[i_expt]
     end
@@ -645,7 +645,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     fdivnames = ("kl","chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    i_thresh_cquantile = 8
+    i_thresh_cquantile = 5
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000

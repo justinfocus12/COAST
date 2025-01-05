@@ -36,7 +36,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "upgrade_ensemble" =>                               0,
                 "update_paths" =>                                   0,
                 "plot_pertop" =>                                    0,
-                "compute_dns_objective" =>                          0,
+                "compute_dns_objective" =>                          1,
                 "plot_dns_objective_stats" =>                       1,
                 "anchor" =>                                         0,
                 "sail" =>                                           0, 
@@ -46,7 +46,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "plot_COAST_mixture" =>                             1,
                 "mixture_COAST_phase_diagram" =>                    1,
                 # Danger zone 
-                "remove_pngs" =>                                    1,
+                "remove_pngs" =>                                    0,
                 # vestigial or hibernating
                 "fit_dns_pot" =>                                    0, 
                 "plot_contour_divergence" =>                        0,
@@ -909,6 +909,11 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         rxystr = @sprintf("%.3f", cfg.target_ryPerL*sdm.Ly)
         # ------------- Lead-time parameterized ---------------
         # heat map of TV as a function of lead time and scale
+        todosub = Dict(
+                       "mcmean_heatmap" =>             0,
+                       "fdiv_heatmap" =>               0,
+                       "phdgm_slices" =>               1,
+                      )
         (
          leadtimes,r2threshes,dsts,rsps,mixobjs,
          mixcrit_labels,mixobj_labels,distn_scales,
@@ -929,72 +934,80 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     continue
                 end
                 # Plot the entropy as a 2D phase plot: both its mean and its variance (not just the proportion of time it's optimal)
-                lt_r2thresh_mean,lt_r2thresh_mean_lo,lt_r2thresh_mean_hi = let
-                    ost = leadtimes[iltmixs[dst][rsp]["r2"][i_r2thresh,:,1]]
-                    mid = sum(ost)/length(ost)
-                    hi = sum(ost .* (ost .> mid))/sum(ost .> mid)
-                    lo = sum(ost .* (ost .< mid))/sum(ost .< mid)
-                    (mid,lo,hi)
-                end
-                for mc = ["ent","r2"]
-                    fig = Figure(size=(500,400))
-                    loutmean = fig[1,1] = GridLayout()
-                    #loutstd = fig[1,2] = GridLayout()
-                    axmean = Axis(loutmean[1,1], xlabel=L"$-\mathrm{AST}$", ylabel=L"$$Scale", title=L"$$Mean %$(mixcrit_labels[mc]), Target lat. %$(ytgtstr), Box size %$(rxystr)", xlabelsize=16, ylabelsize=16, titlesize=16)
-                    #axstd = Axis(loutstd[1,1], xlabel=L"$$Lead time", ylabel=L"$$Scale", title=L"$$Max. Ent. std")
-                    entmean = SB.mean(mixcrits[dst][rsp][mc][:,:,:]; dims=2)[:,1,:]
-                    entstd = SB.std(mixcrits[dst][rsp][mc][:,:,:]; dims=2)[:,1,:]
-                    println("entmean = ")
-                    display(entmean)
-                    println("entstd = ")
-                    display(entstd)
-                    hmmean = heatmap!(axmean, -sdm.tu.*leadtimes, distn_scales[dst], entmean; colormap=Reverse(:managua))
-                    #hmstd = heatmap!(axstd, -sdm.tu.*leadtimes, distn_scales[dst], entstd; colormap=:viridis, colorrange=(0,maximum(entstd)))
-                    for ax = (axmean,) #axstd)
-                        vlines!(ax, -sdm.tu*lt_r2thresh_mean; color=:black, linestyle=:solid, linewidth=2)
-                        vlines!(ax, -sdm.tu*lt_r2thresh_mean_lo; color=:black, linestyle=:dash, linewidth=2)
-                        vlines!(ax, -sdm.tu*lt_r2thresh_mean_hi; color=:black, linestyle=:dash, linewidth=2)
+                if 1 == todosub["mcmean_heatmap"]
+                    lt_r2thresh_mean,lt_r2thresh_mean_lo,lt_r2thresh_mean_hi = let
+                        ost = leadtimes[iltmixs[dst][rsp]["r2"][i_r2thresh,:,1]]
+                        mid = sum(ost)/length(ost)
+                        hi = sum(ost .* (ost .> mid))/sum(ost .> mid)
+                        lo = sum(ost .* (ost .< mid))/sum(ost .< mid)
+                        (mid,lo,hi)
                     end
-                    cbarmean = Colorbar(loutmean[1,2], hmmean, vertical=true)
-                    #cbarstd = Colorbar(loutstd[1,2], hmstd, vertical=true)
-                    save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(mc).png"), fig)
+                    for mc = ["ent","r2"]
+                        fig = Figure(size=(500,400))
+                        loutmean = fig[1,1] = GridLayout()
+                        #loutstd = fig[1,2] = GridLayout()
+                        axmean = Axis(loutmean[1,1], xlabel=L"$-\mathrm{AST}$", ylabel=L"$$Scale", title=L"$$Mean %$(mixcrit_labels[mc]), Target lat. %$(ytgtstr), Box size %$(rxystr)", xlabelsize=16, ylabelsize=16, titlesize=16)
+                        #axstd = Axis(loutstd[1,1], xlabel=L"$$Lead time", ylabel=L"$$Scale", title=L"$$Max. Ent. std")
+                        mcmean = SB.mean(mixcrits[dst][rsp][mc][:,:,:]; dims=2)[:,1,:]
+                        mcstd = SB.std(mixcrits[dst][rsp][mc][:,:,:]; dims=2)[:,1,:]
+                        println("mcmean = ")
+                        display(mcmean)
+                        println("mcstd = ")
+                        display(mcstd)
+                        hmmean = heatmap!(axmean, -sdm.tu.*leadtimes, distn_scales[dst], mcmean; colormap=Reverse(:managua))
+                        #hmstd = heatmap!(axstd, -sdm.tu.*leadtimes, distn_scales[dst], mcstd; colormap=:viridis, colorrange=(0,maximum(mcstd)))
+                        for ax = (axmean,) #axstd)
+                            vlines!(ax, -sdm.tu*lt_r2thresh_mean; color=:black, linestyle=:solid, linewidth=2)
+                            vlines!(ax, -sdm.tu*lt_r2thresh_mean_lo; color=:black, linestyle=:dash, linewidth=2)
+                            vlines!(ax, -sdm.tu*lt_r2thresh_mean_hi; color=:black, linestyle=:dash, linewidth=2)
+                        end
+                        cbarmean = Colorbar(loutmean[1,2], hmmean, vertical=true)
+                        #cbarstd = Colorbar(loutstd[1,2], hmstd, vertical=true)
+                        save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(mc).png"), fig)
+                    end
                 end
 
-                for (i_fdivname,fdivname) in enumerate(fdivs2plot)
-                    fig = Figure(size=(500,400))
-                    lout = fig[1,1] = GridLayout()
-                    ax = Axis(lout[1,1], xlabel=L"$-\mathrm{AST}$", ylabel=L"$$Scale", title=L"$$%$(fdivlabels[i_fdivname]), Target lat. %$(ytgtstr), Box size %$(rxystr)", xlabelsize=16, ylabelsize=16, titlesize=16) 
-                    hm = heatmap!(ax, -sdm.tu.*leadtimes, distn_scales[dst], fdivs[dst][rsp]["lt"][fdivname][i_boot,:,:]; colormap=:managua)
-                    cbar = Colorbar(lout[1,2], hm, vertical=true)
-                    # Plot the optimal split time (according to fdiv) as a function of scale 
-                    (ost_mean,ost_mean_lo,ost_mean_hi) = (zeros(Float64, length(distn_scales[dst])) for _=1:3)
-                    for i_scl = 1:length(distn_scales[dst])
-                        ilts = iltmixs[dst][rsp]["ent"][1,:,i_scl]
-                        ost_mean[i_scl] = SB.mean(leadtimes[ilts])
-                        ost_mean_lo[i_scl] = sum(leadtimes[ilts] .* (leadtimes[ilts] .< ost_mean[i_scl]))/sum(leadtimes[ilts] .< ost_mean[i_scl])
-                        ost_mean_hi[i_scl] = sum(leadtimes[ilts] .* (leadtimes[ilts] .> ost_mean[i_scl]))/sum(leadtimes[ilts] .> ost_mean[i_scl])
+                if 1 == todosub["fdiv_heatmap"]
+                    for (i_fdivname,fdivname) in enumerate(fdivs2plot)
+                        fig = Figure(size=(500,400))
+                        lout = fig[1,1] = GridLayout()
+                        ax = Axis(lout[1,1], xlabel=L"$-\mathrm{AST}$", ylabel=L"$$Scale", title=L"$$%$(fdivlabels[i_fdivname]), Target lat. %$(ytgtstr), Box size %$(rxystr)", xlabelsize=16, ylabelsize=16, titlesize=16) 
+                        hm = heatmap!(ax, -sdm.tu.*leadtimes, distn_scales[dst], fdivs[dst][rsp]["lt"][fdivname][i_boot,:,:]; colormap=:managua)
+                        cbar = Colorbar(lout[1,2], hm, vertical=true)
+                        # Plot the optimal split time (according to fdiv) as a function of scale 
+                        (ost_mean,ost_mean_lo,ost_mean_hi) = (zeros(Float64, length(distn_scales[dst])) for _=1:3)
+                        for i_scl = 1:length(distn_scales[dst])
+                            ilts = iltmixs[dst][rsp]["ent"][1,:,i_scl]
+                            ost_mean[i_scl] = SB.mean(leadtimes[ilts])
+                            ost_mean_lo[i_scl] = sum(leadtimes[ilts] .* (leadtimes[ilts] .< ost_mean[i_scl]))/sum(leadtimes[ilts] .< ost_mean[i_scl])
+                            ost_mean_hi[i_scl] = sum(leadtimes[ilts] .* (leadtimes[ilts] .> ost_mean[i_scl]))/sum(leadtimes[ilts] .> ost_mean[i_scl])
+                        end
+                        scatterlines!(ax, -sdm.tu*ost_mean, distn_scales[dst]; color=:black, linewidth=2) 
+                        scatterlines!(ax, -sdm.tu*ost_mean_lo, distn_scales[dst]; color=:black, linestyle=(:dot,:dense), linewidth=2) 
+                        scatterlines!(ax, -sdm.tu*ost_mean_hi, distn_scales[dst]; color=:black, linestyle=(:dot,:dense), linewidth=2) 
+                        vlines!(ax, -sdm.tu.*lt_r2thresh_mean; color=:black, linestyle=:solid, linewidth=2)
+                        vlines!(ax, -sdm.tu.*lt_r2thresh_mean_lo; color=:black, linestyle=:dash, linewidth=2)
+                        vlines!(ax, -sdm.tu.*lt_r2thresh_mean_hi; color=:black, linestyle=:dash, linewidth=2)
+                        save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname).png"), fig)
                     end
-                    scatterlines!(ax, -sdm.tu*ost_mean, distn_scales[dst]; color=:black, linewidth=2) 
-                    scatterlines!(ax, -sdm.tu*ost_mean_lo, distn_scales[dst]; color=:black, linestyle=(:dot,:dense), linewidth=2) 
-                    scatterlines!(ax, -sdm.tu*ost_mean_hi, distn_scales[dst]; color=:black, linestyle=(:dot,:dense), linewidth=2) 
-                    vlines!(ax, -sdm.tu.*lt_r2thresh_mean; color=:black, linestyle=:solid, linewidth=2)
-                    vlines!(ax, -sdm.tu.*lt_r2thresh_mean_lo; color=:black, linestyle=:dash, linewidth=2)
-                    vlines!(ax, -sdm.tu.*lt_r2thresh_mean_hi; color=:black, linestyle=:dash, linewidth=2)
-                    save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname).png"), fig)
                 end
                 # Compare entropy-optimizing advance split time with the one-size-fits-all advance split time 
                 # 3 curves to compare: (1) constant lead time across all scales, (2) maximum-average-entropy leadtime across all scales, (3) maximum-initial-condition-dependent-entropy leadtime
-                for (i_fdivname,fdivname) in enumerate(fdivs2plot)
-                    fig = Figure(size=(400,400))
-                    lout = fig[1,1] = GridLayout()
-                    ax = Axis(lout[1,1], xlabel=fdivlabels[i_fdivname], ylabel=L"$$Scale", title=L"$$Target lat. %$(ytgtstr), Box size %$(rxystr)")
-                    fdiv_max_ent = fdivs[dst][rsp]["ent"][fdivname][i_boot,1,:]
-                    scatterlines!(ax, fdiv_max_ent, distn_scales[dst]; label="Max. Ent.", color=:red, linestyle=(:dash,:dense))
-                    for ilt = 1:Nleadtime
-                        scatterlines!(ax, fdivs[dst][rsp]["lt"][fdivname][i_boot,ilt,:], distn_scales[dst]; label="-$(leadtimes[ilt]*sdm.tu)", color=ilt, colorrange=(1,Nleadtime), colormap=:managua)
+                if 1 == todosub["phdgm_slices"]
+                    for (i_fdivname,fdivname) in enumerate(fdivs2plot)
+                        fig = Figure(size=(400,400))
+                        lout = fig[1,1] = GridLayout()
+                        ax = Axis(lout[1,1], xlabel=fdivlabels[i_fdivname], ylabel=L"$$Scale", title=L"$$Target lat. %$(ytgtstr), Box size %$(rxystr)")
+                        fdiv_max_ent = fdivs[dst][rsp]["ent"][fdivname][i_boot,1,:]
+                        fdiv_last_r2 = fdivs[dst][rsp]["r2"][fdivname][i_boot,1,:]
+                        scatterlines!(ax, fdiv_max_ent, distn_scales[dst]; label="Max. Ent.", color=:red, linestyle=(:dash,:dense))
+                        scatterlines!(ax, fdiv_last_r2, distn_scales[dst]; label=L"$R^2\approx0.75$.", color=:black, linestyle=(:dash,:dense))
+                        for ilt = 1:Nleadtime
+                            scatterlines!(ax, fdivs[dst][rsp]["lt"][fdivname][i_boot,ilt,:], distn_scales[dst]; label="-$(leadtimes[ilt]*sdm.tu)", color=ilt, colorrange=(1,Nleadtime), colormap=:managua)
+                        end
+                        lout[1,2] = Legend(fig, ax; framevisible=false, labelsize=15)
+                        save(joinpath(figdir,"phdgm_slices_$(dst)_$(rsp)_$(fdivname).png"), fig)
                     end
-                    lout[1,2] = Legend(fig, ax; framevisible=false, labelsize=15)
-                    save(joinpath(figdir,"phdgm_slices_$(dst)_$(rsp)_$(fdivname).png"), fig)
                 end
             end
         end

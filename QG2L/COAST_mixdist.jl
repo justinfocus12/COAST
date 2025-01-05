@@ -223,25 +223,25 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                     # R-squared
                     for (i_r2thresh,r2thresh) in enumerate(r2threshes)
                         first_inceedance = findfirst(mixcrits[dst][rsp]["r2"][:,i_anc,i_scl] .< r2thresh)
+                        # TODO investigate whether last exceedance is better
                         iltmixs[dst][rsp]["r2"][i_r2thresh,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
                     end
-                    for mc = ("ent","lt","r2")
+                    # Other objectives to condition on R^2 
+                    for mc = ("ent","lt")
                         # SUBJECT TO R^2 > some threshold
-                        first_inceedance = let
-                            r2 = mixcrits[dst][rsp]["r2"][:,i_anc,i_scl]
-                            (minimum(r2) < r2threshes[1]) ? (findfirst(r2 .< r2threshes[1])) : Nleadtime
-                        end
-                        iltmixs[dst][rsp][mc][1,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:max(1,first_inceedance-1),i_anc,i_scl])
+                        ilt_r2 = iltmixs[dst][rsp]["r2"][1,i_anc,i_scl]
+                        iltmixs[dst][rsp][mc][1,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:ilt_r2,i_anc,i_scl])
                     end
                 end
                 # Now average together the PDFs and CCDFs based on the criteria from above 
                 println("Starting to sum together pdfs and ccdfs")
                 #IFT.@infiltrate ((dst=="b")&(rsp=="2"))
-                for mc = ("ent","lt") #keys(mixobjs)
+                for mc = ("ent","lt","r2") #keys(mixobjs)
                     for i_anc = 1:Nanc
                         for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                             ilt = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl] 
                             for i_boot = 1:Nboot+1
+                                # TODO should we weight ancestors by their excedance probability over the threshold? 
                                 ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= ccdfs[dst][rsp][:,ilt,i_anc,i_scl] .* anc_weights[i_anc,i_boot]
                                 pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= pdfs[dst][rsp][:,ilt,i_anc,i_scl] .* anc_weights[i_anc,i_boot]
                                 if !all(isfinite.(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl]))
@@ -256,7 +256,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 #IFT.@infiltrate ((dst=="b")&(rsp=="2")&(i_scl==2))
                 println("Starting to compute fdivs")
                 pdf_pot_valid_pt = SB.mean(-diff(ccdf_pot_valid_seplon; dims=1); dims=2) ./ diff(levels_exc)
-                for mc = ("ent","lt") #keys(mixobjs)
+                for mc = ("ent","lt","r2") #keys(mixobjs)
                     for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                         for i_boot = 1:Nboot+1
                             for fdivname = fdivnames
