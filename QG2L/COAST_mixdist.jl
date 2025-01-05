@@ -31,10 +31,14 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
      Roft_ancgen_seplon,
      Rccdf_ancgen_seplon,
      Rccdf_ancgen_agglon,
+     ccdf_pot_ancgen_seplon,
+     ccdf_pot_ancgen_agglon,
      tgrid_valid,
      Roft_valid_seplon,
      Rccdf_valid_seplon,
      Rccdf_valid_agglon,
+     ccdf_pot_valid_seplon,
+     ccdf_pot_valid_agglon,
     ) = (
          JLD2.jldopen(joinpath(resultdir,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
              return (
@@ -42,10 +46,14 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                      f["Roft_ancgen_seplon"], # Roft_ancgen_seplon
                      f["Rccdf_ancgen_seplon"], # Rccdf_ancgen_seplon
                      f["Rccdf_ancgen_agglon"], # Rccdf_ancgen_seplon
+                     f["ccdf_pot_ancgen_seplon"],
+                     f["ccdf_pot_ancgen_agglon"],
                      f["tgrid_valid"], # tgrid_valid
                      f["Roft_valid_seplon"], # Roft_valid_seplon
                      f["Rccdf_valid_seplon"], # Rccdf_valid_seplon
                      f["Rccdf_valid_agglon"], # Rccdf_valid_agglon
+                     f["ccdf_pot_valid_seplon"],
+                     f["ccdf_pot_valid_agglon"],
                     )
          end
         )
@@ -53,6 +61,8 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
     pdf_valid_agglon = -diff(Rccdf_valid_agglon) ./ diff(ccdf_levels)
     levels = Rccdf_valid_agglon
     levels_mid = 0.5 .* (levels[1:end-1] .+ levels[2:end])
+    levels_exc = levels[i_thresh_cquantile:end]
+    levels_exc_mid = 0.5 .* (levels_exc[1:end-1] .+ levels_exc[2:end])
     dlev = diff(levels)
     Nlev = length(levels)
     Nanc = length(coast.ancestors)
@@ -215,7 +225,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         first_inceedance = findfirst(mixcrits[dst][rsp]["r2"][:,i_anc,i_scl] .< r2thresh)
                         iltmixs[dst][rsp]["r2"][i_r2thresh,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
                     end
-                    for mc = ("ent","lt")
+                    for mc = ("ent","lt","r2")
                         # SUBJECT TO R^2 > some threshold
                         first_inceedance = let
                             r2 = mixcrits[dst][rsp]["r2"][:,i_anc,i_scl]
@@ -245,12 +255,13 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 end
                 #IFT.@infiltrate ((dst=="b")&(rsp=="2")&(i_scl==2))
                 println("Starting to compute fdivs")
+                pdf_pot_valid_pt = SB.mean(-diff(ccdf_pot_valid_seplon; dims=1); dims=2) ./ diff(levels_exc)
                 for mc = ("ent","lt") #keys(mixobjs)
                     for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                         for i_boot = 1:Nboot+1
                             for fdivname = fdivnames
                                 # TODO get the right baseline for subasymptotic POt
-                                fdivs[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl] = QG2L.fdiv_fun(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl], pdf_valid_agglon, levels, fdivname)
+                                fdivs[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl] = QG2L.fdiv_fun(pdfmixs[dst][rsp][mc][i_thresh_cquantile:end,i_boot,i_mcobj,i_scl], pdf_pot_valid_pt, levels_exc, fdivname)
                             end
                         end
                     end

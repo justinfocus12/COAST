@@ -36,18 +36,18 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "upgrade_ensemble" =>                               0,
                 "update_paths" =>                                   0,
                 "plot_pertop" =>                                    0,
-                "compute_dns_objective" =>                          1,
-                "plot_dns_objective_stats" =>                       1,
-                "fit_dns_pot" =>                                    0, 
-                "anchor" =>                                         1,
-                "sail" =>                                           1, 
-                "remove_pngs" =>                                    0,
+                "compute_dns_objective" =>                          0,
+                "plot_dns_objective_stats" =>                       0,
+                "anchor" =>                                         0,
+                "sail" =>                                           0, 
                 "regress_lead_dependent_risk_polynomial" =>         0, 
                 "plot_objective" =>                                 0, 
-                "mix_COAST_distributions_polynomial" =>             1,
+                "mix_COAST_distributions_polynomial" =>             0,
                 "plot_COAST_mixture" =>                             1,
-                "mixture_COAST_phase_diagram" =>                    0,
+                "mixture_COAST_phase_diagram" =>                    1,
                 # vestigial or hibernating
+                "remove_pngs" =>                                    0,
+                "fit_dns_pot" =>                                    0, 
                 "plot_contour_divergence" =>                        0,
                 "plot_dispersion_metrics" =>                        0,
                 "quantify_dispersion" =>                            0,
@@ -87,7 +87,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,distn_scales,
      fdivnames,Nboot,ccdf_levels,
-     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile
+     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
+     i_thresh_cquantile
     ) = expt_config_COAST_analysis(cfg,pertop)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
     threshstr = @sprintf("thrt%d", round(Int, 1/thresh_cquantile))
@@ -514,7 +515,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     if 1 == todo["plot_COAST_mixture"]
         println("Aabout to plot COAST mixtures")
         todosub = Dict(
-                       "gains_topt" =>              0,
+                       "gains_topt" =>              1,
                        "rainbow_pdfs" =>            0,
                        "mixed_pdfs" =>              1,
                       )
@@ -598,7 +599,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     for i_scl = 1:Nscales
                         scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
                         i_mcobj = 1
-                        for (i_mc,mc) in enumerate(["ent"])
+                        for (i_mc,mc) in enumerate(["ent","r2"])
                             fig = Figure(size=(600,400))
                             lout = fig[1:2,1] = GridLayout()
                             ax1 = Axis(lout[1,1], xlabel=L"$-$AST", ylabel=L"$$%$(mixcrit_labels[mc])", xlabelvisible=false, xticklabelsvisible=false, title=L"$$Target lat. %$(ytgtstr), Box size %$(rxystr), Scale %$(scalestr)")
@@ -663,7 +664,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                             for (i_scl,scl) in enumerate(distn_scales[dst])
                                 lines!(ax, pdfs[dst][rsp][:,i_leadtime, i_anc, i_scl], levels_mid; color=i_scl,colorrange=(0,length(distn_scales[dst])), colormap=:managua)
                             end
-                            lines!(ax, pdf_valid_agglon[i_thresh_cquantile:end], levels_mid[i_thresh_level:end]; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
+                            lines!(ax, pdf_valid_agglon[i_thresh_cquantile:end], levels_mid[i_thresh_cquantile:end]; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
                             hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linewidth=1.0)
                             idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
                             scatter!(ax, maximum(pdfs[dst][rsp][:,i_leadtime, i_anc, :]).*ones(length(idx_desc)), coast.desc_Rmax[i_anc][idx_desc]; color=:firebrick, markersize=10)
@@ -722,60 +723,63 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     pdf_valid_pt,pdf_valid_lo,pdf_valid_hi = boot_midlohi_pdf(pdf_valid_seplon, true)
                     # peaks over thresholds 
                     # ancestors
-                    ccdf_pot_ancgen_pt,ccdf_pot_ancgen_lo,ccdf_pot_ancgen_hi = boot_midlohi_ccdf(ccdf_pot_ancgen_seplon)
+                    ccdf_pot_ancgen_pt,ccdf_pot_ancgen_lo,ccdf_pot_ancgen_hi = boot_midlohi_ccdf(ccdf_pot_ancgen_seplon, false)
                     pdf_pot_ancgen_seplon = -diff(ccdf_pot_ancgen_seplon; dims=1) ./ diff(levels_exc)
-                    pdf_pot_ancgen_pt,pdf_pot_ancgen_lo,pdf_pot_ancgen_hi = boot_midlohi_pdf(pdf_pot_ancgen_seplon)
+                    pdf_pot_ancgen_pt,pdf_pot_ancgen_lo,pdf_pot_ancgen_hi = boot_midlohi_pdf(pdf_pot_ancgen_seplon, false)
                     # validation
                     ccdf_pot_valid_pt,ccdf_pot_valid_lo,ccdf_pot_valid_hi = boot_midlohi_ccdf(ccdf_pot_valid_seplon, true)
                     pdf_pot_valid_seplon = -diff(ccdf_pot_valid_seplon; dims=1) ./ diff(levels_exc)
                     pdf_pot_valid_pt,pdf_pot_valid_lo,pdf_pot_valid_hi = boot_midlohi_pdf(pdf_pot_valid_seplon, true)
 
                     for i_scl = 1:length(distn_scales[dst])
-                        scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
+                        for fdivname = ("kl","chi2","tv")
+                            scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
 
-                        i_boot = 1
-                        ilt_tv_sync = argmin(fdivs[dst][rsp]["lt"]["tv"][i_boot,:,i_scl])
-                        tv_sync = fdivs[dst][rsp]["lt"]["tv"][i_boot,ilt_tv_sync,i_scl]
-                        tv_cond = fdivs[dst][rsp]["ent"]["tv"][i_boot,1,i_scl]
-                        tpstr = @sprintf("%.1f",leadtimes[ilt_tv_sync]*sdm.tu)
-                        tvsyncstr = @sprintf("%.3f",tv_sync)
-                        tvcondstr = @sprintf("%.3f",tv_cond)
-                            
-                        pdf_cond_mid,pdf_cond_lo,pdf_cond_hi = boot_midlohi_pdf(pdfmixs[dst][rsp]["ent"][:,:,1,i_scl])
-                        pdf_sync_mid,pdf_sync_lo,pdf_sync_hi = boot_midlohi_pdf(pdfmixs[dst][rsp]["lt"][:,:,ilt_tv_sync,i_scl])
-                        ccdf_cond_mid,ccdf_cond_lo,ccdf_cond_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp]["ent"][:,:,1,i_scl])
-                        ccdf_sync_mid,ccdf_sync_lo,ccdf_sync_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp]["lt"][:,:,ilt_tv_sync,i_scl])
-                        # Plot CCDFS 
-                        fig = Figure(size=(700,400))
-                        lout = fig[1,1] = GridLayout()
-                        ax = Axis(lout[1,1]; xscale=log10, xlabel="CCDF", ylabel=L"$$Severity", title=L"$$Target lat. %$(ytgtstr), Box size %$(rxystr), Scale %$(scalestr)")
-                        lines!(ax, clipccdf.(ccdf_levels), levels; color=:black, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Long DNS"))
-                        lines!(ax, clipccdf.(ccdf_levels), Rccdf_ancgen_pt; color=:chocolate3, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Short DNS"))
-                        lines!(ax, ccdf_sync_mid, levels; color=:cyan, linestyle=:solid, label="AST: $(tpstr)\nTV from DNS=$(tvsyncstr)", linewidth=2)
-                        scatterlines!(ax, thresh_cquantile.*ccdf_pot_valid_pt, levels[i_thresh_cquantile:end]; color=:black)
-                        scatterlines!(ax, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; color=:chocolate3)
-                        lines!(ax, ccdf_cond_mid, levels; color=:firebrick, linestyle=:solid, linewidth=2, label="AST: Max. CondEnt\nTV from DNS =$(tvcondstr)")
-                        lout[1,2] = Legend(fig, ax; framevisible=true)
-                        colsize!(lout, 1, Relative(2/3))
-                        save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(i_scl).png"), fig)
-                        # Plot PDFs 
-                        fig = Figure(size=(700,400))
-                        lout = fig[1,1] = GridLayout()
-                        ax = Axis(lout[1,1]; xscale=log10, xlabel="PDF", ylabel=L"$$Severity", title=L"$$Target lat. %$(ytgtstr), Box size %$(rxystr), Scale %$(scalestr)")
-                        lines!(ax, clippdf.(pdf_valid_agglon), levels_mid; color=:black, linestyle=:solid)
-                        lines!(ax, pdf_sync_mid, levels_mid; color=:cyan, linestyle=:solid, label="AST: $(tpstr)\nTV from DNS=$(tvsyncstr)", linewidth=2)
-                        lines!(ax, clippdf.(pdf_valid_seplon[:,1]), levels_mid; color=:chocolate3, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Short DNS"))
-                        scatterlines!(ax, thresh_cquantile.*pdf_pot_valid_pt, levels_exc_mid; color=:black)
-                        scatterlines!(ax, thresh_cquantile.*pdf_pot_ancgen_pt, levels_exc_mid; color=:chocolate3)
-                        #lines!(ax, pdf_sync_lo, levels_mid; color=:cyan, linestyle=:solid, linewidth=1)
-                        #lines!(ax, pdf_sync_hi, levels_mid; color=:cyan, linestyle=:solid, linewidth=1)
-                        lines!(ax, pdf_cond_mid, levels_mid; color=:firebrick, linestyle=:solid, linewidth=2, label="AST: Max. CondEnt\nTV from DNS =$(tvcondstr)")
-                        lines!(ax, pdf_cond_lo, levels_mid; color=:firebrick, linestyle=:solid, linewidth=1)
-                        lines!(ax, pdf_cond_hi, levels_mid; color=:firebrick, linestyle=:solid, linewidth=1)
-                        lout[1,2] = Legend(fig, ax; framevisible=true)
-                        colsize!(lout, 1, Relative(2/3))
-                        save(joinpath(figdir,"pdfmixs_$(dst)_$(rsp)_$(i_scl).png"), fig)
-
+                            i_boot = 1
+                            ilt_fdiv_sync = argmin(fdivs[dst][rsp]["lt"][fdivname][i_boot,:,i_scl])
+                            fdiv_sync = fdivs[dst][rsp]["lt"][fdivname][i_boot,ilt_fdiv_sync,i_scl]
+                            for mc = ["r2","ent"]
+                                fdiv_cond = fdivs[dst][rsp][mc][fdivname][i_boot,1,i_scl]
+                                tpstr = @sprintf("%.1f",leadtimes[ilt_fdiv_sync]*sdm.tu)
+                                fdivsyncstr = @sprintf("%.3f",fdiv_sync)
+                                fdivcondstr = @sprintf("%.3f",fdiv_cond)
+                                    
+                                pdf_cond_mid,pdf_cond_lo,pdf_cond_hi = boot_midlohi_pdf(pdfmixs[dst][rsp][mc][:,:,1,i_scl])
+                                pdf_sync_mid,pdf_sync_lo,pdf_sync_hi = boot_midlohi_pdf(pdfmixs[dst][rsp]["lt"][:,:,ilt_fdiv_sync,i_scl])
+                                ccdf_cond_mid,ccdf_cond_lo,ccdf_cond_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp][mc][:,:,1,i_scl])
+                                ccdf_sync_mid,ccdf_sync_lo,ccdf_sync_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp]["lt"][:,:,ilt_fdiv_sync,i_scl])
+                                # Plot CCDFS 
+                                fig = Figure(size=(700,400))
+                                lout = fig[1,1] = GridLayout()
+                                ax = Axis(lout[1,1]; xscale=log10, xlabel="CCDF", ylabel=L"$$Severity", title=L"$$Target lat. %$(ytgtstr), Box size %$(rxystr), Scale %$(scalestr)")
+                                lines!(ax, clipccdf.(ccdf_levels), levels; color=:black, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Long DNS"))
+                                lines!(ax, clipccdf.(ccdf_levels), Rccdf_ancgen_pt; color=:chocolate3, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Short DNS"))
+                                lines!(ax, ccdf_sync_mid, levels; color=:cyan, linestyle=:solid, label="AST: $(tpstr)\n$(fdivname) from DNS=$(fdivsyncstr)", linewidth=2)
+                                scatterlines!(ax, thresh_cquantile.*ccdf_pot_valid_pt, levels[i_thresh_cquantile:end]; color=:black)
+                                scatterlines!(ax, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; color=:chocolate3)
+                                lines!(ax, ccdf_cond_mid, levels; color=:firebrick, linestyle=:solid, linewidth=2, label="AST: Max. $(mc)\n$(fdivname) from DNS =$(fdivcondstr)")
+                                lout[1,2] = Legend(fig, ax; framevisible=true)
+                                colsize!(lout, 1, Relative(2/3))
+                                save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(mc)_$(fdivname)_$(i_scl).png"), fig)
+                                # Plot PDFs 
+                                fig = Figure(size=(700,400))
+                                lout = fig[1,1] = GridLayout()
+                                ax = Axis(lout[1,1]; xscale=log10, xlabel="PDF", ylabel=L"$$Severity", title=L"$$Target lat. %$(ytgtstr), Box size %$(rxystr), Scale %$(scalestr)")
+                                lines!(ax, clippdf.(pdf_valid_agglon), levels_mid; color=:black, linestyle=:solid)
+                                lines!(ax, pdf_sync_mid, levels_mid; color=:cyan, linestyle=:solid, label="AST: $(tpstr)\n$(fdivname) from DNS=$(fdivsyncstr)", linewidth=2)
+                                lines!(ax, clippdf.(pdf_valid_seplon[:,1]), levels_mid; color=:chocolate3, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Short DNS"))
+                                scatterlines!(ax, thresh_cquantile.*pdf_pot_valid_pt, levels_exc_mid; color=:black)
+                                scatterlines!(ax, thresh_cquantile.*pdf_pot_ancgen_pt, levels_exc_mid; color=:chocolate3)
+                                #lines!(ax, pdf_sync_lo, levels_mid; color=:cyan, linestyle=:solid, linewidth=1)
+                                #lines!(ax, pdf_sync_hi, levels_mid; color=:cyan, linestyle=:solid, linewidth=1)
+                                lines!(ax, pdf_cond_mid, levels_mid; color=:firebrick, linestyle=:solid, linewidth=2, label="AST: Max. $(mc)\n$(uppercase(fdivname)) from DNS =$(fdivcondstr)")
+                                lines!(ax, pdf_cond_lo, levels_mid; color=:firebrick, linestyle=:solid, linewidth=1)
+                                lines!(ax, pdf_cond_hi, levels_mid; color=:firebrick, linestyle=:solid, linewidth=1)
+                                lout[1,2] = Legend(fig, ax; framevisible=true)
+                                colsize!(lout, 1, Relative(2/3))
+                                save(joinpath(figdir,"pdfmixs_$(dst)_$(rsp)_$(mc)_$(fdivname)_$(i_scl).png"), fig)
+                            end
+                        end
                     end
                 end
             end
@@ -907,24 +911,15 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         (
          leadtimes,r2threshes,dsts,rsps,mixobjs,
          mixcrit_labels,mixobj_labels,distn_scales,
-         fdivnames,Nboot
+         fdivnames,Nboot,ccdf_levels,
+         time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
+         i_thresh_cquantile
         ) = expt_config_COAST_analysis(cfg,pertop)
-        thresh_dns,scale_dns,shape_dns,peaks_dns,_,ccdf_at_thresh_dns,ccdf_gpd_dns_coarse = JLD2.jldopen(joinpath(resultdir,"GPD_dns.jld2"), "r") do f
-            return (
-                f["thresh"],
-                f["scale"],
-                f["shape"],
-                f["peak_vals"],
-                f["levels"],
-                f["ccdf_at_thresh"],
-                f["ccdf_GPD_xall"]
-           )
+        fdivs,iltmixs,mixcrits = JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed.jld2"),"r") do f
+            return f["fdivs"],f["iltmixs"],f["mixcrits"]
         end
-        fdivs,iltmixs,mixcrits,gpdpar,gpdpar_ancs = JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed.jld2"),"r") do f
-            return f["fdivs"],f["iltmixs"],f["mixcrits"],f["gpdpar"],f["gpdpar_ancs"]
-        end
-        fdivs2plot = ["tv"]
-        fdivlabels = ["TV"]
+        fdivs2plot = ["tv","chi2","kl"]
+        fdivlabels = ["TV","X2","KL"]
         i_boot = 1
         i_r2thresh = 1
         for dst = dsts
@@ -940,7 +935,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     lo = sum(ost .* (ost .< mid))/sum(ost .< mid)
                     (mid,lo,hi)
                 end
-                for mc = ["ent"]
+                for mc = ["ent","r2"]
                     fig = Figure(size=(500,400))
                     loutmean = fig[1,1] = GridLayout()
                     #loutstd = fig[1,2] = GridLayout()
@@ -970,7 +965,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     ax = Axis(lout[1,1], xlabel=L"$-\mathrm{AST}$", ylabel=L"$$Scale", title=L"$$%$(fdivlabels[i_fdivname]), Target lat. %$(ytgtstr), Box size %$(rxystr)", xlabelsize=16, ylabelsize=16, titlesize=16) 
                     hm = heatmap!(ax, -sdm.tu.*leadtimes, distn_scales[dst], fdivs[dst][rsp]["lt"][fdivname][i_boot,:,:]; colormap=:managua)
                     cbar = Colorbar(lout[1,2], hm, vertical=true)
-                    # Plot the optimal split time (according to TV) as a function of scale 
+                    # Plot the optimal split time (according to fdiv) as a function of scale 
                     (ost_mean,ost_mean_lo,ost_mean_hi) = (zeros(Float64, length(distn_scales[dst])) for _=1:3)
                     for i_scl = 1:length(distn_scales[dst])
                         ilts = iltmixs[dst][rsp]["ent"][1,:,i_scl]
@@ -986,32 +981,9 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     vlines!(ax, -sdm.tu.*lt_r2thresh_mean_hi; color=:black, linestyle=:dash, linewidth=2)
                     save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname).png"), fig)
                 end
-                # Now plot the generalized Pareto parameters
-                @show shape_dns,scale_dns
-                fig = Figure(size=(1000,400))
-                loutscale = fig[1,1] = GridLayout()
-                loutshape = fig[1,2] = GridLayout()
-                axscale = Axis(loutscale[1,1], xlabel=L"$-\mathrm{AST}$", ylabel=L"$$Scale", title=L"$|$GPD scale ($-$DNS)$|$") 
-                axshape = Axis(loutshape[1,1], xlabel=L"$-\mathrm{AST}$", ylabel=L"$$Shape", title=L"$|$GPD shape ($-$DNS)$|$") 
-                dscale = abs.(gpdpar[dst][rsp]["lt"]["scale"][i_boot,:,:].-scale_dns)
-                dshape = abs.(gpdpar[dst][rsp]["lt"]["shape"][i_boot,:,:].-shape_dns)
-                println("scale diff = ")
-                display(dscale)
-                println("shape diff = ")
-                display(dshape)
-                hmscale = heatmap!(axscale, -sdm.tu.*leadtimes, distn_scales[dst], dscale; colormap=:managua, colorrange=maximum(filter(isfinite,abs.(dscale))).*[0,1])
-                cbarscale = Colorbar(loutscale[1,2], hmscale, vertical=true)
-                hmshape = heatmap!(axshape, -sdm.tu.*leadtimes, distn_scales[dst], dshape; colormap=:managua, colorrange=maximum(filter(isfinite,abs.(dshape))).*[0,1])
-                cbarshape = Colorbar(loutshape[1,2], hmshape, vertical=true)
-                for ax = (axscale,axshape)
-                    vlines!(ax, -sdm.tu*lt_r2thresh_mean; color=:black, linestyle=:solid)
-                    vlines!(ax, -sdm.tu*lt_r2thresh_mean_lo; color=:black, linestyle=:solid)
-                    vlines!(ax, -sdm.tu*lt_r2thresh_mean_hi; color=:black, linestyle=:solid)
-                end
-                save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_gpdpar.png"), fig)
                 # Compare entropy-optimizing advance split time with the one-size-fits-all advance split time 
                 # 3 curves to compare: (1) constant lead time across all scales, (2) maximum-average-entropy leadtime across all scales, (3) maximum-initial-condition-dependent-entropy leadtime
-                for (i_fdivname,fdivname) in enumerate(["tv"])
+                for (i_fdivname,fdivname) in enumerate(fdivs2plot)
                     fig = Figure(size=(400,400))
                     lout = fig[1,1] = GridLayout()
                     ax = Axis(lout[1,1], xlabel=fdivlabels[i_fdivname], ylabel=L"$$Scale", title=L"$$Target lat. %$(ytgtstr), Box size %$(rxystr)")
@@ -1023,26 +995,6 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     lout[1,2] = Legend(fig, ax; framevisible=false, labelsize=15)
                     save(joinpath(figdir,"phdgm_slices_$(dst)_$(rsp)_$(fdivname).png"), fig)
                 end
-
-                # Same but for GPD parameters
-                fig = Figure(size=(800,400))
-                loutscale = fig[1,1] = GridLayout()
-                loutshape = fig[1,2] = GridLayout()
-                axscale = Axis(loutscale[1,1], xlabel=L"$$GPD scale", ylabel=L"$$Pert. scale")
-                axshape = Axis(loutshape[1,1], xlabel=L"$$GPD shape", ylabel=L"$$Pert. scale")
-                for ilt = 1:Nleadtime
-                    scatterlines!(axscale, gpdpar[dst][rsp]["lt"]["scale"][i_boot,ilt,:], distn_scales[dst]; label="-$(leadtimes[ilt]*sdm.tu)", color=ilt, colorrange=(1,Nleadtime), colormap=:managua)
-                    scatterlines!(axshape, gpdpar[dst][rsp]["lt"]["shape"][i_boot,ilt,:], distn_scales[dst]; label="-$(leadtimes[ilt]*sdm.tu)", color=ilt, colorrange=(1,Nleadtime), colormap=:managua)
-                end
-                scatterlines!(axscale, gpdpar[dst][rsp]["ent"]["scale"][i_boot,1,:], distn_scales[dst]; label="Max. ent.", color=:red, linestyle=(:dash,:dense))
-                scatterlines!(axshape, gpdpar[dst][rsp]["ent"]["shape"][i_boot,1,:], distn_scales[dst]; label="Max. ent.", color=:red, linestyle=(:dash,:dense))
-                vlines!(axscale, scale_dns; color=:black, linestyle=(:dash,:dense), label="DNS")
-                vlines!(axshape, shape_dns; color=:black, linestyle=(:dash,:dense), label="DNS")
-                vlines!(axscale, gpdpar_ancs["scale_gpd"]; color=:dodgerblue, label="Init", linestyle=(:dash,:dense))
-                vlines!(axshape, gpdpar_ancs["shape_gpd"]; color=:dodgerblue, label="Init", linestyle=(:dash,:dense))
-                loutscale[1,2] = Legend(fig, axscale; framevisible=false, fontsize=15)
-                loutshape[1,2] = Legend(fig, axshape; framevisible=false, fontsize=15)
-                save(joinpath(figdir,"phdgm_slices_$(dst)_$(rsp)_gpdpar.png"), fig)
             end
         end
     end

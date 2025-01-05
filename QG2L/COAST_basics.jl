@@ -638,14 +638,14 @@ function expt_config_COAST_analysis(cfg,pertop)
     i_mode_sf = 1
     Rmin,Rmax = pertop.sf_pert_amplitudes_min[i_mode_sf],pertop.sf_pert_amplitudes_max[i_mode_sf]
     distn_scales = Dict(
-                        "b" => Rmin .+ (Rmax-Rmin).*collect(range(0.25, 4.0; step=0.25)),
+                        "b" => Rmin .+ (Rmax-Rmin).*collect(range(0.25, 4.0; step=0.5)),
                         "u" => Rmin .+ (Rmax-Rmin).*[0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0],
                         "g" => Rmin .+ (Rmax-Rmin).*[0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0],
                        )
-    fdivnames = ("chi2","tv")
+    fdivnames = ("kl","chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    i_thresh_cquantile = 5
+    i_thresh_cquantile = 8
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000

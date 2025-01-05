@@ -197,7 +197,7 @@ function initialize_FlowField_baroclinic(kxs::Vector{Int64}, kys::Vector{Int64},
         iy = mod(kys[iz]*sign(kxs[iz]), sdm.Ny) + 1
         sf.ok[ix,iy,iz] = sdm.Nx*sdm.Ny * amplitudes[iz]/2
     end
-    synchronize_FlowField_k2x!(sf, cop)
+    synchronize_FlowField_k2x!(sf) #, cop)
     return sf
 end
 
@@ -205,7 +205,7 @@ function initialize_FlowField_random(amplitude::Float64, sdm::SpaceDomain, cop::
     sf = FlowField(sdm.Nx, sdm.Ny)
     sf.ok .= Random.randn(rng, ComplexF64, size(sf.ok))
     sf.ok[1,1,:] .= 0
-    synchronize_FlowField_k2x!(sf, cop)
+    synchronize_FlowField_k2x!(sf) #, cop)
     return sf
 end
 
@@ -264,7 +264,7 @@ function test_tendency()
     for iz = 1:2
         sf_co.ok[ix,iy,iz] = sdm.Nx*sdm.Ny * amplitudes[iz]/2
     end
-    synchronize_FlowField_k2x!(sf_co, cop)
+    synchronize_FlowField_k2x!(sf_co) #, cop)
     
     # ------- Visualize initial condition ------------
     fig = Figure()
@@ -347,7 +347,7 @@ function test_tendency()
         iy = mod(ky_init[iz]*sign(kx_init[iz]), sdm.Ny) + 1
         sf_co.ok[ix,iy,iz] = sdm.Nx*sdm.Ny * amplitudes[iz]/2
     end
-    synchronize_FlowField_k2x!(sf_co, cop)
+    synchronize_FlowField_k2x!(sf_co) #, cop)
     
     # ------- Visualize initial condition ------------
     fig = Figure()
