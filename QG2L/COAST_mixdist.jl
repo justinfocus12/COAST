@@ -149,6 +149,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
             end
         end
     end
+    adjust_per_anc = true
     for dst = dsts
         for rsp = rsps
             if rsp in ["1","1+u","1+g"] # == rsp
@@ -163,11 +164,11 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
             residmse = 0.0
             resid_range = zeros(Float64,2)
             resid_arg = NaN
-            for i_scl = 1:length(distn_scales[dst])
+            Threads.@threads for i_scl = 1:length(distn_scales[dst])
                 println("Starting scale $(i_scl)")
                 scl = distn_scales[dst][i_scl]
-                Threads.@threads for i_anc = 1:Nanc
-                #for i_anc = 1:Nanc
+                #Threads.@threads for i_anc = 1:Nanc
+                for i_anc = 1:Nanc
                     Rmaxanc = coast.anc_Rmax[i_anc]
                     for i_leadtime = 1:Nleadtime
                         #if "g" == dst
@@ -190,18 +191,22 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                             error()
                         end
                         ccdf,pdf = r2dfun(dst,rsp,scl)(coefs[:,i_leadtime,i_anc], resid_arg)
-                        adjustment = (ccdf[i_thresh_cquantile] > 1e-10 ? thresh_cquantile/ccdf[i_thresh_cquantile] : 0)
-                        ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= ccdf .* adjustment
-                        pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= pdf .* adjustment
+                        if adjust_per_anc
+                            adjustment = (ccdf[i_thresh_cquantile] > 1e-10 ? thresh_cquantile/ccdf[i_thresh_cquantile] : 0)
+                            ccdf .*= adjustment
+                            pdf .*= adjustment
+                        end
+                        ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= ccdf #.* adjustment
+                        pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= pdf #.* adjustment
                         ccdfs[dst][rsp][1:i_thresh_cquantile-1,i_leadtime,i_anc,i_scl] .= thresh_cquantile
-                        pdfs[dst][rsp][1:i_thresh_cquantile-1,i_leadtime,i_anc,i_scl] .= 0.0
+                        #pdfs[dst][rsp][1:i_thresh_cquantile-1,i_leadtime,i_anc,i_scl] .= 0.0
                         #@show ccdfs[dst][rsp][i_thresh_cquantile,i_leadtime,i_anc,i_scl]
                         #IFT.@infiltrate true
                         if !(all(isfinite.(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])) && all(isfinite.(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])))
                             println("non-finite pdf or ccdf")
                             display(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])
                             display(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])
-                            @show i_anc, adjustment, ccdf[1] 
+                            @show i_anc, ccdf[1] 
                             error()
                         end
                         # Evaluate these distributions by mixing criteria 
@@ -209,7 +214,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         mixcrits[dst][rsp]["r2"][i_leadtime,i_anc,i_scl] = (rsp in ["1","1+u","1+g"] ? rsquared_linear : rsquared_quadratic)[i_leadtime,i_anc]
                         mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = sum(max.(0, levels_mid .- thresh) .* pdf .* dlev)
                         # weight the entropy by the probability of exceeding the threshold 
-                        mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun(pdf .* (levels[1:end-1] .> thresh))
+                        mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun(pdf) # .* (levels[1:end-1] .> thresh))
                         mixcrits[dst][rsp]["went"][i_leadtime,i_anc,i_scl] = sum(pdf .* dlev .* (levels[1:end-1] .> thresh)) * QG2L.entropy_fun(pdf .* (levels_mid .> thresh))
                         if levels[end] > Rmaxanc
                             mixcrits[dst][rsp]["pi"][i_leadtime,i_anc,i_scl] = ccdf[findfirst(levels .> Rmaxanc)]
@@ -251,6 +256,17 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                                     display(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl])
                                     error()
                                 end
+                            end
+                        end
+                    end
+                    # Correct for the known exceedance probability
+                    if !adjust_per_anc
+                        for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
+                            for i_boot = 1:Nboot+1
+                                adjustment = thresh_cquantile / ccdfmixs[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]
+                                @assert adjustment > 0
+                                ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
+                                pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
                             end
                         end
                     end

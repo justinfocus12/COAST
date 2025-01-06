@@ -591,7 +591,7 @@ function expt_config_COAST(; i_expt=nothing)
     vbl_param_arrs = [target_yPerLs, target_rs]
     cartinds = CartesianIndices(tuple((length(arr) for arr in vbl_param_arrs)...))
     if isnothing(i_expt) || i_expt == 0
-        ci_expt = CartesianIndex(6,1)
+        ci_expt = CartesianIndex(6,2)
     else
         ci_expt = cartinds[i_expt]
     end
@@ -603,7 +603,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     Nleadtime = length(leadtimes)
     
 
-    r2threshes = [0.75] #[0.8,0.7,0.6,0.5]
+    r2threshes = [0.8] #[0.8,0.7,0.6,0.5]
     Nr2th = length(r2threshes)
 
     # TODO implement mean absolute error as a more-outlier-sensitive alternative to R^2 
@@ -621,20 +621,20 @@ function expt_config_COAST_analysis(cfg,pertop)
                   ) # mixing-related objectives to maximize when choosing a leadtime. Each entry of each list represents a different objective 
     lt2str(lt) = @sprintf("%.2f", lt)
     mixcrit_labels = Dict(
-                         "lt"=>L"$-\mathrm{AST}$", 
-                         "r2"=>L"$R^2$",
-                         "ei"=>L"Exp. Imp.$$",
-                         "went"=>L"WEntropy$$",
-                         "ent"=>L"CondEnt$$",
-                         "pi"=>L"Prob. Imp.$$",
+                         "lt"=>"-AST", 
+                         "r2"=>"R2",
+                         "ei"=>"Exp. Imp.",
+                         "went"=>"WEntropy",
+                         "ent"=>"Ent",
+                         "pi"=>"Prob. Imp.",
                         )
     mixobj_labels = Dict(
-                         "lt"=>[L"$\mathrm{AST}=%$(lt2str(lt))$" for lt = leadtimes],
-                         "r2"=>[L"$R^2=%$(lt2str(r2))$" for r2=r2threshes],
-                         "ei"=>[L"$$Max. Exp. Imp."],
-                         "went"=>[L"$$Max. WEnt."],
-                         "ent"=>[L"$$Max. CondEnt"],
-                         "pi"=>[L"$$Max. Prob. Imp."],
+                         "lt"=>["AST=$(lt2str(lt))" for lt = leadtimes],
+                         "r2"=>["R2=$(lt2str(r2))" for r2=r2threshes],
+                         "ei"=>["Max. Exp. Imp."],
+                         "went"=>["Max. WEnt."],
+                         "ent"=>["Max. Ent"],
+                         "pi"=>["Max. Prob. Imp."],
                          # TODO add expected exceedance over threshold (tee or eet or ete)
                         )
     i_mode_sf = 1
