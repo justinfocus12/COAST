@@ -606,6 +606,8 @@ function expt_config_COAST_analysis(cfg,pertop)
     r2threshes = [0.75] #[0.8,0.7,0.6,0.5]
     Nr2th = length(r2threshes)
 
+    # TODO implement mean absolute error as a more-outlier-sensitive alternative to R^2 
+
     # Parameterize both the input distributions and the response types 
     distns = ("b",) # bump, uniform, gaussian; also add noises in uniform and Gaussian form 
     rsps = ("1","2") #,"1+g","1+u","2+u") # linear, quadratic

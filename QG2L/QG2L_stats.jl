@@ -129,14 +129,15 @@ function flag_running_max(x::Vector{Float64}, buffer::Int64)
 end
 
 function peaks_over_threshold(x::Vector{Float64}, thresh::Float64, prebuffer::Int64, postbuffer::Int64, initbuffer::Int64)
-    xismop = flag_running_max(x, prebuffer)
-    xismof = reverse(flag_running_max(reverse(x), postbuffer))
+    xismop = flag_running_max(x, prebuffer) # x is maximum of past
+    xismof = reverse(flag_running_max(reverse(x), postbuffer)) # x is maximum of future 
     xispeak = zeros(Bool,length(x))
     xispeak .= (xismop .& xismof .& (x .> thresh))
     xispeak[1:initbuffer] .= false
     peak_tidx = findall(xispeak)
     # Make sure there's an upcrossing before
     if length(peak_tidx) == 0
+        println("NO PEAKS!!")
         return nothing
     end
     @show thresh
@@ -173,6 +174,7 @@ function peaks_over_threshold(x::Vector{Float64}, thresh::Float64, prebuffer::In
     for v = results
         v = v[first_peak:last_peak]
     end
+    #IFT.@infiltrate (length(peak_vals) == 1)
     println("^^^^^^^^^^^\n NUMBER OF PEAKS = $(length(results[1]))\n^^^^^^^^^^^^^^^^")
     return results
 end
@@ -303,7 +305,12 @@ function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thres
     ccdf_pot_agglon = zeros(Float64, Nlev)
     num_peaks_total = 0
     for i_lon = 1:Nlon
-        peak_vals,peak_tidx,upcross_tidx,downcross_tidx = peaks_over_threshold(Roft_seplon[:,i_lon], levels_geq_thresh[1], prebuffer, postbuffer, initbuffer)
+        pot_results = peaks_over_threshold(Roft_seplon[:,i_lon], levels_geq_thresh[1], prebuffer, postbuffer, initbuffer)
+        if isnothing(pot_results)
+            continue
+        end
+        #IFT.@infiltrate isnothing(pot_results) || length(pot_results[1]) == 1
+        peak_vals,peak_tidx,upcross_tidx,downcross_tidx = pot_results
         num_peaks_exceeding_level = sum(peak_vals .> levels_geq_thresh'; dims=1)[1,:]
         ccdf_pot_seplon[:,i_lon] .= num_peaks_exceeding_level ./ length(peak_vals)
         num_peaks_total += length(peak_vals)

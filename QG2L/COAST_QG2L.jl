@@ -36,12 +36,12 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "upgrade_ensemble" =>                               0,
                 "update_paths" =>                                   0,
                 "plot_pertop" =>                                    0,
-                "compute_dns_objective" =>                          1,
-                "plot_dns_objective_stats" =>                       1,
+                "compute_dns_objective" =>                          0,
+                "plot_dns_objective_stats" =>                       0,
                 "anchor" =>                                         0,
                 "sail" =>                                           0, 
-                "regress_lead_dependent_risk_polynomial" =>         1, 
-                "plot_objective" =>                                 1, 
+                "regress_lead_dependent_risk_polynomial" =>         0, 
+                "plot_objective" =>                                 0, 
                 "mix_COAST_distributions_polynomial" =>             1,
                 "plot_COAST_mixture" =>                             1,
                 "mixture_COAST_phase_diagram" =>                    1,
@@ -55,19 +55,25 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "plot_risk_regression_polynomial" =>                0,
                )
 
+    println("expt_config: ")
     php,sdm = QG2L.expt_config()
+    println("done")
+    println("cop_pertop:")
     cop_pertop_file = joinpath(expt_supdir,"cop_pertop.jld2")
     if isfile(cop_pertop_file)
+        println("Loading...")
         cop,pertop = JLD2.jldopen(cop_pertop_file, "r") do f
             return f["cop"],f["pertop"]
         end
     else
+        println("Computing...")
         cop,pertop = QG2L.expt_setup(php, sdm)
         JLD2.jldopen(cop_pertop_file, "w") do f
             f["cop"] = cop
             f["pertop"] = pertop
         end
     end
+    println("Done")
     @show pertop.pert_dim
     phpstr = QG2L.strrep_PhysicalParams(php)
     sdmstr = QG2L.strrep_SpaceDomain(sdm)
@@ -243,8 +249,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         # TODO do some plotting and quantify the difference between ancgen and valid (train and test?) distributions 
         fig = Figure()
         lout = fig[1,1] = GridLayout()
-        axhist = Axis(lout[1,1], xlabel="Intensity", ylabel="PDF", yscale=log10)
-        axccdf = Axis(lout[2,1], xlabel="Intensity", ylabel="CCDF", yscale=log10)
+        axhist = Axis(lout[1,1], ylabel="Intensity", xlabel="PDF", yscale=log10)
+        axccdf = Axis(lout[1,2], ylabel="Intensity", xlabel="CCDF", yscale=log10)
         bin_edges = collect(range(0,1,200))
         bin_centers = 0.5 .* (bin_edges[2:end] .+ bin_edges[1:end-1])
         levels = Rccdf_valid_agglon
@@ -261,9 +267,9 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
         zero2nan(p) = replace(p, 0=>NaN)
 
-        lines!(axhist, bin_centers, zero2nan(SB.mean(pdfs_ancgen; dims=2)[:,1]); color=:cyan, linewidth=2)
-        lines!(axhist, bin_centers, zero2nan(SB.mean(pdfs_valid; dims=2)[:,1]); color=:black, linewidth=2)
-        lines!(axccdf, zero2nan(SB.mean(Rccdf_ancgen_seplon; dims=2)[:,1]), ccdf_levels; color=:cyan, linewidth=2)
+        lines!(axhist, zero2nan(SB.mean(pdfs_ancgen; dims=2)[:,1]), bin_centers; color=:cyan, linewidth=2)
+        lines!(axhist, zero2nan(SB.mean(pdfs_valid; dims=2)[:,1]), bin_centers; color=:black, linewidth=2)
+        lines!(axccdf, ccdf_levels, zero2nan(SB.mean(Rccdf_ancgen_seplon; dims=2)[:,1]); color=:cyan, linewidth=2)
         scatterlines!(axccdf, levels[i_thresh_cquantile:end], thresh_cquantile.*zero2nan(SB.mean(ccdf_pot_ancgen_seplon; dims=2)[:,1]); color=:cyan)
         scatterlines!(axccdf, levels[i_thresh_cquantile:end], thresh_cquantile.*zero2nan(SB.mean(ccdf_pot_valid_seplon; dims=2)[:,1]); color=:black)
         lines!(axccdf, zero2nan(SB.mean(Rccdf_valid_seplon; dims=2)[:,1]), ccdf_levels; color=:black, linewidth=2)
