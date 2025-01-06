@@ -27,8 +27,8 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
     #pert_dim = length(pertop.camplitudes)
    fig = Figure(size=(400,300))
    lout = fig[1:2,1] = GridLayout()
-   ax1 = Axis(lout[1,1], xlabel=L"$t-%$(t0str)$", ylabel=L"$$Intensity", title=L"$$Target lat. %$(ytgtstr), Box size %$(rxystr)", xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, )
-   ax3 = Axis(lout[2,1], xlabel=L"$t-%$(t0str)$", ylabel=L"$$Severity", xgridvisible=false, ygridvisible=false, yticks=[minimum(coast.desc_Rmax[i_anc]), coast.anc_Rmax[i_anc]], ytickformat="{:.2f}")
+   ax1 = Axis(lout[1,1], xlabel="t-$(t0str)", ylabel="Conc.", title=label_target(cfg,sdm), xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, )
+   ax3 = Axis(lout[2,1], xlabel="t-$(t0str)", ylabel="Conc. (peak)", xgridvisible=false, ygridvisible=false, yticks=[minimum(coast.desc_Rmax[i_anc]), coast.anc_Rmax[i_anc]], ytickformat="{:.2f}")
    # First panel: just the timeseries
    kwargs = Dict(:colormap=>:managua10, :colorrange=>(cfg.lead_time_min,cfg.lead_time_max), :color=>1)
    for (i_desc,desc) in enumerate(descendants)
@@ -92,7 +92,7 @@ function plot_objective_response_linquad(
     Rmin = minimum([minimum(coast.anc_Roft[i_anc]) for i_anc=1:cfg.num_init_conds_max])
     obj_label,short_obj_label = label_objective(cfg)
 
-    fig = Figure(size=(100*Nleadtimes2plot,100*(2+0.5)))
+    fig = Figure(size=(100*Nleadtimes2plot,125*(2+0.5)))
     i_mode_sf = 1
     @show leadtimes
     lout = fig[1:3,1] = GridLayout()
@@ -119,14 +119,14 @@ function plot_objective_response_linquad(
         r2_lin_str = @sprintf("%.2f", rsquared_linear[i_leadtime,i_anc])
         r2_quad_str = @sprintf("%.2f", rsquared_quadratic[i_leadtime,i_anc])
         lblargs = Dict(:xticklabelsize=>9,:xlabelsize=>12,:yticklabelsize=>9,:ylabelsize=>12,:titlesize=>12,:xlabelvisible=>false,:ylabelvisible=>(i_col==1),:xticklabelsvisible=>false,:yticklabelsvisible=>(i_col==1), :xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>pi/2)
-        title_2d = L"$-%$(tpstr)$"
-        title_1d = L"(%$(r2_lin_str),%$(r2_quad_str))"
+        title_2d = "-$(tpstr)"
+        title_1d = "($(r2_lin_str),$(r2_quad_str))"
         if i_col == 1
-            title_2d = L"$-\mathrm{AST}=$%$(title_2d)"
-            title_1d = L"$(R_1^2,R_2^2)=$%$(title_1d)"
+            title_2d = "-AST=$(title_2d)"
+            title_1d = "R2 (1,2) = $(title_1d)"
         end
-        ax2d = Axis(lout_2d[1,i_col]; xlabel=L"Re$$", ylabel=L"Impulse$$", title=title_2d,lblargs...,titlevisible=true, titlealign=:right)
-        ax1d = Axis(lout_1d[1,i_col]; xlabel=L"$\hat{S}$", ylabel=L"Intensity$$", title=title_1d, lblargs..., titlevisible=true, titlealign=:right)
+        ax2d = Axis(lout_2d[1,i_col]; xlabel="Re", ylabel="Impulse", title=title_2d,lblargs...,titlevisible=true, titlealign=:right)
+        ax1d = Axis(lout_1d[1,i_col]; xlabel="Fitted peak conc.", ylabel="Conc. (peak)", title=title_1d, lblargs..., titlevisible=true, titlealign=:right)
         scorekwargs = Dict(:color=>:black, :marker=>:star5, :markersize=>8, :alpha=>1.0)
         scatter!(ax2d, 0, 0; scorekwargs...)
         idx_desc = findall(round.(Int, coast.desc_tphpert[i_anc]./sdm.tu) .== tpert)
@@ -165,22 +165,12 @@ function plot_objective_response_linquad(
             scorekwargs[:color] = color_quad
             scatter!(ax1d, Rmax_pred_quadratic[i_desc], coast.desc_Rmax[i_anc][idx_desc[i_desc]]; scorekwargs...)
         end
-        #scatter!(ax1d, Rmax_pred_linear, coast.desc_Rmax[i_anc][idx_desc]; color=color_lin)
-        #scatter!(ax1d, Rmax_pred_quadratic, coast.desc_Rmax[i_anc][idx_desc]; color=color_quad)
         scatter!(ax1d, Rmax_pred_linear_anc, coast.anc_Rmax[i_anc]; marker=:star5, color=color_lin)
         scatter!(ax1d, Rmax_pred_quadratic_anc, coast.anc_Rmax[i_anc]; marker=:star5, color=color_quad)
-        # compare with the perfect line 
-        #Rbounds = [extrema(vcat(
-        #                        [coast.anc_Rmax[i_anc],Rmax_pred_linear_anc,Rmax_pred_quadratic_anc], 
-        #                        Rmax_pred_linear,Rmax_pred_quadratic,
-        #                        coast.desc_Rmax[i_anc][all_descs_2plot]
-        #                       )
-        #                  )...] 
         lines!(ax1d, Rbounds, Rbounds; color=:black, linestyle=(:dash,:dense))
         hlines!(ax1d, coast.anc_Rmax[i_anc]; color=:black, linestyle=(:dash, :dense))
         arc!(ax2d, Point2f(0,0), Amin, 0, 2pi; color=:gray, alpha=0.5)
         arc!(ax2d, Point2f(0,0), Amax, 0, 2pi; color=:gray, alpha=0.5)
-        #arc!(ax2d, Point2f(0,0), Amax, 0, 2pi; color=:black)
         # Plot contours of the quadratic response function 
         Ngrid = 30
         p1grid = collect(range(-Amax,Amax; length=Ngrid))
@@ -207,18 +197,13 @@ function plot_objective_response_linquad(
         colgap!(lout_2d, i_col, 0.0)
         colgap!(lout_1d, i_col, 0.0)
     end
-    ax_r2 = Axis(lout_r2[1,1], xlabel=L"$-\mathrm{AST}$ $(t^*=%$(t0str))$", ylabel=L"$R^2$", ylabelsize=12, xlabelsize=12, yticklabelsize=9, xticklabelsize=9, xgridvisible=false, ygridvisible=false, yticks=[0.0,0.5,1.0])
-    scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_linear[:,i_anc]; color=color_lin, label="Linear")
-    scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_quadratic[:,i_anc]; color=color_quad, label="Quadratic")
+    ax_r2 = Axis(lout_r2[1,1], xlabel="-AST (t*=$(t0str))", ylabel="R2", ylabelsize=12, xlabelsize=12, yticklabelsize=9, xticklabelsize=9, xgridvisible=false, ygridvisible=false, yticks=[0.0,0.5,1.0])
+    scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_linear[:,i_anc]; color=color_lin, label="Lin")
+    scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_quadratic[:,i_anc]; color=color_quad, label="Quad")
     hlines!(ax_r2, r2thresh; color=:gray)
     ylims!(ax_r2, 0.0, 1.0)
-    #lout_r2[2,1] = Legend(fig, ax_r2; nbanks=2, framevisible=false, labelsize=8)
-    #rowsize!(lout_r2, 1, Relative(6/7))
 
-    Label(lout_2d[1,:,Top()], L"$$Target lat. %$(ytgtstr), Box size %$(rxystr)", padding=(5.0,5.0,15.0,5.0), valign=:bottom, fontsize=12)
-    #Label(lout_2d[1,:,Bottom()], L"Re$$", padding=(5.0,5.0,5.0,5.0), valign=:top)
-    #Label(lout_1d[1,:,Bottom()], L"$\hat{S}$", padding=(5.0,5.0,5.0,5.0), valign=:top)
-    #rowsize!(lout, 1, Relative(7/8))
+    Label(lout_2d[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,15.0,5.0), valign=:bottom, fontsize=12)
     rowgap!(lout, 1, 5.0)
     rowgap!(lout, 2, 0.0)
     rowsize!(lout, 3, Relative(1/5))

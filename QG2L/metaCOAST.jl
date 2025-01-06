@@ -451,7 +451,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         end
                         fig = Figure(size=(400,300))
                         lout = fig[1,1] = GridLayout()
-                        ax = Axis(lout[1,1]; xlabel=fdivlabels[fdivname], ylabel="Target lat.", xscale=log10, xticklabelrotation=pi/2)
+                        ax = Axis(lout[1,1]; xlabel=fdivlabels[fdivname], ylabel="Target latitude", xscale=log10, xticklabelrotation=pi/2)
                         for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                             label = mixobj_labels[mc][i_mcobj]
                             lines!(ax, fdivs[dst][rsp][mc][fdivname][1,i_mcobj,:], ytgts; color=i_mcobj, colorrange=(0,length(mixobjs[mc])), colormap=(length(mixobjs[mc])>1 ? :managua : :coolwarm), label=label, alpha=0.5)

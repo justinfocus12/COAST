@@ -260,6 +260,13 @@ function compute_GPD_params_from_histogram(thresh, bin_edges, bin_weights)
     return compute_GPD_params_from_moments(thresh, mean, var)
 end
 
+function compute_GPD_params_from_ccdf(thresh, levels, ccdf)
+    Nlev = length(levels)
+    bin_edges = vcat(levels, [2*levels[Nlev]-levels[Nlev-1]])
+    bin_weights = -diff(vcat(ccdf, [0.0])) ./ diff(bin_edges)
+    return compute_GPD_params_from_histogram(thresh, bin_edges, bin_weights)
+end
+
 
 function compute_GPD_params(peak_vals, thresh; method="MLE") #Xoft::Vector{Float64}, thresh_hi::Float64, thresh_lo::Float64; lead_time::Int64=0, follow_time::Int64=0)
     #peak_vals, peak_tidx, upcross_tidx, downcross_tidx = peaks_over_threshold(Xoft, thresh_hi; thresh_lo=thresh_lo, lead_time=lead_time, follow_time=follow_time)

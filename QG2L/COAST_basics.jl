@@ -556,6 +556,25 @@ function desc_by_leadtime(coast::COASTState, i_anc::Int64, leadtime::Int64, sdm:
     return idx_desc
 end
 
+function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, scale::Float64)
+    scalestr = @sprintf("%.3f", scale)
+    label = "$(label_target(cfg,sdm)), scale $(scalestr)"
+    return label
+end
+
+zero2nan(p) = replace(p, 0=>NaN)
+clipccdf(x) = (x <= 1e-10 ? NaN : x)
+clippdf(x, dlev=0.1) = (x <= 1e-10/dlev ? NaN : x)
+
+function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain)
+    N = 64
+    yN = round(Int, cfg.target_yPerL*N)
+    xN = round(Int, cfg.target_xPerL*N)
+    ryN = round(Int, cfg.target_ryPerL*N)
+    rxN = round(Int, cfg.target_ryPerL*N)
+    label = "Target latitude [($yN±$ryN)/$N] L"
+    return label
+end
 
 function label_objective(cfg::ConfigCOAST)
     xstr = @sprintf("%.2f", cfg.target_xPerL)
@@ -581,7 +600,7 @@ end
 
 function paramsets()
     target_yPerLs = collect(range(0, 1; length=17)[2:end-1]) #1/2 .+ [-1/4,-1/8,0,1/8,1/4][1:3]
-    target_rs = (1/16) .* sqrt.([0.5, 1.0, 2.0])
+    target_rs = (1/16) .* sqrt.([0.5, 1.0, 2.0])[2:2]
     return target_yPerLs, target_rs
 end
 
@@ -591,7 +610,7 @@ function expt_config_COAST(; i_expt=nothing)
     vbl_param_arrs = [target_yPerLs, target_rs]
     cartinds = CartesianIndices(tuple((length(arr) for arr in vbl_param_arrs)...))
     if isnothing(i_expt) || i_expt == 0
-        ci_expt = CartesianIndex(6,2)
+        ci_expt = CartesianIndex(6,1)
     else
         ci_expt = cartinds[i_expt]
     end
@@ -647,7 +666,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     fdivnames = ("kl","chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    i_thresh_cquantile = 5
+    i_thresh_cquantile = 8
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000
