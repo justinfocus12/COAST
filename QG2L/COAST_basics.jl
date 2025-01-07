@@ -556,18 +556,20 @@ function desc_by_leadtime(coast::COASTState, i_anc::Int64, leadtime::Int64, sdm:
     return idx_desc
 end
 
+zero2nan(p) = replace(p, 0=>NaN)
+clipccdf(x) = (x <= 1e-10 ? NaN : x)
+clippdf(x, dlev=0.1) = (x <= 1e-10/dlev ? NaN : x)
+
+
+
 function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, scale::Float64)
     scalestr = @sprintf("%.3f", scale)
     label = "$(label_target(cfg,sdm)), scale $(scalestr)"
     return label
 end
 
-zero2nan(p) = replace(p, 0=>NaN)
-clipccdf(x) = (x <= 1e-10 ? NaN : x)
-clippdf(x, dlev=0.1) = (x <= 1e-10/dlev ? NaN : x)
-
 function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain)
-    N = 64
+    N = sdm.Ny
     yN = round(Int, cfg.target_yPerL*N)
     xN = round(Int, cfg.target_xPerL*N)
     ryN = round(Int, cfg.target_ryPerL*N)
@@ -575,6 +577,13 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain)
     label = "Target latitude [($yN±$ryN)/$N] L"
     return label
 end
+
+function label_target(target_ryPerL::Float64, sdm::QG2L.SpaceDomain)
+    rxystr = @sprintf("(%d/%d)L",round(Int,target_ryPerL*sdm.Ny),sdm.Ny)
+    label = "Target latitude range $(rxystr)"
+    return label
+end
+
 
 function label_objective(cfg::ConfigCOAST)
     xstr = @sprintf("%.2f", cfg.target_xPerL)
@@ -666,7 +675,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     fdivnames = ("kl","chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    i_thresh_cquantile = 8
+    i_thresh_cquantile = 5
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000

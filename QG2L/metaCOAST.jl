@@ -12,13 +12,26 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 "plot_toast" =>                     0,
                )
     php,sdm = QG2L.expt_config()
-    cop,pertop = QG2L.expt_setup(php, sdm)
+    cop_pertop_file = joinpath(expt_supdir,"cop_pertop.jld2")
+    if isfile(cop_pertop_file)
+        println("Loading...")
+        cop,pertop = JLD2.jldopen(cop_pertop_file, "r") do f
+            return f["cop"],f["pertop"]
+        end
+    else
+        println("Computing...")
+        cop,pertop = QG2L.expt_setup(php, sdm)
+        JLD2.jldopen(cop_pertop_file, "w") do f
+            f["cop"] = cop
+            f["pertop"] = pertop
+        end
+    end
     @show pertop.pert_dim
     phpstr = QG2L.strrep_PhysicalParams(php)
     sdmstr = QG2L.strrep_SpaceDomain(sdm)
     pertopstr = QG2L.strrep_PerturbationOperator(pertop, sdm)
     target_r, = expt_config_metaCOAST_analysis(i_expt=i_expt)
-    rxystr = @sprintf("%.3f",target_r*sdm.Ly)
+    rxystr = @sprintf("(%d/%d)L",round(Int,target_r*sdm.Ny),sdm.Ny)
     ytgts,_ = paramsets()
     Nytgt = length(ytgts)
     cfgs = Vector{ConfigCOAST}([])
@@ -33,13 +46,24 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                            target_ryPerL=target_r
                           ))
         push!(cfgs, cfg)
-        cfgstr = strrep_ConfigCOAST(cfg)
-        push!(exptdirs_COAST, joinpath(expt_supdir,"COAST_$(cfgstr)_$(pertopstr)"))
+    end
+    (
+     leadtimes,r2threshes,dsts,rsps,mixobjs,
+     mixcrit_labels,mixobj_labels,distn_scales,
+     fdivnames,Nboot,ccdf_levels,
+     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile
+    ) = expt_config_COAST_analysis(cfgs[1],pertop)
+    thresh_cquantile = ccdf_levels[i_thresh_cquantile]
+    threshstr = @sprintf("thrt%d", round(Int, 1/thresh_cquantile))
+    for (i_y,y) in enumerate(ytgts)
+        cfgstr = strrep_ConfigCOAST(cfgs[i_y])
+        exptdir_COAST = joinpath(expt_supdir,"COAST_$(cfgstr)_$(pertopstr)_$(threshstr)")
+        push!(exptdirs_COAST, exptdir_COAST)
     end
     println("Collected the cfgs")
     obj_label,short_obj_label = label_objective(cfgs[1])
     Nanc = cfgs[1].num_init_conds_max
-    resultdir = joinpath(expt_supdir,strrep_ConfigCOAST_varying_yPerL(cfgs[1]))
+    resultdir = joinpath(expt_supdir,"$(strrep_ConfigCOAST_varying_yPerL(cfgs[1]))_$(threshstr)")
     mkpath(resultdir)
     if todo["remove_pngs"] == 1
         for filename = readdir(resultdir, join=true)
@@ -49,26 +73,30 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         end
     end
 
-    (
-     leadtimes,r2threshes,dsts,rsps,mixobjs,
-     mixcrit_labels,mixobj_labels,distn_scales,
-     fdivnames,Nboot,ccdf_levels,
-     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile
-    ) = expt_config_COAST_analysis(cfgs[1],pertop)
-    thresh_cquantile = ccdf_levels[i_thresh_cquantile]
 
     if 1 == todo["plot_ccdfs_latdep"]
         Rccdfs_ancgen = zeros(Float64, (length(ccdf_levels),Nytgt))
         Rccdfs_valid = zeros(Float64, (length(ccdf_levels),Nytgt))
         Rmean_ancgen = zeros(Float64, Nytgt)
         Rmean_valid = zeros(Float64, Nytgt)
+        (gpd_scale_valid,gpd_shape_valid) = (zeros(Float64,Nytgt) for _=1:2)
 
         for (i_ytgt,ytgt) in enumerate(ytgts)
             cfgstr = strrep_ConfigCOAST(cfgs[i_ytgt])
-            resultdir_COAST = joinpath(expt_supdir,"COAST_$(cfgstr)_$(pertopstr)/results")
-            Rccdfs_ancgen[:,i_ytgt],Rccdfs_valid[:,i_ytgt],Rmean_ancgen[i_ytgt],Rmean_valid[i_ytgt] = JLD2.jldopen(joinpath(resultdir_COAST, "objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
-                f["Rccdf_ancgen_seplon"][:,1],f["Rccdf_valid_agglon"],SB.mean(f["Roft_ancgen_seplon"][:,1]),SB.mean(f["Roft_valid_seplon"])
-            end
+            resultdir_COAST = joinpath(exptdirs_COAST[i_ytgt], "results")
+            (
+             Rccdfs_ancgen[:,i_ytgt],Rccdfs_valid[:,i_ytgt],
+             Rmean_ancgen[i_ytgt],Rmean_valid[i_ytgt],
+             gpd_scale_valid[i_ytgt],gpd_shape_valid[i_ytgt]
+            ) = (
+                 JLD2.jldopen(joinpath(resultdir_COAST, "objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
+                     return (
+                             f["Rccdf_ancgen_seplon"][:,1],f["Rccdf_valid_agglon"],
+                             SB.mean(f["Roft_ancgen_seplon"][:,1]),SB.mean(f["Roft_valid_seplon"]),
+                             f["gpdpar_valid_agglon"][1],f["gpdpar_valid_agglon"][2],
+                            )
+                 end
+                )
         end
         colargs = Dict(:colormap=>Reverse(:roma), :colorrange=>(-log2(ccdf_levels[1]),-log2(ccdf_levels[end])))
         fig = Figure()
@@ -76,20 +104,35 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         Rccdf_rough_intercept = 0
         Rccdf_rough_slope = 1.0
         Rccdf_rough = Rccdf_rough_intercept .+ Rccdf_rough_slope .* ytgts #0.5 .+ 0.5 .* ytgts
-        ax = Axis(lout[1,1],xlabel="ICCDF - ($(Rccdf_rough_intercept) + $(Rccdf_rough_slope)y/L)",ylabel="Target lat.", title="Box size $(rxystr)")
-        scatterlines!(ax, Rmean_valid .- Rccdf_rough, ytgts.*sdm.Ly; color=:black, linestyle=(:dash,:dense))
-        scatterlines!(ax, Rmean_ancgen .- Rccdf_rough, ytgts.*sdm.Ly; color=:black, linestyle=:solid, label="Mean")
-        lines!(ax, 1 .- Rccdf_rough, ytgts.*sdm.Ly; color=:gray)
-        lines!(ax, 0 .- Rccdf_rough, ytgts.*sdm.Ly; color=:gray)
+        ax = Axis(lout[1,1],xlabel="Quantile \u2013 y/L",ylabel="(Target latitude)/L", title=label_target(target_r,sdm))
+        scatterlines!(ax, Rmean_valid .- Rccdf_rough, ytgts; color=:black, linestyle=(:dash,:dense))
+        scatterlines!(ax, Rmean_ancgen .- Rccdf_rough, ytgts; color=:black, linestyle=:solid, label="Mean")
+        lines!(ax, 1 .- Rccdf_rough, ytgts; color=:gray, alpha=0.5, linewidth=2)
+        lines!(ax, 0 .- Rccdf_rough, ytgts; color=:gray, alpha=0.5, linewidth=2)
         for (i_cl,cl) in enumerate(ccdf_levels)
-            lines!(ax, Rccdfs_valid[i_cl,:].-Rccdf_rough, ytgts.*sdm.Ly; linewidth=2, linestyle=(:dash,:dense), color=-log2(cl), colargs...,)
-            lines!(ax, Rccdfs_ancgen[i_cl,:].-Rccdf_rough, ytgts.*sdm.Ly; linewidth=1, linestyle=:solid, color=-log2(cl), colargs..., label="1/2^$(round(Int,-log2(cl)))")
+            lines!(ax, Rccdfs_valid[i_cl,:].-Rccdf_rough, ytgts; linewidth=2, linestyle=(:dash,:dense), color=-log2(cl), colargs...,)
+            lines!(ax, Rccdfs_ancgen[i_cl,:].-Rccdf_rough, ytgts; linewidth=1, linestyle=:solid, color=-log2(cl), colargs..., label="1/$(2^round(Int,-log2(cl)))")
         end
         xmin = min(minimum(Rmean_valid .- Rccdf_rough), minimum(Rccdfs_valid.-Rccdf_rough'))
         xmax = max(maximum(Rmean_valid .- Rccdf_rough), maximum(Rccdfs_valid.-Rccdf_rough'))
         xlims!(ax, xmin, xmax)
-        lout[1,2] = Legend(fig, ax; framevisible=false)
+        lout[1,2] = Legend(fig, ax, "Comp. quantiles"; framevisible=false,)
         save(joinpath(resultdir,"ccdfs_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
+
+        # ---------- Plot GPD parameters ---------
+        fig = Figure()
+        lout = fig[1,1] = GridLayout()
+        axscale = Axis(lout[1,1], xlabel="GPD scale σ", ylabel="(Target latitude)/L", xgridvisible=false, ygridvisible=false)
+        axshape = Axis(lout[1,2], xlabel="GPD shape ξ", ylabel="(Target latitude)/L", xgridvisible=false, ygridvisible=false)
+        toplabel = "$(label_target(target_r,sdm)), Threshold comp. quantile 1/$(2^round(Int,-log2(thresh_cquantile)))"
+        Label(lout[1,:,Top()], toplabel, padding=(5.0,5.0,15.0,5.0), valign=:bottom, halign=:center, fontsize=15, font=:bold)
+        scatterlines!(axscale, gpd_scale_valid, ytgts; color=:black)
+        scatterlines!(axshape, gpd_shape_valid, ytgts; color=:black)
+        vlines!(axshape, 0.0; color=:gray, alpha=0.5, linewidth=3)
+        xlims!(axshape, -1, 0.25)
+        save(joinpath(resultdir,"gpdpars_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
+
+        
     end
 
 

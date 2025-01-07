@@ -283,6 +283,9 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         #lines!(axpdf, thresh_cquantile.*clippdf.(Dists.pdf.(GPD, levels_exc_mid)), levels_exc_mid, color=:gray, linewidth=3, alpha=0.5)
         lines!(axpdf, zero2nan(SB.mean(pdfs_ancgen; dims=2)[:,1]), bin_centers; color=:orange, linewidth=2, linestyle=(:dash,:dense), label="Short DNS")
         lines!(axpdf, pdf_valid_agglon, bin_centers; color=:black, linewidth=2, linestyle=(:dash,:dense), label="Long DNS")
+        for level = (levels[1],levels[end])
+            hlines!(axpdf, level; color=:gray, linewidth=3, alpha=0.5)
+        end
         # CCDF
         lines!(axccdf, thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc)), levels_exc, color=:gray, linewidth=3, alpha=0.5, label=@sprintf("GPD(%.2f,%.2f,%.2f)\nThreshold quantile 1-1/%d", thresh, gpdpar_valid_agglon..., 2^round(Int,-log2(thresh_cquantile))))
         lines!(axccdf, ccdf_levels, zero2nan(SB.mean(Rccdf_valid_seplon; dims=2)[:,1]); color=:black, linewidth=2, linestyle=(:dash,:dense))
@@ -791,7 +794,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                                 fig = Figure(size=(700,400))
                                 lout = fig[1,1] = GridLayout()
                                 ax = Axis(lout[1,1]; xscale=log10, xlabel="CCDF", ylabel="Conc.", title=label_target(cfg,sdm,distn_scales[dst][i_scl]))
-                                lines!(ax, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%.2f)", levels[i_thresh_cquantile], gpdpar...))
+                                lines!(ax, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon...))
                                 lines!(ax, clipccdf.(ccdf_levels[i_thresh_cquantile:end]), levels_exc; color=:black, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Long DNS"))
                                 scatterlines!(ax, thresh_cquantile.*ccdf_pot_valid_pt, levels[i_thresh_cquantile:end]; color=:black, marker=:star6, label="Long DNS, peaks")
                                 lines!(ax, clipccdf.(ccdf_levels[i_thresh_cquantile:end]), Rccdf_ancgen_pt[i_thresh_cquantile:end]; color=:orange, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Short DNS"))
@@ -806,7 +809,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                                 fig = Figure(size=(700,400))
                                 lout = fig[1,1] = GridLayout()
                                 ax = Axis(lout[1,1]; xscale=log10, xlabel="PDF", ylabel="Conc.", title=label_target(cfg,sdm,distn_scales[dst][i_scl]))
-                                lines!(ax, pdf_gpd, levels_exc_mid; color=:gray, alpha=0.25, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%.2f)", levels[i_thresh_cquantile], gpdpar...))
+                                lines!(ax, pdf_gpd, levels_exc_mid; color=:gray, alpha=0.25, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon...))
                                 lines!(ax, clippdf.(pdf_valid_agglon), levels_mid; color=:black, linestyle=:solid)
                                 scatterlines!(ax, pdf_sync_mid, levels_mid; color=:cyan, linestyle=:solid, marker=:star6, label="AST: $(tpstr)\n$(uppercase(fdivname)) from DNS=$(fdivsyncstr)", linewidth=2)
                                 lines!(ax, clippdf.(pdf_valid_seplon[:,1]), levels_mid; color=:orange, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Short DNS"))
@@ -1061,7 +1064,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 
 # TODO augment META with composites, lead times displays etc
 
@@ -1072,7 +1075,7 @@ if length(ARGS) > 0
     end
 else
     if "metaCOAST" == all_procedures[i_proc]
-        idx_expt = [1,2,3]
+        idx_expt = [1]
     elseif "COAST" == all_procedures[i_proc]
         idx_expt = Vector{Int64}([6,9])
     elseif "metaCOAST" == all_procedures[i_proc]
