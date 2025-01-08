@@ -12,7 +12,7 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
     t_anc = floor(Int, traj.tphinit/sdm.tu)+1:1:traj.tfin
     tph_anc = t_anc .* sdm.tu
     fig = Figure(size=(400,200))
-    ax = Axis(fig[1,1],xlabel=L"$t-%$(t0str)$", ylabel=L"$$Intensity", xgridvisible=false, ygridvisible=false)
+    ax = Axis(fig[1,1],xlabel="𝑡-$(t0str)", ylabel="Intensity", xgridvisible=false, ygridvisible=false)
     hlines!(ax, thresh; color=:gray, alpha=0.25)
     lines!(ax, tph_anc.-t0ph, coast.anc_Roft[i_anc]; color=:black, linestyle=:dash, linewidth=1.5)
     Rmax_lims = [Rmin, maximum(coast.anc_Rmax)]
@@ -27,8 +27,8 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
     #pert_dim = length(pertop.camplitudes)
    fig = Figure(size=(400,300))
    lout = fig[1:2,1] = GridLayout()
-   ax1 = Axis(lout[1,1], xlabel="t-$(t0str)", ylabel="Conc.", title=label_target(cfg,sdm), xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, )
-   ax3 = Axis(lout[2,1], xlabel="t-$(t0str)", ylabel="Conc. (peak)", xgridvisible=false, ygridvisible=false, yticks=[minimum(coast.desc_Rmax[i_anc]), coast.anc_Rmax[i_anc]], ytickformat="{:.2f}")
+   ax1 = Axis(lout[1,1], xlabel="t-$(t0str)", ylabel="Box mean 𝑐", title=label_target(cfg,sdm), xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, titlefont=:regular)
+   ax3 = Axis(lout[2,1], xlabel="t-$(t0str)", ylabel="Box mean 𝑐, peak", xgridvisible=false, ygridvisible=false, yticks=[minimum(coast.desc_Rmax[i_anc]), coast.anc_Rmax[i_anc]], ytickformat="{:.2f}")
    # First panel: just the timeseries
    kwargs = Dict(:colormap=>:managua10, :colorrange=>(cfg.lead_time_min,cfg.lead_time_max), :color=>1)
    for (i_desc,desc) in enumerate(descendants)

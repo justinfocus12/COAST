@@ -36,7 +36,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "upgrade_ensemble" =>                               0,
                 "update_paths" =>                                   0,
                 "plot_pertop" =>                                    0,
-                "compute_dns_objective" =>                          0,
+                "compute_dns_objective" =>                          1,
                 "plot_dns_objective_stats" =>                       1,
                 "anchor" =>                                         0,
                 "sail" =>                                           0, 
@@ -195,11 +195,11 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         levels = Rccdf_valid_agglon
         levels_mid = 0.5 .* (levels[1:end-1] .+ levels[2:end])
         buffers = (cfg.peak_prebuffer_time, cfg.follow_time, cfg.lead_time_max)
-        ccdf_pot_valid_seplon,ccdf_pot_valid_agglon = QG2L.compute_local_pot_zonsym(Roft_valid_seplon, levels[i_thresh_cquantile:end], buffers...)
-        ccdf_pot_ancgen_seplon,ccdf_pot_ancgen_agglon = QG2L.compute_local_pot_zonsym(Roft_ancgen_seplon, levels[i_thresh_cquantile:end], buffers...)
-        # Generalized Pareto 
-        thresh = Rccdf_valid_agglon[i_thresh_cquantile] 
-        gpdpar_valid_agglon = QG2L.compute_GPD_params_from_ccdf(thresh, levels[i_thresh_cquantile:end], ccdf_pot_valid_agglon)
+        ccdf_pot_valid_seplon,ccdf_pot_valid_agglon,gpdpar_valid_agglon,std_valid_agglon = QG2L.compute_local_pot_zonsym(Roft_valid_seplon, levels[i_thresh_cquantile:end], buffers...)
+        ccdf_pot_ancgen_seplon,ccdf_pot_ancgen_agglon,gpdpar_ancgen_agglon,std_ancgen_agglon = QG2L.compute_local_pot_zonsym(Roft_ancgen_seplon, levels[i_thresh_cquantile:end], buffers...)
+        # Generalized Pareto. TODO compare across a range of thresholds
+        #gpdpar_valid_agglon[i_thresh,:] .= QG2L.compute_GPD_params_from_ccdf(thresh, levels[i_thresh:end], ccdf_pot_valid_agglon[i_thresh:end])
+        #gpdpar_valid_agglon = QG2L.compute_GPD_params(thresh, levels[i_thresh:end], ccdf_pot_valid_agglon[i_thresh:end])
 
         
 
@@ -217,6 +217,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
             f["ccdf_pot_valid_seplon"] = ccdf_pot_valid_seplon
             f["ccdf_pot_valid_agglon"] = ccdf_pot_valid_agglon
             f["gpdpar_valid_agglon"] = gpdpar_valid_agglon
+            f["std_valid_agglon"] = std_valid_agglon
         end
     else
         (
@@ -233,6 +234,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
          ccdf_pot_valid_seplon,
          ccdf_pot_valid_agglon,
          gpdpar_valid_agglon,
+         std_valid_agglon,
         ) = (
              JLD2.jldopen(joinpath(resultdir,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
                  return (
@@ -249,6 +251,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                          f["ccdf_pot_valid_seplon"],
                          f["ccdf_pot_valid_agglon"],
                          f["gpdpar_valid_agglon"],
+                         f["std_valid_agglon"],
                         )
              end
             )
@@ -257,8 +260,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         # TODO do some plotting and quantify the difference between ancgen and valid (train and test?) distributions 
         fig = Figure()
         lout = fig[1,1] = GridLayout()
-        axpdf = Axis(lout[1,1], ylabel="Conc.", xlabel="PDF", xscale=log10, xgridvisible=false, ygridvisible=false)
-        axccdf = Axis(lout[1,2], ylabel="Conc.", xlabel="CCDF", xscale=log10, xgridvisible=false, ygridvisible=false)
+        axpdf = Axis(lout[1,1], ylabel="Box mean 𝑐", xlabel="PDF", xscale=log10, xgridvisible=false, ygridvisible=false)
+        axccdf = Axis(lout[1,2], ylabel="Box mean 𝑐", xlabel="CCDF", xscale=log10, xgridvisible=false, ygridvisible=false)
         Label(lout[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,15.0,5.0), valign=:bottom, halign=:left, fontsize=12)
         bin_edges = collect(range(0,1,200))
         bin_centers = (bin_edges[2:end] .+ bin_edges[1:end-1]) ./ 2
@@ -280,14 +283,15 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         GPD = Dists.GeneralizedPareto(thresh, gpdpar_valid_agglon...)
 
         # PDF
+        confint = 0.9
         #lines!(axpdf, thresh_cquantile.*clippdf.(Dists.pdf.(GPD, levels_exc_mid)), levels_exc_mid, color=:gray, linewidth=3, alpha=0.5)
-        lines!(axpdf, zero2nan(SB.mean(pdfs_ancgen; dims=2)[:,1]), bin_centers; color=:orange, linewidth=2, linestyle=(:dash,:dense), label="Short DNS")
-        lines!(axpdf, pdf_valid_agglon, bin_centers; color=:black, linewidth=2, linestyle=(:dash,:dense), label="Long DNS")
+        lines!(axpdf, zero2nan(SB.mean(pdfs_ancgen; dims=2)[:,1]), bin_centers; color=:orange, linewidth=2, linestyle=(:dash,:dense), label="Short DNS ($(round(Int,confint*100))% CI)")
+        lines!(axpdf, pdf_valid_agglon, bin_centers; color=:black, linewidth=2, linestyle=(:dash,:dense), label="Long DNS ($(round(Int,confint*100))% CI)")
         for level = (levels[1],levels[end])
-            hlines!(axpdf, level; color=:gray, linewidth=3, alpha=0.5)
+            hlines!(axpdf, level; color=:gray, linewidth=1, alpha=0.5)
         end
         # CCDF
-        lines!(axccdf, thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc)), levels_exc, color=:gray, linewidth=3, alpha=0.5, label=@sprintf("GPD(%.2f,%.2f,%.2f)\nThreshold quantile 1-1/%d", thresh, gpdpar_valid_agglon..., 2^round(Int,-log2(thresh_cquantile))))
+        lines!(axccdf, thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc)), levels_exc, color=:gray, linewidth=3, alpha=0.5, label=@sprintf("GPD(%.2f,%.2f,%.2f)\nThresh. exc. prob. %s", thresh, gpdpar_valid_agglon..., poweroftwostring(i_thresh_cquantile)))
         lines!(axccdf, ccdf_levels, zero2nan(SB.mean(Rccdf_valid_seplon; dims=2)[:,1]); color=:black, linewidth=2, linestyle=(:dash,:dense))
         scatterlines!(axccdf, thresh_cquantile.*zero2nan(SB.mean(ccdf_pot_valid_seplon, ; dims=2)[:,1]), levels[i_thresh_cquantile:end]; color=:black, marker=:star6, label="Long DNS,\npeaks over threshold")
         lines!(axccdf, ccdf_levels, zero2nan(Rccdf_ancgen_seplon[:,1]); color=:orange, linewidth=2, linestyle=(:dash,:dense))
@@ -295,7 +299,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         vlines!(axccdf, thresh_cquantile; color=:gray, alpha=0.5)
         hlines!(axccdf, thresh; color=:gray, alpha=0.5)
         #lines!(axccdf, zero2nan(Rccdf_valid_agglon), ccdf_levels; color=:gray, alpha=0.5, linewidth=3)
-        for q = [0.05,0.95]
+        for q = 1/2 .+ (confint/2).*[-1,1]
             qancgen = zero2nan(QG2L.quantile_sliced(pdfs_ancgen, q, 2)[:,1])
             qvalid = zero2nan(QG2L.quantile_sliced(pdfs_valid, q, 2)[:,1])
             lines!(axpdf, zero2nan(QG2L.quantile_sliced(pdfs_valid, q, 2)[:,1]), bin_centers; color=:black, linestyle=(:dot,:dense))
@@ -1064,7 +1068,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 
 # TODO augment META with composites, lead times displays etc
 
@@ -1075,11 +1079,9 @@ if length(ARGS) > 0
     end
 else
     if "metaCOAST" == all_procedures[i_proc]
-        idx_expt = [1]
+        idx_expt = [1,2,3]
     elseif "COAST" == all_procedures[i_proc]
-        idx_expt = Vector{Int64}([6,9])
-    elseif "metaCOAST" == all_procedures[i_proc]
-        idx_expt = [0] # large or small boxes 
+        idx_expt = vec([6,9] .+ [0,1,2]'.*15) #Vector{Int64}([6,9])
     end
 end
 

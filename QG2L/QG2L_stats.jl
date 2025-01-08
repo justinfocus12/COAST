@@ -311,6 +311,7 @@ function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thres
     ccdf_pot_seplon = zeros(Float64, (Nlev,Nlon))
     ccdf_pot_agglon = zeros(Float64, Nlev)
     num_peaks_total = 0
+    all_peaks = Vector{Float64}([])
     for i_lon = 1:Nlon
         pot_results = peaks_over_threshold(Roft_seplon[:,i_lon], levels_geq_thresh[1], prebuffer, postbuffer, initbuffer)
         if isnothing(pot_results)
@@ -322,9 +323,13 @@ function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thres
         ccdf_pot_seplon[:,i_lon] .= num_peaks_exceeding_level ./ length(peak_vals)
         num_peaks_total += length(peak_vals)
         ccdf_pot_agglon .+= num_peaks_exceeding_level
+        append!(all_peaks, peak_vals)
     end
     ccdf_pot_agglon ./= num_peaks_total
-    return (ccdf_pot_seplon, ccdf_pot_agglon)
+    # Also compute GPD parameters here
+    gpdpar_agglon = compute_GPD_params(all_peaks, levels_geq_thresh[1])
+    std_agglon = SB.mean(SB.std(Roft_seplon; dims=1); dims=2)[1,1]
+    return (ccdf_pot_seplon, ccdf_pot_agglon, gpdpar_agglon, std_agglon)
 end
 
 function compute_local_GPD_params_zonsym_multiple_fits(hist_filenames::Vector{String}, obs_fun_xshiftable::Function, prebuffer_time::Int64, follow_time::Int64, initbuffer::Int64, Nxshifts::Int64, xstride::Int64, figdir::String, obs_label)

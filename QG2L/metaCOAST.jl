@@ -79,7 +79,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         Rccdfs_valid = zeros(Float64, (length(ccdf_levels),Nytgt))
         Rmean_ancgen = zeros(Float64, Nytgt)
         Rmean_valid = zeros(Float64, Nytgt)
-        (gpd_scale_valid,gpd_shape_valid) = (zeros(Float64,Nytgt) for _=1:2)
+        (gpd_scale_valid,gpd_shape_valid,std_valid) = (zeros(Float64,Nytgt) for _=1:3)
 
         for (i_ytgt,ytgt) in enumerate(ytgts)
             cfgstr = strrep_ConfigCOAST(cfgs[i_ytgt])
@@ -87,52 +87,73 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             (
              Rccdfs_ancgen[:,i_ytgt],Rccdfs_valid[:,i_ytgt],
              Rmean_ancgen[i_ytgt],Rmean_valid[i_ytgt],
-             gpd_scale_valid[i_ytgt],gpd_shape_valid[i_ytgt]
+             gpd_scale_valid[i_ytgt],gpd_shape_valid[i_ytgt],std_valid[i_ytgt],
             ) = (
                  JLD2.jldopen(joinpath(resultdir_COAST, "objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
                      return (
                              f["Rccdf_ancgen_seplon"][:,1],f["Rccdf_valid_agglon"],
                              SB.mean(f["Roft_ancgen_seplon"][:,1]),SB.mean(f["Roft_valid_seplon"]),
-                             f["gpdpar_valid_agglon"][1],f["gpdpar_valid_agglon"][2],
+                             f["gpdpar_valid_agglon"][1],f["gpdpar_valid_agglon"][2],f["std_valid_agglon"]
                             )
                  end
                 )
         end
-        colargs = Dict(:colormap=>Reverse(:roma), :colorrange=>(-log2(ccdf_levels[1]),-log2(ccdf_levels[end])))
+        # ----------------- Latitude dependent quantiles -------------------
+        colargs = Dict(:colormap=>Reverse(:roma), :colorrange=>(1,length(ccdf_levels)))
         fig = Figure()
         lout = fig[1,1] = GridLayout()
         Rccdf_rough_intercept = 0
         Rccdf_rough_slope = 1.0
         Rccdf_rough = Rccdf_rough_intercept .+ Rccdf_rough_slope .* ytgts #0.5 .+ 0.5 .* ytgts
-        ax = Axis(lout[1,1],xlabel="Quantile \u2013 y/L",ylabel="(Target latitude)/L", title=label_target(target_r,sdm))
-        scatterlines!(ax, Rmean_valid .- Rccdf_rough, ytgts; color=:black, linestyle=(:dash,:dense))
-        scatterlines!(ax, Rmean_ancgen .- Rccdf_rough, ytgts; color=:black, linestyle=:solid, label="Mean")
+        ax = Axis(lout[1,1],xlabel="Quantile − 𝑦/𝐿",ylabel="(Target 𝑦)/𝐿", xgridvisible=false, ygridvisible=false)
+        toplabel = label_target(target_r,sdm)
+        Label(lout[1,1:1,Top()], toplabel, padding=(5.0,5.0,15.0,5.0), valign=:bottom, halign=:center, fontsize=15, font=:regular)
+        #scatterlines!(ax, Rmean_valid .- Rccdf_rough, ytgts; color=:black, linestyle=(:dash,:dense))
+        #scatterlines!(ax, Rmean_ancgen .- Rccdf_rough, ytgts; color=:black, linestyle=:solid, label="Mean")
         lines!(ax, 1 .- Rccdf_rough, ytgts; color=:gray, alpha=0.5, linewidth=2)
         lines!(ax, 0 .- Rccdf_rough, ytgts; color=:gray, alpha=0.5, linewidth=2)
-        for (i_cl,cl) in enumerate(ccdf_levels)
-            lines!(ax, Rccdfs_valid[i_cl,:].-Rccdf_rough, ytgts; linewidth=2, linestyle=(:dash,:dense), color=-log2(cl), colargs...,)
-            lines!(ax, Rccdfs_ancgen[i_cl,:].-Rccdf_rough, ytgts; linewidth=1, linestyle=:solid, color=-log2(cl), colargs..., label="1/$(2^round(Int,-log2(cl)))")
+        for i_cl = reverse(1:length(ccdf_levels))
+            cl = ccdf_levels[i_cl]
+            lines!(ax, Rccdfs_valid[i_cl,:].-Rccdf_rough, ytgts; linewidth=2, linestyle=(:dash,:dense), color=i_cl, colargs..., label="Short DNS")
+            lines!(ax, Rccdfs_ancgen[i_cl,:].-Rccdf_rough, ytgts; linewidth=1, linestyle=:solid, color=i_cl, colargs..., label="Long DNS")
         end
-        xmin = min(minimum(Rmean_valid .- Rccdf_rough), minimum(Rccdfs_valid.-Rccdf_rough'))
-        xmax = max(maximum(Rmean_valid .- Rccdf_rough), maximum(Rccdfs_valid.-Rccdf_rough'))
+        xmin = min(minimum(Rmean_valid .- Rccdf_rough), minimum(Rccdfs_valid.-Rccdf_rough')) - 0.02
+        xmax = max(maximum(Rmean_valid .- Rccdf_rough), maximum(Rccdfs_valid.-Rccdf_rough')) + 0.02
         xlims!(ax, xmin, xmax)
-        lout[1,2] = Legend(fig, ax, "Comp. quantiles"; framevisible=false,)
+        ylims!(ax, 0.0, 1.0)
+        lout[1,2] = Legend(fig, ax, "Exceedance probabilities\n(½)ᵏ, k ∈ {1,...,15}"; framevisible=false, titlefont=:regular, titlehalign=:left, merge=true, linecolor=:black)
         save(joinpath(resultdir,"ccdfs_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
 
-        # ---------- Plot GPD parameters ---------
+        # ---------- Plot GPD parameters along with moments ---------
+        mssk = JLD2.jldopen(joinpath(resultdir_dns,"moments_mssk_$(cfgs[1].target_field[1:end-1]).jld2"),"r") do f
+            return f["mssk_xall"][1,:,parse(Int,cfgs[1].target_field[end]),:]
+        end
         fig = Figure()
         lout = fig[1,1] = GridLayout()
-        axscale = Axis(lout[1,1], xlabel="GPD scale σ", ylabel="(Target latitude)/L", xgridvisible=false, ygridvisible=false)
-        axshape = Axis(lout[1,2], xlabel="GPD shape ξ", ylabel="(Target latitude)/L", xgridvisible=false, ygridvisible=false)
-        toplabel = "$(label_target(target_r,sdm)), Threshold comp. quantile 1/$(2^round(Int,-log2(thresh_cquantile)))"
-        Label(lout[1,:,Top()], toplabel, padding=(5.0,5.0,15.0,5.0), valign=:bottom, halign=:center, fontsize=15, font=:bold)
+        axargs = Dict(:ylabel=>"(Target 𝑦)/𝐿", :xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>pi/2)
+        axstd = Axis(lout[1,1]; xlabel="Std. Dev.", axargs...)
+        axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
+        axscale = Axis(lout[1,2]; xlabel="GPD scale σ", axargs...)
+        axshape = Axis(lout[1,3]; xlabel="GPD shape ξ", axargs...)
+        threshcquantstr = @sprintf("%.2E",thresh_cquantile)
+        toplabel = "Threshold complementary quantile $(poweroftwostring(i_thresh_cquantile))=$(threshcquantstr)"
+        Label(lout[1,2:3,Top()], toplabel, padding=(5.0,5.0,15.0,5.0), valign=:bottom, halign=:left, fontsize=15, font=:regular)
+        # Std. Dev.
+        lines!(axstd, mssk[:,2], sdm.ygrid./sdm.Ly; color=:black, linestyle=(:dash,:dense), label="(1/$(sdm.Ny))𝐿")
+        scatterlines!(axstd, std_valid, ytgts; color=:black, label="($(round(Int, target_r*sdm.Ny))/$(sdm.Ny))/𝐿")
+        axislegend(axstd, "Box radius"; position=:lt, fontsize=8, titlefont=:regular, framevisible=false)
+        vlines!(axstd, 0.0; color=:gray, alpha=0.5, linewidth=3)
+        # scale
         scatterlines!(axscale, gpd_scale_valid, ytgts; color=:black)
-        scatterlines!(axshape, gpd_shape_valid, ytgts; color=:black)
+        vlines!(axscale, 0.0; color=:gray, alpha=0.5, linewidth=3)
+        # shape
         vlines!(axshape, 0.0; color=:gray, alpha=0.5, linewidth=3)
+        scatterlines!(axshape, gpd_shape_valid, ytgts; color=:black)
         xlims!(axshape, -1, 0.25)
-        save(joinpath(resultdir,"gpdpars_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
 
-        
+        colgap!(lout, 1, 0.0)
+        colgap!(lout, 2, 0.0)
+        save(joinpath(resultdir,"gpdpars_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
     end
 
 

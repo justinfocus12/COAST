@@ -70,17 +70,17 @@ end
 
 function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_setup=false, overwrite_ensemble=false)
     todo = Dict(
-                "integrate" =>                      1,
-                "compute_moments" =>                1,
-                "plot_moment_map" =>                1,
+                "integrate" =>                      0,
+                "compute_moments" =>                0,
+                "plot_moment_map" =>                0,
                 "compute_rough_quantiles" =>        0,
                 "compute_global_histograms" =>      0,
                 "compute_extrema" =>                0,
                 "plot_energy" =>                    0,
                 "compute_local_GPD_params" =>       0,
                 "plot_GPD_param_map" =>             0,
-                "plot_hovmoller" =>                 0, 
-                "animate" =>                        1,
+                "plot_hovmoller" =>                 1, 
+                "animate" =>                        0,
                )
     php,sdm = QG2L.expt_config(i_expt=i_expt)
     cfg = ConfigDNS(; duration_spinup_ph=500.0, duration_spinon_ph=1000.0, num_chunks_max=26)
@@ -147,13 +147,13 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
                     "u" => (args...) -> QG2L.obs_fun_zonal_velocity_hist(args..., sdm, cop),
                    )
     obs_labels = Dict(
-                      "sf" => L"\psi",
-                      "temp" => L"\psi_{\mathrm{BC}}",
-                      "conc" => L"c",
-                      "heatflux" => L"v_{\mathrm{BT}}\psi_{\mathrm{BC}}",
-                      "eke" => L"\frac{1}{2}|\nabla\psi|^2",
-                      "pv" => L"\mathrm{PV}",
-                      "u" => L"u",
+                      "sf" => "ψ",
+                      "temp" => "𝑇",
+                      "conc" => "𝑐",
+                      "heatflux" => "𝑣'𝑇'",
+                      "eke" => "(½)|∇ψ|²",
+                      "pv" => "𝑃𝑉",
+                      "u" => "𝑢",
                      )
     obs2plot = ["u","pv","conc","sf","eke","temp","heatflux",]
     if todo["compute_moments"] == 1
@@ -229,14 +229,14 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             fig = Figure(size=(400,800))
             lout = fig[1:2,1:2] = GridLayout()
 
-            ax1 = Axis(lout[1,1], xlabel=obs_labels[obs_name], ylabel=L"\mathrm{CCDF}", title="Layer 1", yscale=log10)
+            ax1 = Axis(lout[1,1], xlabel=obs_labels[obs_name], ylabel=L"CCDF", title="Layer 1", yscale=log10)
             pmf_emp1 = (counts1/sum(counts1))
             ccdf_emp1 = reverse(cumsum(reverse(pmf_emp1)))
             lines!(ax1, (bins1 .+ 0.5)*bin_width, ccdf_emp1, color=:black)
             lines!(ax1, (bins1 .+ 0.5)*bin_width, G1ccdf, color=:black, linestyle=:dash)
             #ylims!(ax1, extrema(filter(!isnan, ccdf_emp1))...)
 
-            ax2 = Axis(lout[2,1], xlabel=obs_labels[obs_name], ylabel=L"\mathrm{CCDF}", title="Layer 2", yscale=log10)
+            ax2 = Axis(lout[2,1], xlabel=obs_labels[obs_name], ylabel="CCDF", title="Layer 2", yscale=log10)
             pmf_emp2 = (counts2/sum(counts2))
             ccdf_emp2 = reverse(cumsum(reverse(pmf_emp2)))
             lines!(ax2, (bins2 .+ 0.5)*bin_width, ccdf_emp2, color=:black)
@@ -414,16 +414,18 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
         tfins = [ens.trajs[mem].tfin for mem=1:Nmem]
         hovmoller_timespan = cfg.duration_spinup .+ round.(Int, [0.0, 500.0]./sdm.tu)
         if computer == "engaging"
-            hovmoller_timespan = round.(Int, [2800.0,4000.0]./sdm.tu)
+            hovmoller_timespan = round.(Int, [3200.0,3600.0]./sdm.tu)
         end
         stats_timespan = [cfg.duration_spinup+1, tfins[end]]
         @show tfins
         @show cfg.duration_spinup
-        memfirst_hov = findfirst(tfins .>= hovmoller_timespan[1]) + 1
+        memfirst_hov = findfirst(tfins .> hovmoller_timespan[1])
         memlast_hov = findfirst(tfins .>= hovmoller_timespan[2])
         if isnothing(memlast_hov)
             memlast_hov = Nmem
         end
+        tinits_hov = tfins[(memfirst_hov-1):(memlast_hov-1)]
+        tidx_hov = (hovmoller_timespan[1]-tinits_hov[1]+1):(hovmoller_timespan[2]-tinits_hov[1]+1)
         hist_filenames_hov = [ens.trajs[mem].history for mem=memfirst_hov:memlast_hov]
         memfirst_stats = findfirst(tfins .>= stats_timespan[1]) + 1
         memlast_stats = findfirst(tfins .>= stats_timespan[2])
@@ -435,27 +437,30 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
 
         # always put in streamfunction as contours
         zonal_mean_sf_fun(hist_filename) = SB.mean(QG2L.obs_fun_sf_hist(hist_filename, sdm, cop); dims=1)
-        sf_zm_hov = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, zonal_mean_sf_fun)..., dims=4)
+        sf_zm_hov = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, zonal_mean_sf_fun)..., dims=4)[:,:,:,tidx_hov]
+
         sf_mssk_xall = JLD2.jldopen(joinpath(resultdir,"moments_mssk_sf.jld2"),"r") do f
             return f["mssk_xall"]
         end
 
         Nsnap = 5
-        tgrid = range(tfins[memfirst_hov-1]+1, tfins[memlast_hov]; step=1)
+        tgrid = range(hovmoller_timespan[1], hovmoller_timespan[2]; step=1) #range(tfins[memfirst_hov-1]+1, tfins[memlast_hov]; step=1)
         tidx_snap = round.(Int, range(1, length(tgrid); length=Nsnap))
-        sf_2d = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs["sf"])..., dims=4)[:,:,:,tidx_snap]
+        sf_2d = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs["sf"])..., dims=4)[:,:,:,tidx_hov[tidx_snap]]
         for obs_name = obs2plot
             anomaly_cont = true
             anomaly_heat = true
             @show obs_name
             # --------- Plot several snapshots -----------
-            fheat_2d = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])..., dims=4)[:,:,:,tidx_snap]
+            fheat_2d = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])..., dims=4)[:,:,:,tidx_hov[tidx_snap]]
+            @show size(fheat_2d)
             outfile_prefix = joinpath(figdir, "snapshots_$(obs_name)_sf")
             QG2L.plot_snapshots(tgrid[tidx_snap], fheat_2d, sf_2d, sdm, outfile_prefix; fcont_label=obs_labels["sf"], fheat_label=obs_labels[obs_name])
 
             # Compute first four moments
             zonal_mean_obs_fun(hist_filename) = SB.mean(obs_funs[obs_name](hist_filename), dims=1)
-            obs_val_zm_hov = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, zonal_mean_obs_fun)..., dims=4)
+            obs_val_zm_hov = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, zonal_mean_obs_fun)..., dims=4)[:,:,:,tidx_hov]
+            @show size(obs_val_zm_hov)
 
             # TODO instead of recompute zonal means here, read moments from precomputed moments
             obs_mssk_xall = JLD2.jldopen(joinpath(resultdir,"moments_mssk_$(obs_name).jld2"),"r") do f
@@ -465,7 +470,7 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             fig = Figure(size=(2000,1000))
             for iz = 1:2
                 lout = fig[iz,1] = GridLayout()
-                QG2L.plot_hovmoller_ydep!(lout, obs_val_zm_hov[1,:,iz,:], sf_zm_hov[1,:,iz,:], obs_mssk_xall[1,:,iz,:], sf_mssk_xall[1,:,iz,:], cop, sdm; tinit=tfins[memfirst_hov-1]+1, title=L"Layer %$(iz) zonal mean $%$(obs_labels[obs_name])$", anomaly_heat=anomaly_heat, anomaly_cont=anomaly_cont)
+                QG2L.plot_hovmoller_ydep!(lout, obs_val_zm_hov[1,:,iz,:], sf_zm_hov[1,:,iz,:], obs_mssk_xall[1,:,iz,:], sf_mssk_xall[1,:,iz,:], cop, sdm; tinit=hovmoller_timespan[1], title="Layer $(iz) zonal mean $(obs_labels[obs_name])", anomaly_heat=anomaly_heat, anomaly_cont=anomaly_cont)
             end
             save(joinpath(figdir,"hovmoller_$(obs_name).png"), fig)
         end

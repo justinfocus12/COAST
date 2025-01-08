@@ -574,14 +574,22 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain)
     xN = round(Int, cfg.target_xPerL*N)
     ryN = round(Int, cfg.target_ryPerL*N)
     rxN = round(Int, cfg.target_ryPerL*N)
-    label = "Target latitude [($yN±$ryN)/$N] L"
+    label = "Target 𝑦 ($yN/$N)𝐿, box radius($ryN/$N)𝐿"
     return label
 end
 
 function label_target(target_ryPerL::Float64, sdm::QG2L.SpaceDomain)
-    rxystr = @sprintf("(%d/%d)L",round(Int,target_ryPerL*sdm.Ny),sdm.Ny)
-    label = "Target latitude range $(rxystr)"
+    rxystr = @sprintf("(%d/%d)𝐿",round(Int,target_ryPerL*sdm.Ny),sdm.Ny)
+    label = "Box radius $(rxystr)"
     return label
+end
+
+function poweroftwostring(k::Int64)
+    symbols = ["(½)","(½)²","(½)³","(½)⁴","(½)⁵","(½)⁶","(½)⁷","(½)⁸","(½)⁹"]
+    if 1 <= k <= 9
+        return symbols[k]
+    end
+    return "(½)^$(k)"
 end
 
 
@@ -609,7 +617,7 @@ end
 
 function paramsets()
     target_yPerLs = collect(range(0, 1; length=17)[2:end-1]) #1/2 .+ [-1/4,-1/8,0,1/8,1/4][1:3]
-    target_rs = (1/16) .* sqrt.([0.5, 1.0, 2.0])[2:2]
+    target_rs = (1/16) .* sqrt.([0.5, 1.0, 2.0])
     return target_yPerLs, target_rs
 end
 

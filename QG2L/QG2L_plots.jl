@@ -34,8 +34,8 @@ function plot_hovmoller(tgrid::Vector{Int64}, f::Array{Float64,4}, sdm::SpaceDom
     lout = fig[1:2,1:1] = GridLayout()
     fzm = SB.mean(f, dims=1)
     for iz = 1:2
-        ax = Axis(lout[iz,1], xlabel="time", ylabel="y", title=L"%$(flabel) zonal mean")
-        image!(ax,(tgrid[1]*sdm.tu,(tgrid[end]+1)*sdm.tu),(0,sdm.Ly), fzm[1,:,iz,:]', colormap=:vik)
+        ax = Axis(lout[iz,1], xlabel="time", ylabel="y", title="$(flabel) zonal mean")
+        image!(ax,(tgrid[1]*sdm.tu,(tgrid[end]+1)*sdm.tu),(0,1.0), fzm[1,:,iz,:]', colormap=:vik)
     end
     save(outfile,fig)
     return
@@ -306,9 +306,9 @@ function plot_snapshots(tgrid::Vector{Int64}, fheat::Array{Float64,4},fcont::Arr
     fig = Figure(size=figsize)
     lout = fig[1:2,1:2] = GridLayout()
     if isnothing(titles)
-        titles = collect(L"Layer %$(iz) %$(fcont_label), %$(fheat_label)" for iz=1:2)
+        titles = collect("Layer $(iz) $(fcont_label), $(fheat_label)" for iz=1:2)
     end
-    axes = collect(Axis(lout[iz,1], xlabel=L"$x$", ylabel=L"$y$", title=titles[iz], titlesize=20, xlabelsize=20, ylabelsize=20) for iz=1:2)
+    axes = collect(Axis(lout[iz,1], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿", title=titles[iz], titlesize=20, xlabelsize=20, ylabelsize=20, titlefont=:regular) for iz=1:2)
     axes_cb = collect(Axis(lout[iz,2]) for iz=1:2)
     colsize!(lout, 1, Aspect(1, 1.0))
     colsize!(lout, 2, Relative(50/figsize[1]))
@@ -343,7 +343,8 @@ function plot_snapshots(tgrid::Vector{Int64}, fheat::Array{Float64,4},fcont::Arr
         for iz = 1:2
             ax = axes[iz]
             tstr = @sprintf("%.2f", t_snap*sdm.tu)
-            ax.title = L"%$(titles[iz]), t=%$(tstr)"
+            ax.title = "$(titles[iz]), 𝑡 = $(tstr)"
+            ax.titlefont = :regular
             img = image!(ax, (0,sdm.Lx), (0,sdm.Ly), fheat[:,:,iz,i_snap], colormap=colormap, colorrange=(-fheat_max[iz]*(!fheat_posdef),fheat_max[iz]*(!fheat_negdef)),)
             push!(objs, (ax,img))
             ## colorbar 
@@ -443,7 +444,7 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, cop
     fheat = fheat_nom .- anomaly .* fheat_mean_xt
     @assert size(fheat,1) == sdm.Ny
     Nt = size(fheat,2)
-    ax = Axis(lout[1,1], xlabel=L"$t$", ylabel=L"$y$")
+    ax = Axis(lout[1,1], xlabel="𝑡", ylabel="𝑦/𝐿", titlefont=:regular)
     fheat_posdef = (minimum(fheat) >= 0)
     fheat_negdef = (maximum(fheat) <= 0)
     if fheat_posdef
@@ -461,7 +462,7 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, cop
     flo,fhi = extrema(fheat_mean_xt)
     topolo,topohi = extrema(topo_zonal_mean)
     topo_rescaled = (flo+fhi)/2 .+ (fhi-flo)/(topohi-topolo) .* topo_zonal_mean
-    ax = Axis(lout[1,2], xlabel=L"\overline{h}(y)")
+    ax = Axis(lout[1,2], xlabel="Topo.")
     lines!(ax, topo_zonal_mean, sdm.ygrid, color=:black)
     lines!(ax, vec(fheat_mean_xt), sdm.ygrid, color=:red)
 
@@ -476,11 +477,16 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, fco
     fcont = fcont_nom .- anomaly_cont .* fcont_mssk[:,1]
     @assert size(fcont,1) == sdm.Ny
     Nt = size(fheat,2)
-    lblargs = Dict(:xticklabelsize=>30,:xlabelsize=>36,:yticklabelsize=>30,:ylabelsize=>36,:titlesize=>40,:xticklabelrotation=>0.0,)
+    lblargs = Dict(:xticklabelsize=>30,:xlabelsize=>36,:yticklabelsize=>30,:ylabelsize=>36,:titlesize=>40,:xticklabelrotation=>0.0,:titlefont=>:regular)
     if anomaly_heat
-        title = L"%$(title) anomaly$$"
+        title = "$(title) anomaly"
+        cbartickvals = maximum(abs.(fheat)) .* [-1,0,1]
+        vmin,vmax = cbartickvals[[1,3]]
+    else
+        cbartickvals = collect(range(extrema(fheat)...; length=3))
+        vmin,vmax = extrema(fheat)
     end
-    ax = Axis(lout[1,2], xlabel=L"$t$", ylabel=L"$y$"; lblargs..., title=title)
+    ax = Axis(lout[1,2], xlabel="𝑡", ylabel="𝑦/𝐿"; lblargs..., title=title)
     fheat_posdef = (minimum(fheat) >= 0)
     fheat_negdef = (maximum(fheat) <= 0)
     if fheat_posdef
@@ -493,7 +499,7 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, fco
         colormap = :BrBg
         color_cont = :black
     end
-    img = image!(ax, (tinit*sdm.tu,(tinit+Nt-1)*sdm.tu), (0,sdm.Ly), fheat', colormap=colormap)
+    img = image!(ax, (tinit*sdm.tu,(tinit+Nt-1)*sdm.tu), (0.0,1.0), fheat', colormap=colormap, colorrange=(vmin,vmax))
 
     fcont_posdef = (minimum(fcont) >= 0)
     fcont_negdef = (maximum(fcont) <= 0)
@@ -507,20 +513,21 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, fco
         levels_neg = range(-maximum(abs.(fcont)), 0, length=5)[1:end-1]
         levels_pos = -reverse(levels_neg)
     end
-    contneg = contour!(ax, range(tinit,tinit+Nt-1,step=1).*sdm.tu, sdm.ygrid, fcont', levels=levels_neg, linestyle=:dash, color=color_cont, linewidth=2)
-    contpos = contour!(ax, range(tinit,tinit+Nt-1,step=1).*sdm.tu, sdm.ygrid, fcont', levels=levels_pos, linestyle=:solid, color=color_cont)
-    cbar = Colorbar(lout[1,1], img, vertical=true, labelsize=30, ticklabelsize=24)
+    contneg = contour!(ax, range(tinit,tinit+Nt-1,step=1).*sdm.tu, sdm.ygrid./sdm.Ly, fcont', levels=levels_neg, linestyle=:dash, color=color_cont, linewidth=2)
+    contpos = contour!(ax, range(tinit,tinit+Nt-1,step=1).*sdm.tu, sdm.ygrid./sdm.Ly, fcont', levels=levels_pos, linestyle=:solid, color=color_cont)
+    cbarticklabs = (F->@sprintf("%+3.2f",F)).(cbartickvals)
+    cbar = Colorbar(lout[1,1], img, vertical=true, labelsize=30, ticklabelsize=24, ticks=(cbartickvals,cbarticklabs))
     # zonal mean 
     # topography
     topo_zonal_mean = vec(SB.mean(cop.topography[:,:,2], dims=1))
     lblargs[:xticklabelrotation] = pi/2
     lblargs[:ylabelvisible] = lblargs[:yticklabelsvisible] = false
     xtickfun(f) = range(minimum(f),maximum(f), 3)
-    ax = Axis(lout[1,3]; title=L"$\overline{h}$", lblargs..., xticks=xtickfun(topo_zonal_mean))
+    ax = Axis(lout[1,3]; title="Topo.", lblargs..., xticks=xtickfun(topo_zonal_mean))
     lines!(ax, topo_zonal_mean, sdm.ygrid, color=:black)
-    for (i_mom,mom_name) = zip(1:1:4, (L"mean$$",L"stdev$$",L"skew$$",L"kurt$$"))
+    for (i_mom,mom_name) = zip(1:1:4, ("Mean","Std. Dev.","Skew.","Kurt."))
         ax = Axis(lout[1,3+i_mom]; title=mom_name, lblargs..., xticks=xtickfun(fheat_mssk[:,i_mom]), xtickformat="{:.2f}")
-        lines!(ax, fheat_mssk[:,i_mom], sdm.ygrid; color=:black)
+        lines!(ax, fheat_mssk[:,i_mom], sdm.ygrid./sdm.Ly; color=:black)
         if i_mom == 4
             vlines!(ax, 3.0; color=:black, linestyle=:dash)
         end
