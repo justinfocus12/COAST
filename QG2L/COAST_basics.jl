@@ -574,7 +574,7 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain)
     xN = round(Int, cfg.target_xPerL*N)
     ryN = round(Int, cfg.target_ryPerL*N)
     rxN = round(Int, cfg.target_ryPerL*N)
-    label = "Target 𝑦 ($yN/$N)𝐿, box radius($ryN/$N)𝐿"
+    label = "Target 𝑦 ($yN/$N)𝐿, box radius ($ryN/$N)𝐿"
     return label
 end
 
@@ -683,7 +683,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     fdivnames = ("kl","chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    i_thresh_cquantile = 5
+    i_thresh_cquantile = 8
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000

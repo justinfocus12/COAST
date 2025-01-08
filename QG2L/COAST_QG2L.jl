@@ -36,12 +36,12 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "upgrade_ensemble" =>                               0,
                 "update_paths" =>                                   0,
                 "plot_pertop" =>                                    0,
-                "compute_dns_objective" =>                          1,
-                "plot_dns_objective_stats" =>                       1,
+                "compute_dns_objective" =>                          0,
+                "plot_dns_objective_stats" =>                       0,
                 "anchor" =>                                         0,
                 "sail" =>                                           0, 
                 "regress_lead_dependent_risk_polynomial" =>         0, 
-                "plot_objective" =>                                 0, 
+                "plot_objective" =>                                 1, 
                 "mix_COAST_distributions_polynomial" =>             0,
                 "plot_COAST_mixture" =>                             0,
                 "mixture_COAST_phase_diagram" =>                    0,
@@ -505,7 +505,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         ytgtstr = @sprintf("%.2f",cfg.target_yPerL*sdm.Ly)
         todosub = Dict(
                        "plot_spaghetti" =>              1,
-                       "plot_response" =>               1,
+                       "plot_response" =>               0,
                       )
         @show idx_anc_strat
 

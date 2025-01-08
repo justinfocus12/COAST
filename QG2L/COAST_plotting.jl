@@ -4,7 +4,7 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
     t0str = @sprintf("%.0f", t0ph)
     ytgtstr = @sprintf("%.2f", cfg.target_yPerL*sdm.Ly)
     rxystr = @sprintf("%.3f", cfg.target_ryPerL*sdm.Ly)
-    Rmin = minimum([minimum(coast.anc_Roft[i_anc]) for i_anc=1:cfg.num_init_conds_max])
+    Rmin = minimum([minimum(coast.anc_Roft[i_anc]) for i_anc=1:length(coast.ancestors)]) #cfg.num_init_conds_max])
     obj_label,short_obj_label = label_objective(cfg)
 
     # ------- Plot 0: ancestor only --------
@@ -27,8 +27,14 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
     #pert_dim = length(pertop.camplitudes)
    fig = Figure(size=(400,300))
    lout = fig[1:2,1] = GridLayout()
-   ax1 = Axis(lout[1,1], xlabel="t-$(t0str)", ylabel="Box mean 𝑐", title=label_target(cfg,sdm), xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, titlefont=:regular)
-   ax3 = Axis(lout[2,1], xlabel="t-$(t0str)", ylabel="Box mean 𝑐, peak", xgridvisible=false, ygridvisible=false, yticks=[minimum(coast.desc_Rmax[i_anc]), coast.anc_Rmax[i_anc]], ytickformat="{:.2f}")
+   lblargs = Dict(:xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :titlesize=>14)
+   ax1 = Axis(lout[1,1]; xlabel="𝑡−$(t0str)", ylabel="Intensity", title=label_target(cfg,sdm), xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, titlefont=:regular, lblargs...)
+   ax2 = Axis(lout[2,1]; xlabel="𝑡-$(t0str)", ylabel="Severity", xgridvisible=false, ygridvisible=false, yticks=[minimum(coast.desc_Rmax[i_anc]), coast.anc_Rmax[i_anc]], ytickformat="{:.2f}", lblargs...)
+   for ax = (ax1,ax2)
+       hlines!(ax, thresh; color=:gray, alpha=0.25)
+       hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linestyle=(:dash,:dense), linewidth=1.0)
+       vlines!(ax, 0.0; color=:black, linestyle=(:dash,:dense), linewidth=1.0, alpha=1.0)
+   end
    # First panel: just the timeseries
    kwargs = Dict(:colormap=>:managua10, :colorrange=>(cfg.lead_time_min,cfg.lead_time_max), :color=>1)
    for (i_desc,desc) in enumerate(descendants)
@@ -41,20 +47,17 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
        lines!(ax1, tph_desc .- t0ph, coast.desc_Roft[i_anc][i_desc]; kwargs...)
        itpert = argmin(abs.(t_desc.*sdm.tu .- coast.desc_tphpert[i_anc][i_desc]))
        scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Roft[i_anc][i_desc][itpert]; kwargs..., markersize=5)
-       scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=5) 
-       scatter!(ax3, coast.desc_tRmax[i_anc][i_desc]*sdm.tu-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=8, alpha=0.55)
-   end
-   for ax = (ax1,ax3)
-       hlines!(ax, thresh; color=:gray, alpha=0.25)
-       hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linestyle=(:dash,:dense), linewidth=1.0)
-       vlines!(ax, 0.0; color=:black, linestyle=(:dash,:dense), linewidth=1.0, alpha=1.0)
+       scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=4) 
+       scatter!(ax2, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.anc_Rmax[i_anc]; kwargs..., markersize=8, label="Split") 
+       scatter!(ax2, coast.desc_tRmax[i_anc][i_desc]*sdm.tu-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=8, marker=:star6, alpha=0.8, label="Peak")
    end
    traj = ens.trajs[anc]
    t_anc = traj.tfin .+ collect(range(-length(coast.anc_Roft[i_anc])+1, 0; step=1)) 
    lines!(ax1, t_anc.*sdm.tu .- t0ph, coast.anc_Roft[i_anc]; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
-   linkxaxes!(ax1,ax3)
+   axislegend(ax2; position=:lb, orientation=:horizontal, labelsize=10, merge=true, unique=true, framevisible=true, markercolor=:black, height=30)
+   linkxaxes!(ax1,ax2)
    rowsize!(lout, 1, Relative(2/3))
-   rowgap!(lout, 20.0)
+   rowgap!(lout, 0.0)
 
    save(joinpath(figdir,"objectives_anc$(i_anc).png"), fig)
    
