@@ -883,6 +883,7 @@ function regression2distn_quadratic_uniform(coefs::Vector{Float64}, residmse::Fl
     return ccdf,pdf
 end
 
+
 function regression2distn_quadratic_uniform(coefs::Vector{Float64}, resid_range::Vector{Float64}, input_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
     # exhaustively sample the disc
 
@@ -901,6 +902,21 @@ function regression2distn_quadratic_uniform(coefs::Vector{Float64}, resid_range:
     pdf = -diff(ccdf) ./ diff(levels)
     return ccdf,pdf
 end
+
+function regression2distn_empirical_bump(scores::Vector{Float64}, scale::Float64, support_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
+    Nsamp = size(U,1) #1024 
+    R2 = (support_radius^2) .* U[:,1]
+    radius = sqrt.(R2)
+    angle = 2pi.*U[:,2]
+    X = radius .* cos.(angle)
+    Y = radius .* sin.(angle)
+    W = exp.(-0.5*(R2./scale^2) ./ (1 .- R2./(support_radius^2)))
+    ccdf = vec(sum(W .* (scores .> levels'); dims=1))./sum(W)
+    @assert all(isfinite.(ccdf))
+    pdf = -diff(ccdf) ./ diff(levels)
+    return ccdf,pdf
+end
+
 function regression2distn_quadratic_bump(coefs::Vector{Float64}, scale::Float64, support_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
     return regression2distn_quadratic_bump(coefs, 0.0, scale, support_radius, levels, U)
 end
@@ -961,32 +977,38 @@ function pdf2pmfnorm(pdf, edges)
     return pmf
 end
 
-function fdiv_fun(pdf1, pdf2, edges, fdivname)
+function ccdf2pmf(ccdf)
+    @assert (minimum(ccdf) >= 0) & (maximum(diff(ccdf)) .<= 0)
+    pmf = vcat(-diff(ccdf), [ccdf[end]]) ./ ccdf[1]
+    return pmf
+end
+
+
+function fdiv_fun_ccdf(ccdf1, ccdf2, fdivname)
+    pmf1 = ccdf2pmf(ccdf1)
+    pmf2 = ccdf2pmf(ccdf2)
     if fdivname == "chi2"
-        return chi2div_fun(pdf1,pdf2,edges)
+        return chi2div_fun(pmf1,pmf2)
     elseif fdivname == "kl"
-        return kldiv_fun(pdf1,pdf2,edges)
+        return kldiv_fun(pmf1,pmf2)
     elseif fdivname == "tv"
-        return tvdist_fun(pdf1,pdf2,edges)
+        return tvdist_fun(pmf1,pmf2)
     else
         error("Only supported F-divergences are chi2,kl,tv")
     end
 end
 
-function tvdist_fun(pdf1, pdf2, edges)
-    pmf1 = pdf2pmfnorm(pdf1, edges)
-    pmf2 = pdf2pmfnorm(pdf2, edges)
+function tvdist_fun(pmf1, pmf2)
     return sum(abs.(pmf1 .- pmf2)) / 2
 end
 
-function chi2div_fun(pdf1, pdf2, edges)
-    pmf1 = pdf2pmfnorm(pdf1, edges)
-    pmf2 = pdf2pmfnorm(pdf2, edges)
-    if false && any((pmf1 .!= 0) .& (pmf2 .== 0))
+function chi2div_fun(pmf1, pmf2)
+    if any((pmf1 .!= 0) .& (pmf2 .== 0))
         @show size(pmf1),size(pmf2)
         println("pmf1,pmf2")
         display(hcat(pmf1,pmf2))
         print("Not absolutely continuous")
+        error()
     end
     idx = findall(pmf2 .!= 0)
     return sum((pmf1[idx] .- pmf2[idx]).^2 ./ pmf2[idx])
@@ -1003,14 +1025,13 @@ function xlogx(x)
 end
 
 
-function kldiv_fun(pdf1, pdf2, edges)
+function kldiv_fun(pmf1, pmf2)
     # q is the reference measure 
-    if any(pdf1 .< 0) || any(pdf2 .<= 0)
+    if any((pmf1 .!= 0) .& (pmf2 .== 0))
         @show pdf1,pdf2
         println("Warning, not abs cont in KL")
+        error()
     end
-    pmf1 = pdf2pmfnorm(pdf1, edges)
-    pmf2 = pdf2pmfnorm(pdf2, edges)
     idx = findall((pmf1 .>= 0) .& (pmf2 .> 0))
     kl = sum(xlogx.(pmf1[idx]) .- pmf1[idx] .* log.(pmf2[idx]))
     if kl < 0

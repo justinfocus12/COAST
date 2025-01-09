@@ -40,7 +40,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "plot_dns_objective_stats" =>                       0,
                 "anchor" =>                                         0,
                 "sail" =>                                           0, 
-                "regress_lead_dependent_risk_polynomial" =>         0, 
+                "regress_lead_dependent_risk_polynomial" =>         1, 
                 "plot_objective" =>                                 0, 
                 "mix_COAST_distributions_polynomial" =>             1,
                 "plot_COAST_mixture" =>                             1,
@@ -603,7 +603,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
         for dst = ["b"]
             Nscales = length(distn_scales[dst])
-            for rsp = ["2"]
+            for rsp = ["e","2"]
                 if ("g" == dst) && (rsp in ["1+u","2","2+u"])
                     continue
                 end
@@ -657,9 +657,9 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 # ---------------- Single-ancestor plots ---------------
                 if 1 == todosub["rainbow_pdfs"]
                     @assert all(isfinite.(pdfs[dst][rsp]))
-                    mixcrits2plot = ["r2","ent"]
+                    mixcrits2plot = ["pth","r2","ent"]
                     rspstr = ("1" == rsp ? "linear" : "quadratic")
-                    mixcrits_ylabels = ["𝑅² ($(rspstr))","Entropy"]
+                    mixcrits_ylabels = ["𝑞(μ)","𝑅² ($(rspstr))","Entropy"]
                     Nleadtimes2plot = Nleadtime
                     #Threads.@threads for i_anc = idx_anc_strat
                     for i_anc = idx_anc_strat
@@ -759,62 +759,55 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     pdf_pot_valid_seplon = -diff(ccdf_pot_valid_seplon; dims=1) ./ diff(levels_exc)
                     pdf_pot_valid_pt,pdf_pot_valid_lo,pdf_pot_valid_hi = boot_midlohi_pdf(pdf_pot_valid_seplon, true)
 
+
                     GPD = Dists.GeneralizedPareto(levels[i_thresh_cquantile], gpdpar_valid_agglon...)
                     pdf_gpd = thresh_cquantile.*clippdf.(Dists.pdf.(GPD, levels_exc_mid))
                     ccdf_gpd = thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc))
 
-                    for i_scl = 1:length(distn_scales[dst])
-                        for (fdivname,fdivlabel) = (("kl","KL"),("chi2","X2"),("tv","TV"))
+                    for i_scl = [1,round(Int,length(distn_scales[dst])/2)]
+                        for (fdivname,fdivlabel) = (("kl","KL"),("chi2","χ²"),("tv","TV"))
                             scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
 
                             i_boot = 1
-                            ilt_fdiv_sync = argmin(fdivs[dst][rsp]["lt"][fdivname][i_boot,:,i_scl])
-                            fdiv_sync = fdivs[dst][rsp]["lt"][fdivname][i_boot,ilt_fdiv_sync,i_scl]
-                            for mc = ["r2","ent"]
-                                fdiv_cond = fdivs[dst][rsp][mc][fdivname][i_boot,1,i_scl]
-                                tpstr = @sprintf("%.1f",leadtimes[ilt_fdiv_sync]*sdm.tu)
-                                fdivsyncstr = @sprintf("%.3f",fdiv_sync)
-                                fdivcondstr = @sprintf("%.3f",fdiv_cond)
-                                    
-                                pdf_cond_mid,pdf_cond_lo,pdf_cond_hi = boot_midlohi_pdf(pdfmixs[dst][rsp][mc][:,:,1,i_scl])
-                                pdf_sync_mid,pdf_sync_lo,pdf_sync_hi = boot_midlohi_pdf(pdfmixs[dst][rsp]["lt"][:,:,ilt_fdiv_sync,i_scl])
-                                ccdf_cond_mid,ccdf_cond_lo,ccdf_cond_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp][mc][:,:,1,i_scl])
-                                ccdf_sync_mid,ccdf_sync_lo,ccdf_sync_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp]["lt"][:,:,ilt_fdiv_sync,i_scl])
-                                #
-                                # Plot CCDFS 
-                                #
-                                fig = Figure(size=(700,400))
-                                lout = fig[1,1] = GridLayout()
-                                ax = Axis(lout[1,1]; xscale=log10, xlabel="CCDF", ylabel="Conc.", title=label_target(cfg,sdm,distn_scales[dst][i_scl]))
-                                lines!(ax, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon...))
-                                lines!(ax, clipccdf.(ccdf_levels[i_thresh_cquantile:end]), levels_exc; color=:black, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Long DNS"))
-                                scatterlines!(ax, thresh_cquantile.*ccdf_pot_valid_pt, levels[i_thresh_cquantile:end]; color=:black, marker=:star6, label="Long DNS, peaks")
-                                lines!(ax, clipccdf.(ccdf_levels[i_thresh_cquantile:end]), Rccdf_ancgen_pt[i_thresh_cquantile:end]; color=:orange, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Short DNS"))
-                                scatterlines!(ax, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; color=:orange, marker=:star6, label="Short DNS, peaks")
-                                scatterlines!(ax, ccdf_sync_mid[i_thresh_cquantile:end], levels[i_thresh_cquantile:end]; color=:cyan, linestyle=:solid, marker=:star6, label="AST = $(tpstr)\n$(fdivlabel) from DNS = $(fdivsyncstr)", linewidth=2)
-                                scatterlines!(ax, ccdf_cond_mid[i_thresh_cquantile:end], levels[i_thresh_cquantile:end]; color=:firebrick, linestyle=:solid, linewidth=2, label="$(mixobj_labels[mc][1])\n$(fdivlabel) from DNS = $(fdivcondstr)", marker=:star6)
+                            fdiv_synclt,ilt_fdiv_synclt = findmin(fdivs[dst][rsp]["lt"][fdivname][i_boot,:,i_scl]) # index for best synchronized advance split time 
+                            fdiv_syncpth,ilt_fdiv_syncpth = findmin(fdivs[dst][rsp]["pth"][fdivname][i_boot,:,i_scl]) # index for best synchronized threshold exceedance probability
+                            fdiv_ancgen_valid = mapslices(ccdf->QG2L.fdiv_fun_ccdf(ccdf, ccdf_pot_valid_agglon, fdivname), ccdf_pot_valid_seplon; dims=1)[1,:]
+                            fdiv_ancgen_valid_pt,fdiv_ancgen_valid_lo,fdiv_ancgen_valid_hi = (SB.mean(fdiv_ancgen_valid), SB.quantile(fdiv_ancgen_valid, 0.05), SB.quantile(fdiv_ancgen_valid, 0.95))
+                            for mc = ["pth","lt"] #,"r2","ent"]
+                                for i_mcobj = 1:length(mixobjs[mc])
+                                    fdiv_cond = fdivs[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl]
+                                    ltstr = @sprintf("%.1f",leadtimes[ilt_fdiv_synclt]*sdm.tu)
+                                    pthstr = @sprintf("%.1f",mixobjs["pth"][ilt_fdiv_syncpth])
+                                    fdivstr_synclt = @sprintf("%.3f",fdiv_synclt)
+                                    fdivstr_syncpth = @sprintf("%.3f",fdiv_syncpth)
+                                    fdivstr_cond = @sprintf("%.3f",fdiv_cond)
+                                    fdivstr_ancgen = @sprintf("%.3f (%.3f, %.3f)",fdiv_ancgen_valid_pt, fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi)
+                                        
+                                    pdf_cond_mid,pdf_cond_lo,pdf_cond_hi = boot_midlohi_pdf(pdfmixs[dst][rsp][mc][:,:,i_mcobj,i_scl])
+                                    pdf_synclt_mid,pdf_synclt_lo,pdf_synclt_hi = boot_midlohi_pdf(pdfmixs[dst][rsp]["lt"][:,:,ilt_fdiv_synclt,i_scl])
+                                    pdf_syncpth_mid,pdf_syncpth_lo,pdf_syncpth_hi = boot_midlohi_pdf(pdfmixs[dst][rsp]["pth"][:,:,ilt_fdiv_syncpth,i_scl])
+                                    ccdf_cond_mid,ccdf_cond_lo,ccdf_cond_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp][mc][:,:,i_mcobj,i_scl])
+                                    ccdf_synclt_mid,ccdf_synclt_lo,ccdf_synclt_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp]["lt"][:,:,ilt_fdiv_synclt,i_scl])
+                                    ccdf_syncpth_mid,ccdf_syncpth_lo,ccdf_syncpth_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp]["pth"][:,:,ilt_fdiv_syncpth,i_scl])
+                                    #
+                                    # Plot CCDFS 
+                                    #
+                                    fig = Figure(size=(700,400))
+                                    lout = fig[1,1] = GridLayout()
+                                    ax = Axis(lout[1,1]; xscale=log10, xlabel="CCDF", ylabel="Conc.", title=label_target(cfg,sdm,distn_scales[dst][i_scl]))
+                                    lines!(ax, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon...))
+                                    lines!(ax, clipccdf.(ccdf_levels[i_thresh_cquantile:end]), levels_exc; color=:black, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Long DNS"))
+                                    scatterlines!(ax, thresh_cquantile.*ccdf_pot_valid_pt, levels[i_thresh_cquantile:end]; color=:black, marker=:star6, label="Long DNS, peaks")
+                                    lines!(ax, clipccdf.(ccdf_levels[i_thresh_cquantile:end]), Rccdf_ancgen_pt[i_thresh_cquantile:end]; color=:orange, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Short DNS"))
+                                    scatterlines!(ax, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; color=:orange, marker=:star6, label="Short DNS, peaks\n$(fdivlabel) = $(fdivstr_ancgen)")
+                                    scatterlines!(ax, ccdf_synclt_mid[i_thresh_cquantile:end], levels[i_thresh_cquantile:end]; color=:cyan, linestyle=:solid, marker=:star6, label="AST = $(ltstr) [synchron] \n$(fdivlabel) = $(fdivstr_synclt)", linewidth=2)
+                                    scatterlines!(ax, ccdf_syncpth_mid[i_thresh_cquantile:end], levels[i_thresh_cquantile:end]; color=:purple, linestyle=:solid, marker=:star6, label="𝑞ₙ(μ) = $(pthstr) [synprob] \n$(fdivlabel) = $(fdivstr_syncpth)", linewidth=2)
+                                    scatterlines!(ax, ccdf_cond_mid[i_thresh_cquantile:end], levels[i_thresh_cquantile:end]; color=:firebrick, linestyle=:solid, linewidth=2, label="$(mixobj_labels[mc][i_mcobj])\n$(fdivlabel) = $(fdivstr_cond)", marker=:star6)
 
-                                lout[1,2] = Legend(fig, ax; framevisible=true)
-                                colsize!(lout, 1, Relative(2/3))
-                                save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(mc)_$(fdivname)_$(i_scl).png"), fig)
-                                # Plot PDFs 
-                                fig = Figure(size=(700,400))
-                                lout = fig[1,1] = GridLayout()
-                                ax = Axis(lout[1,1]; xscale=log10, xlabel="PDF", ylabel="Conc.", title=label_target(cfg,sdm,distn_scales[dst][i_scl]))
-                                lines!(ax, pdf_gpd, levels_exc_mid; color=:gray, alpha=0.25, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon...))
-                                lines!(ax, clippdf.(pdf_valid_agglon), levels_mid; color=:black, linestyle=:solid)
-                                scatterlines!(ax, pdf_sync_mid, levels_mid; color=:cyan, linestyle=:solid, marker=:star6, label="AST: $(tpstr)\n$(uppercase(fdivname)) from DNS=$(fdivsyncstr)", linewidth=2)
-                                lines!(ax, clippdf.(pdf_valid_seplon[:,1]), levels_mid; color=:orange, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Short DNS"))
-                                scatterlines!(ax, thresh_cquantile.*pdf_pot_valid_pt, levels_exc_mid; color=:black, marker=:star6)
-                                scatterlines!(ax, thresh_cquantile.*pdf_pot_ancgen_pt, levels_exc_mid; color=:orange, marker=:star6)
-                                #lines!(ax, pdf_sync_lo, levels_mid; color=:cyan, linestyle=:solid, linewidth=1)
-                                #lines!(ax, pdf_sync_hi, levels_mid; color=:cyan, linestyle=:solid, linewidth=1)
-                                lines!(ax, pdf_cond_mid, levels_mid; color=:firebrick, linestyle=:solid, linewidth=2, label="$(mixobj_labels[mc][1])\n$(uppercase(fdivname)) from DNS =$(fdivcondstr)")
-                                lines!(ax, pdf_cond_lo, levels_mid; color=:firebrick, linestyle=:solid, linewidth=1)
-                                lines!(ax, pdf_cond_hi, levels_mid; color=:firebrick, linestyle=:solid, linewidth=1)
-                                lout[1,2] = Legend(fig, ax; framevisible=true)
-                                colsize!(lout, 1, Relative(2/3))
-                                save(joinpath(figdir,"pdfmixs_$(dst)_$(rsp)_$(mc)_$(fdivname)_$(i_scl).png"), fig)
+                                    lout[1,2] = Legend(fig, ax; framevisible=true)
+                                    colsize!(lout, 1, Relative(2/3))
+                                    save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(mc)_$(i_mcobj)_$(fdivname)_$(i_scl).png"), fig)
+                                end
                             end
                         end
                     end
@@ -948,7 +941,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         todosub = Dict(
                        "mcmean_heatmap" =>             1,
                        "fdiv_heatmap" =>               1,
-                       "phdgm_slices" =>               1,
+                       "phdgm_slices" =>               0,
                       )
         (
          leadtimes,r2threshes,dsts,rsps,mixobjs,
@@ -961,11 +954,11 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
             return f["fdivs"],f["iltmixs"],f["mixcrits"]
         end
         fdivs2plot = ["tv","chi2","kl"]
-        fdivlabels = ["TV","X2","KL"]
+        fdivlabels = ["TV","χ²","KL"]
         i_boot = 1
         i_r2thresh = 1
-        for dst = dsts
-            for rsp = rsps
+        for dst = ["b"]
+            for rsp = ["e","2"]
                 if ("g" == dst) && (rsp in ("2","1+u","2+u"))
                     continue
                 end
@@ -978,11 +971,11 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         lo = sum(ost .* (ost .< mid))/sum(ost .< mid)
                         (mid,lo,hi)
                     end
-                    for mc = ["ent","r2"]
+                    # Heatmap of various mixing criteria as a function of AST; below, reverse it
+                    for mc = ["pth","ent","r2"]
                         fig = Figure(size=(500,400))
                         loutmean = fig[1,1] = GridLayout()
-                        #loutstd = fig[1,2] = GridLayout()
-                        axmean = Axis(loutmean[1,1], xlabel="-AST", ylabel="Scale", title="Mean $(mixcrit_labels[mc]), $(label_target(cfg, sdm))", xlabelsize=16, ylabelsize=16, titlesize=16)
+                        axmean = Axis(loutmean[1,1], xlabel="−AST", ylabel="Scale", title="Mean $(mixcrit_labels[mc]), $(label_target(cfg, sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular)
                         mcmean = SB.mean(mixcrits[dst][rsp][mc][:,:,:]; dims=2)[:,1,:]
                         mcstd = SB.std(mixcrits[dst][rsp][mc][:,:,:]; dims=2)[:,1,:]
                         println("mcmean = ")
@@ -990,39 +983,48 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         println("mcstd = ")
                         display(mcstd)
                         hmmean = heatmap!(axmean, -sdm.tu.*leadtimes, distn_scales[dst], mcmean; colormap=Reverse(:managua))
-                        #hmstd = heatmap!(axstd, -sdm.tu.*leadtimes, distn_scales[dst], mcstd; colormap=:viridis, colorrange=(0,maximum(mcstd)))
                         for ax = (axmean,) #axstd)
                             vlines!(ax, -sdm.tu*lt_r2thresh_mean; color=:black, linestyle=:solid, linewidth=2)
                             vlines!(ax, -sdm.tu*lt_r2thresh_mean_lo; color=:black, linestyle=:dash, linewidth=2)
                             vlines!(ax, -sdm.tu*lt_r2thresh_mean_hi; color=:black, linestyle=:dash, linewidth=2)
                         end
                         cbarmean = Colorbar(loutmean[1,2], hmmean, vertical=true)
-                        #cbarstd = Colorbar(loutstd[1,2], hmstd, vertical=true)
                         save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(mc).png"), fig)
                     end
+                    # TODO heat map of leadtime as a function of probability
                 end
 
                 if 1 == todosub["fdiv_heatmap"]
+                    lt_r2thresh_mean = SB.mean(leadtimes[iltmixs[dst][rsp]["r2"][i_r2thresh,:,1]])
                     for (i_fdivname,fdivname) in enumerate(fdivs2plot)
+                        # pth as the independent variable 
                         fig = Figure(size=(500,400))
                         lout = fig[1,1] = GridLayout()
-                        ax = Axis(lout[1,1], xlabel="-AST", ylabel="Scale", title="$(fdivlabels[i_fdivname]), $(label_target(cfg,sdm))", xlabelsize=16, ylabelsize=16, titlesize=16) 
+                        ax = Axis(lout[1,1], xlabel="𝑞(μ)", ylabel="Scale", title="$(fdivlabels[i_fdivname]), $(label_target(cfg,sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular) 
+                        Npth = length(mixobjs["pth"])
+                        Nscale = length(distn_scales[dst])
+                        ltmean = zeros(Float64, (Npth, Nscale))
+                        for i_pth = 1:Npth
+                            for i_scl = 1:Nscale
+                                ltmean[i_pth,i_scl] = SB.mean(leadtimes[iltmixs[dst][rsp]["pth"][i_pth,:,i_scl]])
+                            end
+                        end
+                        hm = heatmap!(ax, mixobjs["pth"], distn_scales[dst], fdivs[dst][rsp]["lt"][fdivname][i_boot,:,:]; colormap=:managua)
+                        cbar = Colorbar(lout[1,2], hm, vertical=true)
+                        co = contour!(ax, mixobjs["pth"], distn_scales[dst], -sdm.tu.*ltmean; levels=-sdm.tu.*leadtimes, color=:black, labels=true)
+                        # Plot the optimal split time (according to fdiv) as a function of scale 
+                        save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_indeppth.png"), fig)
+                        # --------------- AST as the independent variable ------------
+                        fig = Figure(size=(500,400))
+                        lout = fig[1,1] = GridLayout()
+                        ax = Axis(lout[1,1], xlabel="−AST", ylabel="Scale", title="$(fdivlabels[i_fdivname]), $(label_target(cfg,sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular) 
                         hm = heatmap!(ax, -sdm.tu.*leadtimes, distn_scales[dst], fdivs[dst][rsp]["lt"][fdivname][i_boot,:,:]; colormap=:managua)
                         cbar = Colorbar(lout[1,2], hm, vertical=true)
+                        co = contour!(ax, -sdm.tu.*leadtimes, distn_scales[dst], SB.mean(mixcrits[dst][rsp]["pth"][:,:,:]; dims=2)[:,1,:]; levels=mixobjs["pth"], color=:black, labels=true)
                         # Plot the optimal split time (according to fdiv) as a function of scale 
-                        (ost_mean,ost_mean_lo,ost_mean_hi) = (zeros(Float64, length(distn_scales[dst])) for _=1:3)
-                        for i_scl = 1:length(distn_scales[dst])
-                            ilts = iltmixs[dst][rsp]["ent"][1,:,i_scl]
-                            ost_mean[i_scl] = SB.mean(leadtimes[ilts])
-                            ost_mean_lo[i_scl] = sum(leadtimes[ilts] .* (leadtimes[ilts] .< ost_mean[i_scl]))/sum(leadtimes[ilts] .< ost_mean[i_scl])
-                            ost_mean_hi[i_scl] = sum(leadtimes[ilts] .* (leadtimes[ilts] .> ost_mean[i_scl]))/sum(leadtimes[ilts] .> ost_mean[i_scl])
+                        if dst in ["1","2"]
+                            vlines!(ax, -sdm.tu.*lt_r2thresh_mean; color=:black, linestyle=(:dash,:dense), linewidth=2)
                         end
-                        scatterlines!(ax, -sdm.tu*ost_mean, distn_scales[dst]; color=:black, linewidth=2) 
-                        scatterlines!(ax, -sdm.tu*ost_mean_lo, distn_scales[dst]; color=:black, linestyle=(:dot,:dense), linewidth=2) 
-                        scatterlines!(ax, -sdm.tu*ost_mean_hi, distn_scales[dst]; color=:black, linestyle=(:dot,:dense), linewidth=2) 
-                        vlines!(ax, -sdm.tu.*lt_r2thresh_mean; color=:black, linestyle=:solid, linewidth=2)
-                        vlines!(ax, -sdm.tu.*lt_r2thresh_mean_lo; color=:black, linestyle=:dash, linewidth=2)
-                        vlines!(ax, -sdm.tu.*lt_r2thresh_mean_hi; color=:black, linestyle=:dash, linewidth=2)
                         save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname).png"), fig)
                     end
                 end

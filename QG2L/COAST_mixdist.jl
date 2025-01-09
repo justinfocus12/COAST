@@ -58,7 +58,6 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
          end
         )
     thresh = Rccdf_valid_agglon[i_thresh_cquantile] 
-    pdf_valid_agglon = -diff(Rccdf_valid_agglon) ./ diff(ccdf_levels)
     levels = Rccdf_valid_agglon
     levels_mid = 0.5 .* (levels[1:end-1] .+ levels[2:end])
     levels_exc = levels[i_thresh_cquantile:end]
@@ -126,6 +125,8 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 return ((coefs,resid)->QG2L.regression2distn_linear_bump(coefs, s, support_radius, levels, U_reg2dist))
             elseif "2" == r
                 return ((coefs,resid)->QG2L.regression2distn_quadratic_bump(coefs, s, support_radius, levels, U_reg2dist))
+            elseif "e" == r
+                return ((scores,resid)->QG2L.regression2distn_empirical_bump(scores, s, support_radius, levels, U_reg2dist[1:length(scores),:]))
             end
         elseif "u" == d
             if "1" == r
@@ -151,10 +152,15 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
     end
     for dst = dsts
         for rsp = rsps
-            if rsp in ["1","1+u","1+g"] # == rsp
-                coefs = coefs_linear
-            elseif rsp in ["2","2+u","1+u"] #"2" == rsp
-                coefs = coefs_quadratic
+            coefs_at_anc_and_leadtime(i_leadtime,i_anc) = begin
+                if rsp in ["1","1+u","1+g"] # == rsp
+                    return coefs_linear[:,i_leadtime,i_anc]
+                elseif rsp in ["2","2+u","1+u"] #"2" == rsp
+                    return coefs_quadratic[:,i_leadtime,i_anc]
+                elseif "e" == rsp
+                    idx_desc = desc_by_leadtime(coast, i_anc, leadtimes[i_leadtime], sdm)
+                    return vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][idx_desc])
+                end
             end
             if ("g" == dst) && (rsp in ["2","2+u","1+u"])
                 continue
@@ -174,7 +180,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         #    resid_range .= resid_range_linear[:,i_leadtime,i_anc]
                         #    residmse = residmse_linear[i_leadtime,i_anc]
                         #    resid_arg = residmse
-                        if rsp in ["1","2"]
+                        if rsp in ["1","2","e"]
                             resid_range .= [0.0, 0.0] 
                             resid_arg = resid_range
                         elseif rsp in ["1+u"]
@@ -189,9 +195,10 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         else
                             error()
                         end
-                        ccdf,pdf = r2dfun(dst,rsp,scl)(coefs[:,i_leadtime,i_anc], resid_arg)
+                        ccdf,pdf = r2dfun(dst,rsp,scl)(coefs_at_anc_and_leadtime(i_leadtime,i_anc), resid_arg)
+                        pth = ccdf[i_thresh_cquantile]
                         if adjust_ccdf_per_ancestor
-                            adjustment = (ccdf[i_thresh_cquantile] > 1e-10 ? thresh_cquantile/ccdf[i_thresh_cquantile] : 0)
+                            adjustment = (pth > 1e-10 ? thresh_cquantile/pth : 0)
                             ccdf .*= adjustment
                             pdf .*= adjustment
                         end
@@ -209,6 +216,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                             error()
                         end
                         # Evaluate these distributions by mixing criteria 
+                        mixcrits[dst][rsp]["pth"][i_leadtime,i_anc,i_scl] = pth
                         mixcrits[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = leadtimes[i_leadtime]
                         mixcrits[dst][rsp]["r2"][i_leadtime,i_anc,i_scl] = (rsp in ["1","1+u","1+g"] ? rsquared_linear : rsquared_quadratic)[i_leadtime,i_anc]
                         mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = sum(max.(0, levels_mid .- thresh) .* pdf .* dlev)
@@ -231,6 +239,13 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         # TODO investigate whether last exceedance is better
                         iltmixs[dst][rsp]["r2"][i_r2thresh,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
                     end
+                    for (i_pth,pth) in enumerate(mixobjs["pth"])
+                        first_inceedance = findfirst(mixcrits[dst][rsp]["pth"][:,i_anc,i_scl] .< pth)
+                        #IFT.@infiltrate ("b" == dst) && ("2" == rsp) && (i_scl >= 3) 
+                        # TODO investigate whether last exceedance is better
+                        iltmixs[dst][rsp]["pth"][i_pth,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
+                    end
+
                     # Other objectives to condition on R^2 
                     for mc = ("ent",)
                         # SUBJECT TO R^2 > some threshold
@@ -241,7 +256,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 # Now average together the PDFs and CCDFs based on the criteria from above 
                 println("Starting to sum together pdfs and ccdfs")
                 #IFT.@infiltrate ((dst=="b")&(rsp=="2"))
-                for mc = ("ent","lt","r2",) #keys(mixobjs)
+                for mc = ("pth","ent","lt","r2",) #keys(mixobjs)
                     for i_anc = 1:Nanc
                         for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                             ilt = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl] 
@@ -272,13 +287,14 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 end
                 #IFT.@infiltrate ((dst=="b")&(rsp=="2")&(i_scl==2))
                 println("Starting to compute fdivs")
-                pdf_pot_valid_pt = SB.mean(-diff(ccdf_pot_valid_seplon; dims=1); dims=2) ./ diff(levels_exc)
-                for mc = ["ent","lt","r2"] #keys(mixobjs)
+                pdf_pot_valid_pt = SB.mean(-diff(ccdf_pot_valid_seplon; dims=1); dims=2)[:,1] ./ diff(levels_exc)
+                for mc = ["pth","ent","lt","r2"] #keys(mixobjs)
+                    #IFT.@infiltrate ("lt"==mc)
                     for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                         for i_boot = 1:Nboot+1
                             for fdivname = fdivnames
                                 # TODO get the right baseline for subasymptotic POt
-                                fdivs[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl] = QG2L.fdiv_fun(pdfmixs[dst][rsp][mc][i_thresh_cquantile:end,i_boot,i_mcobj,i_scl], pdf_pot_valid_pt, levels_exc, fdivname)
+                                fdivs[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][i_thresh_cquantile:end,i_boot,i_mcobj,i_scl], ccdf_pot_valid_agglon, fdivname)
                             end
                         end
                     end

@@ -640,16 +640,18 @@ function expt_config_COAST_analysis(cfg,pertop)
     
 
     r2threshes = [0.8] #[0.8,0.7,0.6,0.5]
+    pths = collect(range(1.0, 0.0; length=13)) 
     Nr2th = length(r2threshes)
 
     # TODO implement mean absolute error as a more-outlier-sensitive alternative to R^2 
 
     # Parameterize both the input distributions and the response types 
     distns = ("b",) # bump, uniform, gaussian; also add noises in uniform and Gaussian form 
-    rsps = ("1","2") #,"1+g","1+u","2+u") # linear, quadratic
+    rsps = ("e","1","2") # empirical, linear model, quadratic model
     mixobjs = Dict(
                    "lt"=>leadtimes, 
                    "r2"=>r2threshes, 
+                   "pth"=>pths,
                    "ei"=>["max"],  # reinterpreted as expected exceedance over threshold 
                    "went"=>["max"],
                    "ent"=>["max"],
@@ -658,16 +660,18 @@ function expt_config_COAST_analysis(cfg,pertop)
     lt2str(lt) = @sprintf("%.2f", lt)
     mixcrit_labels = Dict(
                          "lt"=>"-AST", 
-                         "r2"=>"R2",
+                         "r2"=>"𝑅²",
+                         "pth"=>"𝑞ₙ(μ)",
                          "ei"=>"Exp. Imp.",
                          "went"=>"WEntropy",
                          "ent"=>"Ent",
                          "pi"=>"Prob. Imp.",
                         )
     mixobj_labels = Dict(
-                         "lt"=>["AST=$(lt2str(lt))" for lt = leadtimes],
-                         "r2"=>["R2=$(lt2str(r2))" for r2=r2threshes],
+                         "lt"=>["AST = $(lt2str(lt))" for lt=leadtimes],
+                         "r2"=>["𝑅² = $(lt2str(r2))" for r2=r2threshes],
                          "ei"=>["Max. Exp. Imp."],
+                         "pth"=>[@sprintf("𝑞ₙ(μ)≈%.2f", pth) for pth=pths],
                          "went"=>["Max. WEnt."],
                          "ent"=>["Max. Ent"],
                          "pi"=>["Max. Prob. Imp."],
@@ -676,7 +680,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     i_mode_sf = 1
     Rmin,Rmax = pertop.sf_pert_amplitudes_min[i_mode_sf],pertop.sf_pert_amplitudes_max[i_mode_sf]
     distn_scales = Dict(
-                        "b" => Rmin .+ (Rmax-Rmin).*collect(range(0.25, 4.0; step=0.5)),
+                        "b" => Rmin .+ (Rmax-Rmin).*collect(range(0.2, 3.0; step=0.2)),
                         "u" => Rmin .+ (Rmax-Rmin).*[0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0],
                         "g" => Rmin .+ (Rmax-Rmin).*[0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0],
                        )
@@ -688,7 +692,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000
     xstride_valid_dns = 1
-    adjust_ccdf_per_ancestor = true # Principled choice iis false 
+    adjust_ccdf_per_ancestor = false # Principled choice iis false 
     return (leadtimes, r2threshes, distns, rsps, mixobjs, mixcrit_labels, mixobj_labels, distn_scales, fdivnames,Nboot,ccdf_levels,time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor)
 end
 
