@@ -28,8 +28,8 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
    fig = Figure(size=(400,300))
    lout = fig[1:2,1] = GridLayout()
    lblargs = Dict(:xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :titlesize=>14)
-   ax1 = Axis(lout[1,1]; xlabel="𝑡−$(t0str)", ylabel="Intensity", title=label_target(cfg,sdm), xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, titlefont=:regular, lblargs...)
-   ax2 = Axis(lout[2,1]; xlabel="𝑡-$(t0str)", ylabel="Severity", xgridvisible=false, ygridvisible=false, yticks=[minimum(coast.desc_Rmax[i_anc]), coast.anc_Rmax[i_anc]], ytickformat="{:.2f}", lblargs...)
+   ax1 = Axis(lout[1,1]; xlabel="𝑡 − $(t0str)", ylabel="Intensity", title=label_target(cfg,sdm), xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, titlefont=:regular, lblargs...)
+   ax2 = Axis(lout[2,1]; xlabel="𝑡 − $(t0str)", ylabel="Severity", xgridvisible=false, ygridvisible=false, yticks=[minimum(coast.desc_Rmax[i_anc]), coast.anc_Rmax[i_anc]], ytickformat="{:.2f}", lblargs...)
    for ax = (ax1,ax2)
        hlines!(ax, thresh; color=:gray, alpha=0.25)
        hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linestyle=(:dash,:dense), linewidth=1.0)
@@ -47,9 +47,9 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
        lines!(ax1, tph_desc .- t0ph, coast.desc_Roft[i_anc][i_desc]; kwargs...)
        itpert = argmin(abs.(t_desc.*sdm.tu .- coast.desc_tphpert[i_anc][i_desc]))
        scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Roft[i_anc][i_desc][itpert]; kwargs..., markersize=5)
-       scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=4) 
-       scatter!(ax2, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.anc_Rmax[i_anc]; kwargs..., markersize=8, label="Split") 
-       scatter!(ax2, coast.desc_tRmax[i_anc][i_desc]*sdm.tu-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=8, marker=:star6, alpha=0.8, label="Peak")
+       scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=6) 
+       scatter!(ax2, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.anc_Rmax[i_anc]; kwargs..., markersize=8, label="Splits") 
+       scatter!(ax2, coast.desc_tRmax[i_anc][i_desc]*sdm.tu-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=8, marker=:star6, alpha=0.8, label="Peaks")
    end
    traj = ens.trajs[anc]
    t_anc = traj.tfin .+ collect(range(-length(coast.anc_Roft[i_anc])+1, 0; step=1)) 
@@ -114,28 +114,51 @@ function plot_objective_response_linquad(
     end
     all_descs_2plot = vcat([desc_by_leadtime(coast, i_anc, leadtimes[ilt], sdm) for ilt=1:i_last_leadtime]...) #findall(coast.desc_tphpert[i_anc] .<= leadtimes[i_last_leadtime]*sdm.tu)
     Rbounds = [extrema(vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][all_descs_2plot]))...]
-    for i_leadtime = round.(Int, range(i_last_leadtime, 1; length=Nleadtimes2plot))
+    idx_leadtimes2plot = round.(Int, range(i_last_leadtime, 1; length=Nleadtimes2plot))
+    for i_leadtime = idx_leadtimes2plot
         i_col += 1
         leadtime = leadtimes[i_leadtime]
         tpert = coast.anc_tRmax[i_anc] - leadtime
         tpstr = @sprintf("%.2f", leadtime*sdm.tu)
         r2_lin_str = @sprintf("%.2f", rsquared_linear[i_leadtime,i_anc])
         r2_quad_str = @sprintf("%.2f", rsquared_quadratic[i_leadtime,i_anc])
-        lblargs = Dict(:xticklabelsize=>9,:xlabelsize=>12,:yticklabelsize=>9,:ylabelsize=>12,:titlesize=>12,:xlabelvisible=>false,:ylabelvisible=>(i_col==1),:xticklabelsvisible=>false,:yticklabelsvisible=>(i_col==1), :xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>pi/2)
-        title_2d = "-$(tpstr)"
+        lblargs = Dict(:xticklabelsize=>7,:xlabelsize=>8,:yticklabelsize=>7,:ylabelsize=>8,:titlesize=>10,:xlabelvisible=>false,:ylabelvisible=>(i_col==1),:xticklabelsvisible=>true,:yticklabelsvisible=>(i_col==1), :xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>0,:titlefont=>:regular, :xticksize=>2.0, :yticksize=>2.0, :xlabelpadding=>1.5, :ylabelpadding=>1.5)
+        title_2d = "−$(tpstr)"
         title_1d = "($(r2_lin_str),$(r2_quad_str))"
         if i_col == 1
-            title_2d = "-AST=$(title_2d)"
-            title_1d = "R2 (1,2) = $(title_1d)"
+            title_2d = "−AST=$(title_2d)"
+            title_1d = "𝑅² (1,2) = $(title_1d)"
         end
-        ax2d = Axis(lout_2d[1,i_col]; xlabel="Re", ylabel="Impulse", title=title_2d,lblargs...,titlevisible=true, titlealign=:right)
-        ax1d = Axis(lout_1d[1,i_col]; xlabel="Fitted peak conc.", ylabel="Conc. (peak)", title=title_1d, lblargs..., titlevisible=true, titlealign=:right)
-        scorekwargs = Dict(:color=>:black, :marker=>:star5, :markersize=>8, :alpha=>1.0)
-        scatter!(ax2d, 0, 0; scorekwargs...)
+        ax2d = Axis(lout_2d[1,i_col]; xlabel="Re{ω}", ylabel="Im{ω}", title=title_2d,lblargs...,titlevisible=false, titlealign=:right)
+        ax1d = Axis(lout_1d[1,i_col]; xlabel="Fitted severity", ylabel="Actual severity 𝑅*(ω)", title=title_1d, lblargs..., titlevisible=false, titlealign=:right)
         idx_desc = findall(round.(Int, coast.desc_tphpert[i_anc]./sdm.tu) .== tpert)
         (Rmax_pred_linear,Rmax_pred_quadratic) = (zeros(Float64, length(idx_desc)) for _=1:2)
         Rmax_pred_linear_anc = coefs_linear[1,i_leadtime,i_anc]
         Rmax_pred_quadratic_anc = coefs_quadratic[1,i_leadtime,i_anc]
+        #  ------------- Contours ---------------------
+        Ngrid = 30
+        p1grid = collect(range(-Amax,Amax; length=Ngrid))
+        p2grid = collect(range(-Amax,Amax; length=Ngrid))
+        p12grid = hcat(vec(p1grid .* ones((1,Ngrid))), vec(ones(Ngrid) .* p2grid'))
+        response_surface_linear = reshape(QG2L.linear_model_2d(p12grid, coefs_linear[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
+        response_surface_quadratic = reshape(QG2L.quadratic_model_2d(p12grid, coefs_quadratic[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
+        max_dR = max((maximum(abs.(r.-coast.anc_Rmax[i_anc])) for r=(response_surface_linear, response_surface_quadratic))...)
+        vmin = coast.anc_Rmax[i_anc] - max_dR
+        vmax = coast.anc_Rmax[i_anc] + max_dR
+        #vmin = min((minimum(r) for r=(response_surface_linear, response_surface_quadratic))...)
+        @show vmin,vmax,coast.anc_Rmax[i_anc]
+        levpos = collect(range(coast.anc_Rmax[i_anc], vmax; length=5)[2:end])
+        lev0 = [coast.anc_Rmax[i_anc]]
+        levneg = collect(range(vmin, coast.anc_Rmax[i_anc]; length=5)[1:end-1])
+        contour!(ax2d, p1grid, p2grid, response_surface_linear; levels=levpos, linestyle=:solid, color=color_lin, linewidth=2)
+        contour!(ax2d, p1grid, p2grid, response_surface_linear; levels=levneg, linestyle=(:dot,:dense), color=color_lin, linewidth=2)
+        contour!(ax2d, p1grid, p2grid, response_surface_linear; levels=lev0, linestyle=(:dash,:dense), color=color_lin, linewidth=2)
+        contour!(ax2d, p1grid, p2grid, response_surface_quadratic; levels=levpos, linestyle=:solid, color=color_quad, linewidth=2)
+        contour!(ax2d, p1grid, p2grid, response_surface_quadratic; levels=levneg, linestyle=(:dot,:dense), color=color_quad, linewidth=2)
+        contour!(ax2d, p1grid, p2grid, response_surface_quadratic; levels=lev0, linestyle=(:dash,:dense), color=color_quad, linewidth=2)
+        # ---------------------- Points ---------------------------
+        scorekwargs = Dict(:color=>:black, :marker=>:star5, :markersize=>6, :alpha=>1.0)
+        scatter!(ax2d, 0, 0; scorekwargs...)
         for (i_desc,desc) in enumerate(descendants[idx_desc])
             pert = QG2L.read_perturbation_sequence(ens.trajs[desc].forcing).perts[1]
             i_pert_dim = 2*i_mode_sf-1
@@ -147,7 +170,7 @@ function plot_objective_response_linquad(
             #@show amplitude,phase*360/(2pi),scores[i_desc]
             scorekwargs[:color] = :black
             gain = coast.desc_Rmax[i_anc][idx_desc[i_desc]] - coast.anc_Rmax[i_anc]
-            scorekwargs[:markersize] = 8 + 8 * 2*abs(gain)/(scorerange[2]-scorerange[1])
+            scorekwargs[:markersize] = 6 + 16 * 2*abs(gain)/(scorerange[2]-scorerange[1])
             scorekwargs[:marker] = (gain > 0 ? :cross : :circle)
             scatter!(ax2d, amplitude*cos(phase), amplitude*sin(phase); scorekwargs...)
             # Plot predicted and actual
@@ -174,41 +197,25 @@ function plot_objective_response_linquad(
         hlines!(ax1d, coast.anc_Rmax[i_anc]; color=:black, linestyle=(:dash, :dense))
         arc!(ax2d, Point2f(0,0), Amin, 0, 2pi; color=:gray, alpha=0.5)
         arc!(ax2d, Point2f(0,0), Amax, 0, 2pi; color=:gray, alpha=0.5)
-        # Plot contours of the quadratic response function 
-        Ngrid = 30
-        p1grid = collect(range(-Amax,Amax; length=Ngrid))
-        p2grid = collect(range(-Amax,Amax; length=Ngrid))
-        p12grid = hcat(vec(p1grid .* ones((1,Ngrid))), vec(ones(Ngrid) .* p2grid'))
-        response_surface_linear = reshape(QG2L.linear_model_2d(p12grid, coefs_linear[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
-        response_surface_quadratic = reshape(QG2L.quadratic_model_2d(p12grid, coefs_quadratic[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
-        max_dR = max((maximum(abs.(r.-coast.anc_Rmax[i_anc])) for r=(response_surface_linear, response_surface_quadratic))...)
-        vmin = coast.anc_Rmax[i_anc] - max_dR
-        vmax = coast.anc_Rmax[i_anc] + max_dR
-        #vmin = min((minimum(r) for r=(response_surface_linear, response_surface_quadratic))...)
-        @show vmin,vmax,coast.anc_Rmax[i_anc]
-        levpos = collect(range(coast.anc_Rmax[i_anc], vmax; length=5)[2:end])
-        lev0 = [coast.anc_Rmax[i_anc]]
-        levneg = collect(range(vmin, coast.anc_Rmax[i_anc]; length=5)[1:end-1])
-        contour!(ax2d, p1grid, p2grid, response_surface_linear; levels=levpos, linestyle=:solid, color=color_lin, linewidth=2)
-        contour!(ax2d, p1grid, p2grid, response_surface_linear; levels=levneg, linestyle=(:dot,:dense), color=color_lin, linewidth=2)
-        contour!(ax2d, p1grid, p2grid, response_surface_linear; levels=lev0, linestyle=(:dash,:dense), color=color_lin, linewidth=2)
-        contour!(ax2d, p1grid, p2grid, response_surface_quadratic; levels=levpos, linestyle=:solid, color=color_quad, linewidth=2)
-        contour!(ax2d, p1grid, p2grid, response_surface_quadratic; levels=levneg, linestyle=(:dot,:dense), color=color_quad, linewidth=2)
-        contour!(ax2d, p1grid, p2grid, response_surface_quadratic; levels=lev0, linestyle=(:dash,:dense), color=color_quad, linewidth=2)
     end
     for i_col = 1:ncols(lout_2d)-1
         colgap!(lout_2d, i_col, 0.0)
         colgap!(lout_1d, i_col, 0.0)
     end
-    ax_r2 = Axis(lout_r2[1,1], xlabel="-AST (t*=$(t0str))", ylabel="R2", ylabelsize=12, xlabelsize=12, yticklabelsize=9, xticklabelsize=9, xgridvisible=false, ygridvisible=false, yticks=[0.0,0.5,1.0])
+    ax_r2 = Axis(lout_r2[1,1], xlabel="−AST (𝑡* = $(t0str))", ylabel="𝑅²", ylabelsize=8, xlabelsize=8, yticklabelsize=7, xticklabelsize=7, xgridvisible=false, ygridvisible=false, yticks=[0.0,0.5,1.0], xticksize=2, yticksize=2, titlefont=:regular)
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_linear[:,i_anc]; color=color_lin, label="Lin")
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_quadratic[:,i_anc]; color=color_quad, label="Quad")
-    hlines!(ax_r2, r2thresh; color=:gray)
-    ylims!(ax_r2, 0.0, 1.0)
+    hlines!(ax_r2, r2thresh; color=:gray, alpha=0.5)
+    vlines!(ax_r2, -leadtimes[idx_leadtimes2plot].*sdm.tu; color=:gray, alpha=0.5)
+    ylims!(ax_r2, -0.1, 1.1)
 
-    Label(lout_2d[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,15.0,5.0), valign=:bottom, fontsize=12)
-    rowgap!(lout, 1, 5.0)
-    rowgap!(lout, 2, 0.0)
+    Label(lout_2d[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,5.0,5.0), valign=:bottom, fontsize=9)
+    Label(lout_2d[1,:,Bottom()], "Re{ω}", padding=(0,10,0,15), valign=:bottom, fontsize=8)
+    Label(lout_1d[1,:,Bottom()], "(Linear, quadratic)-fitted severity 𝑅̂*(ω)", padding=(0,10,0,15), valign=:bottom, fontsize=8)
+    #rowsize!(lout_1d, 1, Relative(14/15))
+    #rowsize!(lout_2d, 1, Relative(14/15))
+    rowgap!(lout, 1, 10.0)
+    rowgap!(lout, 2, 10.0)
     rowsize!(lout, 3, Relative(1/5))
 
     save(joinpath(figdir,"objective_response_anc$(i_anc)_linquad.png"), fig)

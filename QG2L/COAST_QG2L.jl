@@ -41,10 +41,10 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "anchor" =>                                         0,
                 "sail" =>                                           0, 
                 "regress_lead_dependent_risk_polynomial" =>         0, 
-                "plot_objective" =>                                 1, 
-                "mix_COAST_distributions_polynomial" =>             0,
-                "plot_COAST_mixture" =>                             0,
-                "mixture_COAST_phase_diagram" =>                    0,
+                "plot_objective" =>                                 0, 
+                "mix_COAST_distributions_polynomial" =>             1,
+                "plot_COAST_mixture" =>                             1,
+                "mixture_COAST_phase_diagram" =>                    1,
                 # Danger zone 
                 "remove_pngs" =>                                    0,
                 # vestigial or hibernating
@@ -95,7 +95,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
      mixcrit_labels,mixobj_labels,distn_scales,
      fdivnames,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
-     i_thresh_cquantile
+     i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
     println("i_thresh_cquantile = $(i_thresh_cquantile)")
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
@@ -291,7 +291,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
             hlines!(axpdf, level; color=:gray, linewidth=1, alpha=0.5)
         end
         # CCDF
-        lines!(axccdf, thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc)), levels_exc, color=:gray, linewidth=3, alpha=0.5, label=@sprintf("GPD(%.2f,%.2f,%.2f)\nThresh. exc. prob. %s", thresh, gpdpar_valid_agglon..., poweroftwostring(i_thresh_cquantile)))
+        lines!(axccdf, thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc)), levels_exc, color=:gray, linewidth=3, alpha=0.5, label=@sprintf("GPD(%.2f,%.2f,%.2f)\nThresh. exc. prob. %s", thresh, gpdpar_valid_agglon..., powerofhalfstring(i_thresh_cquantile)))
         lines!(axccdf, ccdf_levels, zero2nan(SB.mean(Rccdf_valid_seplon; dims=2)[:,1]); color=:black, linewidth=2, linestyle=(:dash,:dense))
         scatterlines!(axccdf, thresh_cquantile.*zero2nan(SB.mean(ccdf_pot_valid_seplon, ; dims=2)[:,1]), levels[i_thresh_cquantile:end]; color=:black, marker=:star6, label="Long DNS,\npeaks over threshold")
         lines!(axccdf, ccdf_levels, zero2nan(Rccdf_ancgen_seplon[:,1]); color=:orange, linewidth=2, linestyle=(:dash,:dense))
@@ -504,8 +504,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         rxystr = @sprintf("%.3f",cfg.target_ryPerL*sdm.Ly)
         ytgtstr = @sprintf("%.2f",cfg.target_yPerL*sdm.Ly)
         todosub = Dict(
-                       "plot_spaghetti" =>              1,
-                       "plot_response" =>               0,
+                       "plot_spaghetti" =>              0,
+                       "plot_response" =>               1,
                       )
         @show idx_anc_strat
 
@@ -552,7 +552,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     if 1 == todo["plot_COAST_mixture"]
         println("Aabout to plot COAST mixtures")
         todosub = Dict(
-                       "gains_topt" =>              1,
+                       "gains_topt" =>              0,
                        "rainbow_pdfs" =>            1,
                        "mixed_pdfs" =>              1,
                       )
@@ -588,35 +588,12 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
              end
             )
         println("loaded ccdfs_regressed")
-        (
-         tgrid_ancgen,
-         Roft_ancgen_seplon,
-         Rccdf_ancgen_seplon,
-         Rccdf_ancgen_agglon,
-         tgrid_valid,
-         Roft_valid_seplon,
-         Rccdf_valid_seplon,
-         Rccdf_valid_agglon,
-        ) = (
-             JLD2.jldopen(joinpath(resultdir,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
-                 return (
-                         f["tgrid_ancgen"], # tgrid_ancgen
-                         f["Roft_ancgen_seplon"], # Roft_ancgen_seplon
-                         f["Rccdf_ancgen_seplon"], # Rccdf_ancgen_seplon
-                         f["Rccdf_ancgen_agglon"], # Rccdf_ancgen_seplon
-                         f["tgrid_valid"], # tgrid_valid
-                         f["Roft_valid_seplon"], # Roft_valid_seplon
-                         f["Rccdf_valid_seplon"], # Rccdf_valid_seplon
-                         f["Rccdf_valid_agglon"], # Rccdf_valid_agglon
-                        )
-             end
-            )
-        println("Loaded objective_dns")
-        thresh = Rccdf_valid_agglon[i_thresh_cquantile] 
         levels_exc = levels[i_thresh_cquantile:end]
         levels_exc_mid = (levels_exc[1:end-1] .+ levels_exc[2:end]) ./ 2
         pdf_valid_agglon = - diff(ccdf_levels) ./ diff(Rccdf_valid_agglon)
         pdf_valid_seplon = - diff(ccdf_levels) ./ diff(Rccdf_valid_seplon; dims=1)
+        pdf_pot_valid_agglon = -diff(ccdf_pot_valid_agglon) ./ diff(levels_exc)
+        pdf_pot_valid_seplon = -diff(ccdf_pot_valid_seplon; dims=1) ./ diff(levels_exc)
         #IFT.@infiltrate true
 
         # ------------- Plots -----------------------
@@ -679,11 +656,19 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
                 # ---------------- Single-ancestor plots ---------------
                 if 1 == todosub["rainbow_pdfs"]
+                    @assert all(isfinite.(pdfs[dst][rsp]))
                     mixcrits2plot = ["r2","ent"]
-                    mixcrits_ylabels = ["R2","Ent"]
+                    rspstr = ("1" == rsp ? "linear" : "quadratic")
+                    mixcrits_ylabels = ["𝑅² ($(rspstr))","Entropy"]
                     Nleadtimes2plot = Nleadtime
                     #Threads.@threads for i_anc = idx_anc_strat
                     for i_anc = idx_anc_strat
+                        pdf_adjustments = 1 ./ replace(ccdfs[dst][rsp][i_thresh_cquantile, :, i_anc, :], 0 => NaN)
+                        xlims = maximum(
+                                        maximum(pdfs[dst][rsp][i_thresh_cquantile:end,:,i_anc,:]; dims=1)[1,:,:] 
+                                        .* pdf_adjustments
+                                       ) .* [-0.05, 1.05]
+
                         t0str = @sprintf("%d", coast.anc_tRmax[i_anc])
                         fig = Figure(size=(100*Nleadtime,100*(3+length(mixcrits2plot))))
                         lout = fig[1,1] = GridLayout()
@@ -693,26 +678,29 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         for i_leadtime = round.(Int, range(Nleadtime, 1; length=Nleadtimes2plot))
                             leadtime = leadtimes[i_leadtime]
                             i_col += 1
-                            ltstr = @sprintf("%d",-leadtime*sdm.tu)
+                            ltstr = @sprintf("−%d",leadtime*sdm.tu)
                             if i_col == 1
-                                ltstr = "-AST = $(ltstr)"
+                                ltstr = "−AST = $(ltstr)"
                             end
-                            lblargs = Dict(:ylabelvisible=>(i_col==1), :yticklabelsvisible=>(i_col==1), :xlabelvisible=>false, :xticklabelsvisible=>true, :ylabelsize=>20, :xlabelsize=>20, :title=>L"%$(ltstr)", :xgridvisible=>false, :ygridvisible=>false, :titlealign=>:right)
-                            ax = Axis(lout_pdfs[1,i_col]; xlabel="PDF", ylabel="Conc.", lblargs...)
+                            lblargs = Dict(:ylabelvisible=>(i_col==1), :yticklabelsvisible=>(i_col==1), :xlabelvisible=>false, :xticklabelsvisible=>true, :ylabelsize=>15, :xlabelsize=>20, :title=>ltstr, :xgridvisible=>false, :ygridvisible=>false, :titlealign=>:right, :titlefont=>:regular)
+                            ax = Axis(lout_pdfs[1,i_col]; xlabel="PDF", ylabel="Severity 𝑅*", lblargs...)
                             for (i_scl,scl) in enumerate(distn_scales[dst])
-                                lines!(ax, pdfs[dst][rsp][:,i_leadtime, i_anc, i_scl], levels_mid; color=i_scl,colorrange=(0,length(distn_scales[dst])), colormap=:managua)
+                                scatterlines!(ax, pdf_adjustments[i_scl].*pdfs[dst][rsp][:,i_leadtime, i_anc, i_scl], levels_mid; color=i_scl,colorrange=(0,length(distn_scales[dst])), colormap=:managua, marker=:star6)
                             end
-                            lines!(ax, pdf_valid_agglon[i_thresh_cquantile:end], levels_mid[i_thresh_cquantile:end]; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
-                            pdf_pot_valid_agglon = -diff(ccdf_pot_valid_agglon) ./ diff(levels[i_thresh_cquantile:end])
-                            scatterlines!(ax, pdf_pot_valid_agglon, levels_exc_mid; color=:black, linestyle=(:dash,:dense), marker=:star6,)
+                            #lines!(ax, thresh_cquantile.*pdf_valid_agglon[i_thresh_cquantile:end], levels_exc_mid; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
+                            scatterlines!(ax, pdf_pot_valid_agglon, levels_exc_mid; color=:black, linestyle=:solid, marker=:star6,)
+                            #scatterlines!(ax, ccdf_levels[i_thresh_cquantile:end], levels_exc; color=:black, linestyle=:solid, linewidth=1.5)
+                            #scatterlines!(ax, ccdf_levels[i_thresh_cquantile:end], levels_exc; color=:black, linestyle=:solid, marker=:star6,)
                             hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linewidth=1.0)
                             idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
-                            scatter!(ax, maximum(pdfs[dst][rsp][:,i_leadtime, i_anc, :]).*ones(length(idx_desc)), coast.desc_Rmax[i_anc][idx_desc]; color=:firebrick, markersize=10)
+                            scatterlines!(ax, sum([.2,.8].*xlims).*ones(Float64, length(idx_desc)), coast.desc_Rmax[i_anc][idx_desc]; color=:firebrick, markersize=10)
                             #IFT.@infiltrate true
                             ylims!(ax, ylims...)
+                            xlims!(ax, xlims...)
                         end
+                        Label(lout_pdfs[1,:,Bottom()], "PDF", padding=(0,10,0,25), valign=:bottom, fontsize=16)
                         for (i_mc,mc) in enumerate(mixcrits2plot)
-                            ax = Axis(lout_mixcrits[i_mc,1]; ylabel=mixcrits_ylabels[i_mc], xlabel="-AST (t*=$(t0str))", xlabelvisible=(i_mc==length(mixcrits2plot)), xticklabelsvisible=(i_mc==length(mixcrits2plot)), xlabelsize=20, ylabelsize=20, xgridvisible=false, ygridvisible=false)
+                            ax = Axis(lout_mixcrits[i_mc,1]; ylabel=mixcrits_ylabels[i_mc], xlabel="−AST (𝑡*=$(t0str))", xlabelvisible=(i_mc==length(mixcrits2plot)), xticklabelsvisible=(i_mc==length(mixcrits2plot)), xlabelsize=20, ylabelsize=15, xgridvisible=false, ygridvisible=false)
                             for (i_scl,scl) in enumerate(distn_scales[dst])
                                 colargs = (mc == "r2" ? Dict(:color=>:black) : Dict(:color=>i_scl,:colormap=>:managua,:colorrange=>(0,length(distn_scales[dst]))))
                                 scatterlines!(ax, -leadtimes.*sdm.tu, mixcrits[dst][rsp][mc][:,i_anc,i_scl]; colargs...)
@@ -724,11 +712,11 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                             end
                             xlims!(ax, -(cfg.lead_time_max+0.5*cfg.lead_time_inc)*sdm.tu, -(cfg.lead_time_min-0.5*cfg.lead_time_inc)*sdm.tu)
                             if mc == "r2"
-                                ylims!(ax, 0, 1)
+                                ylims!(ax, -0.05, 1.05)
                             end
                         end
                         for i_row = 1:nrows(lout_mixcrits)-1
-                            rowgap!(lout_mixcrits, i_row, 20.0)
+                            rowgap!(lout_mixcrits, i_row, 10.0)
                         end
                         for i_col = 1:ncols(lout_pdfs)-1
                             colgap!(lout_pdfs, i_col, 0.0)
@@ -967,7 +955,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
          mixcrit_labels,mixobj_labels,distn_scales,
          fdivnames,Nboot,ccdf_levels,
          time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
-         i_thresh_cquantile
+         i_thresh_cquantile,adjust_ccdf_per_ancestor
         ) = expt_config_COAST_analysis(cfg,pertop)
         fdivs,iltmixs,mixcrits = JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed.jld2"),"r") do f
             return f["fdivs"],f["iltmixs"],f["mixcrits"]
@@ -1081,7 +1069,7 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [1,2,3]
     elseif "COAST" == all_procedures[i_proc]
-        idx_expt = vec([6,9] .+ [0,1,2]'.*15) #Vector{Int64}([6,9])
+        idx_expt = vec([6,9][2:2] .+ [0,1,2][2:2]'.*15) #Vector{Int64}([6,9])
     end
 end
 

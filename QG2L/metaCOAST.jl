@@ -51,7 +51,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,distn_scales,
      fdivnames,Nboot,ccdf_levels,
-     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile
+     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfgs[1],pertop)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
     threshstr = @sprintf("thrt%d", round(Int, 1/thresh_cquantile))
@@ -105,7 +105,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         Rccdf_rough_intercept = 0
         Rccdf_rough_slope = 1.0
         Rccdf_rough = Rccdf_rough_intercept .+ Rccdf_rough_slope .* ytgts #0.5 .+ 0.5 .* ytgts
-        ax = Axis(lout[1,1],xlabel="Quantile − 𝑦/𝐿",ylabel="(Target 𝑦)/𝐿", xgridvisible=false, ygridvisible=false)
+        ax = Axis(lout[1,1],xlabel="𝑐 − 𝑦/𝐿",ylabel="(Target 𝑦)/𝐿", xgridvisible=false, ygridvisible=false)
         toplabel = label_target(target_r,sdm)
         Label(lout[1,1:1,Top()], toplabel, padding=(5.0,5.0,15.0,5.0), valign=:bottom, halign=:center, fontsize=15, font=:regular)
         #scatterlines!(ax, Rmean_valid .- Rccdf_rough, ytgts; color=:black, linestyle=(:dash,:dense))
@@ -136,7 +136,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         axscale = Axis(lout[1,2]; xlabel="GPD scale σ", axargs...)
         axshape = Axis(lout[1,3]; xlabel="GPD shape ξ", axargs...)
         threshcquantstr = @sprintf("%.2E",thresh_cquantile)
-        toplabel = "Threshold complementary quantile $(poweroftwostring(i_thresh_cquantile))=$(threshcquantstr)"
+        toplabel = "Threshold exceedance probability $(powerofhalfstring(i_thresh_cquantile))=$(threshcquantstr)"
         Label(lout[1,2:3,Top()], toplabel, padding=(5.0,5.0,15.0,5.0), valign=:bottom, halign=:left, fontsize=15, font=:regular)
         # Std. Dev.
         lines!(axstd, mssk[:,2], sdm.ygrid./sdm.Ly; color=:black, linestyle=(:dash,:dense), label="(1/$(sdm.Ny))𝐿")

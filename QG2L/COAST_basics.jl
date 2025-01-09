@@ -584,7 +584,7 @@ function label_target(target_ryPerL::Float64, sdm::QG2L.SpaceDomain)
     return label
 end
 
-function poweroftwostring(k::Int64)
+function powerofhalfstring(k::Int64)
     symbols = ["(½)","(½)²","(½)³","(½)⁴","(½)⁵","(½)⁶","(½)⁷","(½)⁸","(½)⁹"]
     if 1 <= k <= 9
         return symbols[k]
@@ -688,7 +688,8 @@ function expt_config_COAST_analysis(cfg,pertop)
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000
     xstride_valid_dns = 1
-    return (leadtimes, r2threshes, distns, rsps, mixobjs, mixcrit_labels, mixobj_labels, distn_scales, fdivnames,Nboot,ccdf_levels,time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile)
+    adjust_ccdf_per_ancestor = true # Principled choice iis false 
+    return (leadtimes, r2threshes, distns, rsps, mixobjs, mixcrit_labels, mixobj_labels, distn_scales, fdivnames,Nboot,ccdf_levels,time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor)
 end
 
 function expt_config_metaCOAST_analysis(; i_expt=nothing)

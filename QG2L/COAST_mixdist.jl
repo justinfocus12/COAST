@@ -3,7 +3,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,distn_scales,
      fdivnames,Nboot,ccdf_levels,
-     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile
+     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
     Nleadtime = length(leadtimes)
@@ -117,7 +117,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
     # Combine based on Rsq and other indicators 
     #
     # pre-allocate the QMC sequence
-    Nsamp_reg2dist = 1024
+    Nsamp_reg2dist = 128^2
     U_reg2dist = collect(transpose(QMC.sample(Nsamp_reg2dist, zeros(Float64, 2), ones(Float64, 2), QMC.LatticeRuleSample())))
     function r2dfun(d,r,s)
         # Below, resid might refer to either a single MSE value or a range. 
@@ -149,7 +149,6 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
             end
         end
     end
-    adjust_per_anc = true
     for dst = dsts
         for rsp = rsps
             if rsp in ["1","1+u","1+g"] # == rsp
@@ -191,7 +190,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                             error()
                         end
                         ccdf,pdf = r2dfun(dst,rsp,scl)(coefs[:,i_leadtime,i_anc], resid_arg)
-                        if adjust_per_anc
+                        if adjust_ccdf_per_ancestor
                             adjustment = (ccdf[i_thresh_cquantile] > 1e-10 ? thresh_cquantile/ccdf[i_thresh_cquantile] : 0)
                             ccdf .*= adjustment
                             pdf .*= adjustment
@@ -260,7 +259,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         end
                     end
                     # Correct for the known exceedance probability
-                    if !adjust_per_anc
+                    if !adjust_ccdf_per_ancestor
                         for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                             for i_boot = 1:Nboot+1
                                 adjustment = thresh_cquantile / ccdfmixs[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]

@@ -909,7 +909,8 @@ function regression2distn_quadratic_bump(coefs::Vector{Float64}, residmse::Float
     # exhaustively sample the disc
 
     Nsamp = size(U,1) #1024 
-    radius = support_radius .* sqrt.(U[:,1])
+    R2 = (support_radius^2) .* U[:,1]
+    radius = sqrt.(R2)
     angle = 2pi.*U[:,2]
     X = radius .* cos.(angle)
     Y = radius .* sin.(angle)
@@ -919,7 +920,6 @@ function regression2distn_quadratic_bump(coefs::Vector{Float64}, residmse::Float
         rng = Random.MersenneTwister(seed)
         F .+= sqrt(residmse).*Random.randn(rng, Float64, (Nsamp,))
     end
-    R2 = X.^2 .+ Y.^2
     W = exp.(-0.5*(R2./scale^2) ./ (1 .- R2./(support_radius^2)))
     ccdf = vec(sum(W .* (F .> levels'); dims=1))./sum(W)
     @assert all(isfinite.(ccdf))
