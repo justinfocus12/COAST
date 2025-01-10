@@ -221,8 +221,8 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         mixcrits[dst][rsp]["r2"][i_leadtime,i_anc,i_scl] = (rsp in ["1","1+u","1+g"] ? rsquared_linear : rsquared_quadratic)[i_leadtime,i_anc]
                         mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = sum(max.(0, levels_mid .- thresh) .* pdf .* dlev)
                         # weight the entropy by the probability of exceeding the threshold 
-                        mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun(pdf) # .* (levels[1:end-1] .> thresh))
-                        mixcrits[dst][rsp]["went"][i_leadtime,i_anc,i_scl] = sum(pdf .* dlev .* (levels[1:end-1] .> thresh)) * QG2L.entropy_fun(pdf .* (levels_mid .> thresh))
+                        mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
+                        mixcrits[dst][rsp]["went"][i_leadtime,i_anc,i_scl] = ccdf[i_thresh_cquantile] * QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
                         if levels[end] > Rmaxanc
                             mixcrits[dst][rsp]["pi"][i_leadtime,i_anc,i_scl] = ccdf[findfirst(levels .> Rmaxanc)]
                         end
@@ -240,10 +240,13 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         iltmixs[dst][rsp]["r2"][i_r2thresh,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
                     end
                     for (i_pth,pth) in enumerate(mixobjs["pth"])
+                        # TODO maybe take some kind of weighted average 
                         first_inceedance = findfirst(mixcrits[dst][rsp]["pth"][:,i_anc,i_scl] .< pth)
+                        last_exceedance = findlast(mixcrits[dst][rsp]["pth"][:,i_anc,i_scl] .>= pth)
                         #IFT.@infiltrate ("b" == dst) && ("2" == rsp) && (i_scl >= 3) 
                         # TODO investigate whether last exceedance is better
-                        iltmixs[dst][rsp]["pth"][i_pth,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
+                        #iltmixs[dst][rsp]["pth"][i_pth,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
+                        iltmixs[dst][rsp]["pth"][i_pth,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
                     end
 
                     # Other objectives to condition on R^2 
@@ -287,7 +290,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 end
                 #IFT.@infiltrate ((dst=="b")&(rsp=="2")&(i_scl==2))
                 println("Starting to compute fdivs")
-                pdf_pot_valid_pt = SB.mean(-diff(ccdf_pot_valid_seplon; dims=1); dims=2)[:,1] ./ diff(levels_exc)
+                # baseline: ancestor generator
                 for mc = ["pth","ent","lt","r2"] #keys(mixobjs)
                     #IFT.@infiltrate ("lt"==mc)
                     for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
@@ -303,6 +306,10 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
             end
         end
     end
+    fdivs_ancgen_valid = Dict()
+    for fdivname = fdivnames
+        fdivs_ancgen_valid[fdivname] = mapslices(ccdf->QG2L.fdiv_fun_ccdf(ccdf, ccdf_pot_valid_agglon, fdivname), ccdf_pot_ancgen_seplon; dims=1)[1,:]
+    end
 
     JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed.jld2"),"w") do f
         # coordinates for parameters of distributions 
@@ -316,6 +323,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
         f["ccdfs"] = ccdfs
         f["pdfs"] = pdfs
         f["fdivs"] = fdivs
+        f["fdivs_ancgen_valid"] = fdivs_ancgen_valid
         f["mixcrits"] = mixcrits
         f["iltmixs"] = iltmixs
         f["ccdfmixs"] = ccdfmixs

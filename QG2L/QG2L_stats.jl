@@ -1045,14 +1045,9 @@ function kldiv_fun(pmf1, pmf2)
     return kl
 end
 
-function entropy_fun(pdf)
-    if minimum(pdf) < 0
-        @show pdf
-        error()
-    elseif maximum(pdf) == 0
-        return 0.0
-    end
-    return -sum(xlogx.(pdf ./ sum(pdf)))
+function entropy_fun_ccdf(ccdf)
+    pmf = ccdf2pmf(ccdf)
+    return -sum(xlogx.(pmf))
 end
    
 

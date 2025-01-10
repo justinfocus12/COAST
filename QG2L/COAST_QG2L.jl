@@ -37,16 +37,16 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "update_paths" =>                                   0,
                 "plot_pertop" =>                                    0,
                 "compute_dns_objective" =>                          0,
-                "plot_dns_objective_stats" =>                       1,
+                "plot_dns_objective_stats" =>                       0,
                 "anchor" =>                                         0,
                 "sail" =>                                           0, 
                 "regress_lead_dependent_risk_polynomial" =>         0, 
-                "plot_objective" =>                                 1, 
-                "mix_COAST_distributions_polynomial" =>             1,
-                "plot_COAST_mixture" =>                             1,
+                "plot_objective" =>                                 0, 
+                "mix_COAST_distributions_polynomial" =>             0,
+                "plot_COAST_mixture" =>                             0,
                 "mixture_COAST_phase_diagram" =>                    1,
                 # Danger zone 
-                "remove_pngs" =>                                    1,
+                "remove_pngs" =>                                    0,
                 # vestigial or hibernating
                 "fit_dns_pot" =>                                    0, 
                 "plot_contour_divergence" =>                        0,
@@ -554,7 +554,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         todosub = Dict(
                        "gains_topt" =>              0,
                        "rainbow_pdfs" =>            1,
-                       "mixed_pdfs" =>              1,
+                       "mixed_ccdfs" =>              1,
                       )
 
         ytgtstr = @sprintf("%.2f", cfg.target_yPerL*sdm.Ly)
@@ -564,7 +564,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
          levels,levels_mid,
          dsts,rsps,mixobjs,distn_scales,
          ccdfs,pdfs,
-         fdivs,
+         fdivs,fdivs_ancgen_valid,
          mixcrits,iltmixs,
          ccdfmixs,pdfmixs,
         ) = (JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed.jld2"),"r") do f
@@ -580,6 +580,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     f["ccdfs"],# ccdfs
                     f["pdfs"],# pdfs
                     f["fdivs"],# fdivs
+                    f["fdivs_ancgen_valid"],
                     f["mixcrits"],# mixcrits
                     f["iltmixs"],# iltmixs
                     f["ccdfmixs"],# ccdfmixs
@@ -727,7 +728,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     end
                 end
                 # ----------------- Mixed-ancestor plots -----------------
-                if 1 == todosub["mixed_pdfs"]
+                if 1 == todosub["mixed_ccdfs"]
                     boot_midlohi_pdf(p,avg=false) = begin
                         pmid = clippdf.((avg ? SB.mean(p; dims=2) : p)[:,1])
                         plo,phi = (clippdf.(QG2L.quantile_sliced(p, q, 2)[:,1]) for q=(0.05,0.95))
@@ -771,8 +772,10 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                             i_boot = 1
                             fdiv_synclt,ilt_fdiv_synclt = findmin(fdivs[dst][rsp]["lt"][fdivname][i_boot,:,i_scl]) # index for best synchronized advance split time 
                             fdiv_syncpth,ilt_fdiv_syncpth = findmin(fdivs[dst][rsp]["pth"][fdivname][i_boot,:,i_scl]) # index for best synchronized threshold exceedance probability
-                            fdiv_ancgen_valid = mapslices(ccdf->QG2L.fdiv_fun_ccdf(ccdf, ccdf_pot_valid_agglon, fdivname), ccdf_pot_valid_seplon; dims=1)[1,:]
-                            fdiv_ancgen_valid_pt,fdiv_ancgen_valid_lo,fdiv_ancgen_valid_hi = (SB.mean(fdiv_ancgen_valid), SB.quantile(fdiv_ancgen_valid, 0.05), SB.quantile(fdiv_ancgen_valid, 0.95))
+                            fdiv_ancgen_valid_pt,fdiv_ancgen_valid_lo,fdiv_ancgen_valid_hi = let
+                                fdav = fdivs_ancgen_valid[fdivname] 
+                                (SB.mean(fdav), SB.quantile(fdav, 0.05), SB.quantile(fdav, 0.95))
+                            end
                             for mc = ["ent"] #,"r2","ent"]
                                 for i_mcobj = 1:length(mixobjs[mc])
                                     fdiv_cond = fdivs[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl]
@@ -971,8 +974,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
          time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
          i_thresh_cquantile,adjust_ccdf_per_ancestor
         ) = expt_config_COAST_analysis(cfg,pertop)
-        fdivs,iltmixs,mixcrits = JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed.jld2"),"r") do f
-            return f["fdivs"],f["iltmixs"],f["mixcrits"]
+        fdivs,fdivs_ancgen_valid,iltmixs,mixcrits = JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed.jld2"),"r") do f
+            return f["fdivs"],f["fdivs_ancgen_valid"],f["iltmixs"],f["mixcrits"]
         end
         fdivs2plot = ["tv","chi2","kl"]
         fdivlabels = ["TV","χ²","KL"]
@@ -1056,32 +1059,39 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     for (i_fdivname,fdivname) in enumerate(fdivs2plot)
                         fdiv_max_ent = fdivs[dst][rsp]["ent"][fdivname][i_boot,1,:]
                         fdiv_last_r2 = fdivs[dst][rsp]["r2"][fdivname][i_boot,1,:]
-                        fig = Figure(size=(400,600))
+                        fig = Figure(size=(600,600))
                         lout = fig[1,1] = GridLayout()
                         (axlt,axpth) = (Axis(lout[i,1], xlabel=fdivlabels[i_fdivname], ylabel="Scale", title=label_target(cfg, sdm), titlefont=:regular) for i=1:2)
                         for ax = (axlt,axpth)
-                            scatterlines!(ax, fdiv_max_ent, distn_scales[dst]; label="Max. Ent.", color=:red, linestyle=(:dash,:dense))
+                            scatterlines!(ax, fdiv_max_ent, distn_scales[dst]; label="Max. Ent.", color=:red, linestyle=(:dash,:dense), linewidth=3)
+                            vlines!(ax, SB.mean(fdivs_ancgen_valid[fdivname]); color=:orange, alpha=1.0, linewidth=4, label="Short DNS peaks\n(90% CI)")
+                            for sgn = [-1,1]
+                                vlines!(ax, SB.quantile(fdivs_ancgen_valid[fdivname], 0.5+0.5*sgn*0.9); color=:orange, linewidth=4, linestyle=(:dot,:dense))
+                            end
                             if ax == axlt
-                                scatterlines!(ax, fdiv_last_r2, distn_scales[dst]; label="R2~$(r2thresh)", color=:black, linestyle=(:dash,:dense))
+                                scatterlines!(ax, fdiv_last_r2, distn_scales[dst]; label="𝑅²≈$(r2thresh)", color=:black, linestyle=(:dash,:dense), linewidth=3)
                             end
                         end
                         # Synchron
                         ax = axlt
                         for ilt = 1:Nleadtime
-                            scatterlines!(ax, fdivs[dst][rsp]["lt"][fdivname][i_boot,ilt,:], distn_scales[dst]; label="-$(leadtimes[ilt]*sdm.tu)", color=ilt, colorrange=(1,Nleadtime), colormap=:managua)
+                            lines!(ax, fdivs[dst][rsp]["lt"][fdivname][i_boot,ilt,:], distn_scales[dst]; label="-$(leadtimes[ilt]*sdm.tu)", color=ilt, colorrange=(1,Nleadtime), colormap=:managua)
                         end
                         # Synprob
                         ax = axpth
                         Npth = length(mixobjs["pth"])
                         for i_pth = 1:Npth
-                            scatterlines!(ax, fdivs[dst][rsp]["pth"][fdivname][i_boot,i_pth,:], distn_scales[dst]; label=@sprintf("%.2f",mixobjs["pth"][i_pth]), color=i_pth, colorrange=(1,Npth), colormap=:managua)
+                            lines!(ax, fdivs[dst][rsp]["pth"][fdivname][i_boot,i_pth,:], distn_scales[dst]; label=@sprintf("%.2f",mixobjs["pth"][i_pth]), color=i_pth, colorrange=(1,Npth), colormap=:managua)
                         end
-                        lout[1,2] = Legend(fig, axlt; framevisible=false, labelsize=10, nbanks=2)
-                        lout[2,2] = Legend(fig, axpth; framevisible=false, labelsize=10, nbanks=2)
+                        lout[1,2] = Legend(fig, axlt; framevisible=true, labelsize=8, nbanks=2, title="AST [synchron]")
+                        lout[2,2] = Legend(fig, axpth; framevisible=true, labelsize=8, nbanks=2, title="𝑞(μ) [synprob]")
 
                         linkxaxes!(axlt,axpth)
                         linkyaxes!(axlt,axpth)
+                        axlt.xlabelvisible = axlt.xticklabelsvisible = false
                         axpth.titlevisible = false
+                        colsize!(lout, 1, Relative(1/2))
+                        rowgap!(lout, 1, 0)
                         save(joinpath(figdir,"phdgm_slices_$(dst)_$(rsp)_$(fdivname).png"), fig)
                     end
                 end
@@ -1110,7 +1120,7 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [1,2,3]
     elseif "COAST" == all_procedures[i_proc]
-        idx_expt = vec([6,9][1:1] .+ [0,1,2][2:2]'.*15) #Vector{Int64}([6,9])
+        idx_expt = vec([6,9][2:2] .+ [0,1,2][2:2]'.*15) #Vector{Int64}([6,9])
     end
 end
 

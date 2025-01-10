@@ -665,7 +665,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     
 
     r2threshes = [0.8] #[0.8,0.7,0.6,0.5]
-    pths = collect(range(1.0, 0.0; length=13)) 
+    pths = collect(range(1.0, 0.0; length=26)) 
     Nr2th = length(r2threshes)
 
     # TODO implement mean absolute error as a more-outlier-sensitive alternative to R^2 
@@ -712,7 +712,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     fdivnames = ("kl","chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    i_thresh_cquantile = 8
+    i_thresh_cquantile = 5
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000
