@@ -557,10 +557,35 @@ function desc_by_leadtime(coast::COASTState, i_anc::Int64, leadtime::Int64, sdm:
 end
 
 zero2nan(p) = replace(p, 0=>NaN)
+inf2nan(p) = replace(p, Inf=>NaN)
+clipccdfratio(x,ratiomax=1e4) = (1/ratiomax < x < ratiomax ? x : NaN)
 clipccdf(x) = (x <= 1e-10 ? NaN : x)
 clippdf(x, dlev=0.1) = (x <= 1e-10/dlev ? NaN : x)
 
 
+function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, rsp::String)
+    if "1" == rsp
+        rspstr = "linear"
+    elseif "2" == rsp
+        rspstr = "quadratic"
+    elseif "e" == rsp
+        rspstr = "empirical"
+    end
+    label = "$(label_target(cfg, sdm)), $(rspstr)𝑅̂"
+    return label
+end
+
+function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, scale::Float64, rsp::String)
+    if "1" == rsp
+        rspstr = "linear"
+    elseif "2" == rsp
+        rspstr = "quadratic"
+    elseif "e" == rsp
+        rspstr = "empirical"
+    end
+    label = "$(label_target(cfg, sdm, scale)), $(rspstr) 𝑅̂*"
+    return label
+end
 
 function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, scale::Float64)
     scalestr = @sprintf("%.3f", scale)
