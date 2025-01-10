@@ -42,8 +42,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 "sail" =>                                           0, 
                 "regress_lead_dependent_risk_polynomial" =>         0, 
                 "plot_objective" =>                                 0, 
-                "mix_COAST_distributions_polynomial" =>             0,
-                "plot_COAST_mixture" =>                             0,
+                "mix_COAST_distributions_polynomial" =>             1,
+                "plot_COAST_mixture" =>                             1,
                 "mixture_COAST_phase_diagram" =>                    1,
                 # Danger zone 
                 "remove_pngs" =>                                    0,
@@ -554,7 +554,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         todosub = Dict(
                        "gains_topt" =>              0,
                        "rainbow_pdfs" =>            1,
-                       "mixed_ccdfs" =>              1,
+                       "mixed_ccdfs" =>             1,
                       )
 
         ytgtstr = @sprintf("%.2f", cfg.target_yPerL*sdm.Ly)
@@ -1059,7 +1059,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     for (i_fdivname,fdivname) in enumerate(fdivs2plot)
                         fdiv_max_ent = fdivs[dst][rsp]["ent"][fdivname][i_boot,1,:]
                         fdiv_last_r2 = fdivs[dst][rsp]["r2"][fdivname][i_boot,1,:]
-                        fig = Figure(size=(600,600))
+                        fig = Figure(size=(600,1000))
                         lout = fig[1,1] = GridLayout()
                         (axlt,axpth) = (Axis(lout[i,1], xlabel=fdivlabels[i_fdivname], ylabel="Scale", title=label_target(cfg, sdm), titlefont=:regular) for i=1:2)
                         for ax = (axlt,axpth)
@@ -1083,10 +1083,13 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         for i_pth = 1:Npth
                             lines!(ax, fdivs[dst][rsp]["pth"][fdivname][i_boot,i_pth,:], distn_scales[dst]; label=@sprintf("%.2f",mixobjs["pth"][i_pth]), color=i_pth, colorrange=(1,Npth), colormap=:managua)
                         end
-                        lout[1,2] = Legend(fig, axlt; framevisible=true, labelsize=8, nbanks=2, title="AST [synchron]")
-                        lout[2,2] = Legend(fig, axpth; framevisible=true, labelsize=8, nbanks=2, title="𝑞(μ) [synprob]")
+                        lout[1,2] = Legend(fig, axlt, "AST [synchron]"; framevisible=true, labelsize=10, nbanks=2, rowgap=2, titlefont=:regular)
+                        lout[2,2] = Legend(fig, axpth, "𝑞(μ) [synprob]"; framevisible=true, labelsize=10, nbanks=2, rowgap=2, titlefont=:regular)
 
-                        linkxaxes!(axlt,axpth)
+                        fdivmax = max((maximum(fdiv) for fdiv=(fdiv_max_ent,fdiv_last_r2,fdivs[dst][rsp]["lt"][fdivname],fdivs[dst][rsp]["pth"][fdivname]))...)
+                        for ax = (axlt,axpth)
+                            xlims!(ax, 0, fdivmax)
+                        end
                         linkyaxes!(axlt,axpth)
                         axlt.xlabelvisible = axlt.xticklabelsvisible = false
                         axpth.titlevisible = false
@@ -1107,7 +1110,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 
 # TODO augment META with composites, lead times displays etc
 

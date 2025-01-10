@@ -680,6 +680,7 @@ function expt_config_COAST_analysis(cfg,pertop)
                    "ei"=>["max"],  # reinterpreted as expected exceedance over threshold 
                    "went"=>["max"],
                    "ent"=>["max"],
+                   "max"=>["max"],
                    "pi"=>["max"],
                   ) # mixing-related objectives to maximize when choosing a leadtime. Each entry of each list represents a different objective 
     lt2str(lt) = @sprintf("%.2f", lt)

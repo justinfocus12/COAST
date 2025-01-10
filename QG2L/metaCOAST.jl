@@ -4,11 +4,11 @@
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict(
                 "remove_pngs" =>                    0,
-                "plot_GPD_params_ydep" =>           0,
-                "plot_ccdfs_latdep" =>              1,
+                "plot_ccdfs_latdep" =>              0,
                 "print_simtimes" =>                 0,
                 "plot_mixcrits_ydep" =>             0,
-                "compare_tvs" =>                    0,
+                "compile_fdivs" =>                  1,
+                "plot_fdivs" =>                     1,
                 "plot_toast" =>                     0,
                )
     php,sdm = QG2L.expt_config()
@@ -51,7 +51,8 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,distn_scales,
      fdivnames,Nboot,ccdf_levels,
-     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
+     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
+     i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfgs[1],pertop)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
     threshstr = @sprintf("thrt%d", round(Int, 1/thresh_cquantile))
@@ -62,7 +63,12 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     end
     println("Collected the cfgs")
     obj_label,short_obj_label = label_objective(cfgs[1])
+    # Collect sizes of everything
     Nanc = cfgs[1].num_init_conds_max
+    Nleadtime = length(leadtimes)
+    Nmcs = Dict(mc=>length(mixobjs[mc]) for mc=keys(mixobjs))
+    Nscales = Dict(dst=>length(distn_scales[dst]) for dst=dsts)
+
     resultdir = joinpath(expt_supdir,"$(strrep_ConfigCOAST_varying_yPerL(cfgs[1]))_$(threshstr)")
     mkpath(resultdir)
     if todo["remove_pngs"] == 1
@@ -156,8 +162,6 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         save(joinpath(resultdir,"gpdpars_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
     end
 
-
-
     if 1 == todo["print_simtimes"]
         simtimes = zeros(Float64, Nytgt)
         Nancs = zeros(Int64, Nytgt)
@@ -179,94 +183,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     end
 
     @show keys(mixobjs)
-    Nleadtime = length(leadtimes)
     
-    if todo["plot_GPD_params_ydep"] == 1
-        ccdfs_at_thresh,threshes,scales,shapes = (zeros(Float64,Nytgt) for _=1:4)
-        levelss,ccdfss_emp = (Vector{Vector{Float64}}([]) for _=1:2)
-        for (i_cfg,cfg) in enumerate(cfgs)
-            cfgstr = strrep_ConfigCOAST(cfg)
-            resultdir_COAST = joinpath(expt_supdir,"COAST_$(cfgstr)_$(pertopstr)/results")
-            (
-             ccdfs_at_thresh[i_cfg],threshes[i_cfg],scales[i_cfg],shapes[i_cfg],
-             levels,ccdfs_emp
-            ) = (
-                 JLD2.jldopen(joinpath(resultdir_COAST,"GPD_dns.jld2"),"r") do f
-                     return (
-                             f["ccdf_at_thresh"],f["thresh"],f["scale"],f["shape"],
-                             f["levels"],f["ccdfs_emp"]
-                            )
-                 end
-                )
-
-            push!(levelss, levels)
-            push!(ccdfss_emp, vec(SB.mean(ccdfs_emp; dims=2)))
-        end
-        @show ccdfs_at_thresh
-        @show threshes
-        @show scales
-        @show shapes
-
-        mssk = JLD2.jldopen(joinpath(resultdir_dns,"moments_mssk_$(cfgs[1].target_field[1:end-1]).jld2"),"r") do f
-            return f["mssk_xall"][:,:,parse(Int,cfgs[1].target_field[end]),:]
-        end
-
-        fig = Figure(size=(600,300))
-        lout = fig[1,1] = GridLayout()
-        kwargs = Dict(:ylabel=>L"$y$",:xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>pi/2)
-        ax1 = Axis(lout[1,1]; xlabel=L"$\mu$", kwargs...)
-        kwargs[:ylabelvisible] = false
-        kwargs[:yticklabelsvisible] = false
-        ax2 = Axis(lout[1,2]; xlabel=L"$\sigma$", kwargs...)
-        ax3 = Axis(lout[1,3]; xlabel=L"$\xi$", kwargs...)
-        logccdf_grid = vcat(log.([0.5, 0.4, 0.3, 0.2]), collect(range(-1, -4; length=4)).*log(10))
-        @show logccdf_grid
-        invlogccdfs_GPD = NaN .* ones(Float64, (length(logccdf_grid),Nytgt))
-        invlogccdfs_emp = zeros(Float64, (length(logccdf_grid),Nytgt))
-        for (i_y,y) in enumerate(ytgts)
-            GPD = Dists.GeneralizedPareto(threshes[i_y],scales[i_y],shapes[i_y])
-            first_lev = findfirst(logccdf_grid .< log(ccdfs_at_thresh[i_y]))
-            invlogccdfs_GPD[first_lev:end,i_y] .= Dists.invlogccdf.(GPD, logccdf_grid[first_lev:end] .- log(ccdfs_at_thresh[i_y]))
-            for (i_logccdf,logccdf) in enumerate(logccdf_grid)
-                Nlev = length(levelss[i_y])
-                if ccdfss_emp[i_y][Nlev] > exp(logccdf)
-                    invlogccdfs_emp[i_logccdf,i_y] = NaN
-                else
-                    invlogccdfs_emp[i_logccdf,i_y] = levelss[i_y][findfirst(ccdfss_emp[i_y] .<= exp(logccdf))]
-                end
-            end
-        end
-        for (i_logccdf,logccdf) in enumerate(logccdf_grid)
-            lblargs = Dict(:color=>i_logccdf, :colorrange=>(1,length(logccdf_grid)), :colormap=>Reverse(:hawaii), :label=>@sprintf("%.1e",exp(logccdf)))
-            lines!(ax1, vec(invlogccdfs_emp[i_logccdf,:]), ytgts.*sdm.Ly; linestyle=:solid, lblargs...)
-            lines!(ax1, vec(invlogccdfs_GPD[i_logccdf,:]), ytgts.*sdm.Ly; linestyle=:dash, lblargs...)
-        end
-        scatterlines!(ax1, threshes, ytgts.*sdm.Ly; color=:black)
-        lines!(ax1, mssk[1,:,1], sdm.ygrid; color=:dodgerblue)
-        #ax0 = Axis(lout[1,0]; title=L"CCDF levels$$")
-        Legend(lout[1,0], ax1; merge=true, labelsize=8, framevisible=false, title=L"CCDF$$", titlevisible=true, nbanks=1)
-        scatterlines!(ax2, scales, ytgts.*sdm.Ly; color=:black)
-        lines!(ax2, mssk[1,:,2], sdm.ygrid; color=:dodgerblue, label=L"stdev$$")
-        scatterlines!(ax3, shapes, ytgts.*sdm.Ly; color=:black)
-        Label(lout[1,1:3,Top()], L"Mean %$(short_obj_label) over box size %$(rxystr)$$",valign=:bottom)
-        Label(lout[1,0,Top()], L"CCDF$$")
-
-        for ax = (ax1,ax2,ax3,ax3)
-            ylims!(ax, 0, sdm.Ly)
-        end
-        if target_field[1:4] == "conc"
-            xlims!(ax1, -0.05, 1.05)
-            vlines!(ax1, 0; color=:black, linestyle=:dash)
-            vlines!(ax1, 1; color=:black, linestyle=:dash)
-            xlims!(ax3, -0.5, 0.1)
-        end
-        vlines!(ax2,0; color=:black,linestyle=:dash)
-        vlines!(ax3,0; color=:black,linestyle=:dash)
-
-
-        save(joinpath(resultdir,"GPD_dns_latdep.png"),fig)
-
-    end
 
     if todo["plot_toast"] == 1
         iltmixs = Dict()
@@ -334,45 +251,98 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         end
     end
 
-    if todo["compare_tvs"] == 1
+    if 1 == todo["compile_fdivs"] 
         # Plot the TV achieved by (a) maximizing entropy, and (b) choosing a specific lead time, as a function of latitude. Do this with two vertically stacked plots
-        dst = "b"
-        rsp = "2"
+        dsts = ("b",)
+        rsps = ("2","e")
         i_boot = 1
 
         @show Nleadtime
 
-        tvs_lt = zeros(Float64, (Nytgt,Nleadtime,length(distn_scales[dst])))
-        tvs_ent = zeros(Float64, (Nytgt,length(distn_scales[dst])))
+        fdivs = Dict()
+        for dst = dsts
+            fdivs[dst] = Dict()
+            for rsp = rsps
+                fdivs[dst][rsp] = Dict()
+                for mc = ["pth","ent","lt","r2"]
+                    fdivs[dst][rsp][mc] = Dict()
+                    for fdivname = fdivnames
+                        fdivs[dst][rsp][mc][fdivname] = zeros(Float64, (Nytgt,Nboot+1,Nmcs[mc],Nscales[dst]))
+                    end
+                end
+            end
+        end
+        fdivs_ancgen_valid = Dict()
+        for fdivname = fdivnames
+            fdivs_ancgen_valid[fdivname] = zeros(Float64, (Nytgt,div(sdm.Nx,xstride_valid_dns)))
+        end
         for (i_ytgt,ytgt) in enumerate(ytgts)
             resultdir_y = joinpath(exptdirs_COAST[i_ytgt],"results")
-            tvs_lt[i_ytgt,:,:],tvs_ent[i_ytgt,:] = JLD2.jldopen(joinpath(resultdir_y,"ccdfs_regressed.jld2"),"r") do f
-                return (
-                        f["fdivs"][dst][rsp]["lt"]["tv"][i_boot,:,:],
-                        f["fdivs"][dst][rsp]["ent"]["tv"][i_boot,1,:],
-                       )
+            JLD2.jldopen(joinpath(resultdir_y,"ccdfs_regressed.jld2"),"r") do f
+                for dst = dsts
+                    for rsp = rsps
+                        for mc = ["pth","ent","lt","r2"]
+                            for fdivname = fdivnames
+                                fdivs[dst][rsp][mc][fdivname][i_ytgt,:,:,:] .= f["fdivs"][dst][rsp][mc][fdivname][:,:,:]
+                            end
+                        end
+                    end
+                end
+                for fdivname = fdivnames
+                    fdivs_ancgen_valid[fdivname][i_ytgt,:] .= f["fdivs_ancgen_valid"][fdivname]
+                end
             end
         end
 
-        xlims = [0, maximum(tvs_lt[1:end-1,:,:])]
-        for i_scl = 1:length(distn_scales[dst])
-            fig = Figure(size=(400,400))
-            lout = fig[1,1] = GridLayout()
-            rxystr = @sprintf("%.3f",cfgs[1].target_ryPerL*sdm.Ly)
-            ax = Axis(lout[1,1]; xlabel="TV", ylabel="Target lat.", title=L"$$Box size %$(rxystr), Scale %$(distn_scales[dst][i_scl])")
-            for (i_leadtime,leadtime) in enumerate(leadtimes)
-                scatterlines!(ax, tvs_lt[:,i_leadtime,i_scl], ytgts; color=i_leadtime, colormap=:managua, colorrange=(0,Nleadtime), label="-$(sdm.tu*leadtimes[i_leadtime])")
+        JLD2.jldopen(joinpath(resultdir,"fdivs.jld2"),"w") do f
+            f["fdivs"] = fdivs
+            f["fdivs_ancgen_valid"] = fdivs_ancgen_valid
+        end
+    else
+        fdivs,fdivs_ancgen_valid = JLD2.jldopen(joinpath(resultdir,"fdivs.jld2"),"r") do f
+            return f["fdivs"],f["fdivs_ancgen_valid"]
+        end
+    end
+
+    #IFT.@infiltrate
+
+    if 1 == todo["plot_fdivs"]
+
+        fdivlabels = Dict("tv"=>"TV","chi2"=>"χ²","kl"=>"KL")
+        for fdivname = fdivnames
+            fdivs_ancgen_valid_pt,fdivs_ancgen_valid_lo,fdivs_ancgen_valid_hi = let
+                fdav = fdivs_ancgen_valid[fdivname]
+                (SB.mean(fdav), (QG2L.quantile_sliced(fdav, q, 2)[:,1] for q=(0.05,0.95))...)
             end
-            scatterlines!(ax, tvs_ent[:,i_scl], ytgts; color=:red, linestyle=(:dot,:dense), linewidth=3, label="Max. Ent.")
-            xlims!(ax, xlims...)
-            lout[1,2] = Legend(fig, ax; framevisible=false, labelsize=15)
-            save(joinpath(resultdir,"comparison_tv_$(i_scl).png"), fig)
+            for dst = dsts
+                for rsp = rsps
+                    for i_scl = [1,8]
+                        for syncmc = ["lt","pth"]
+                            fig = Figure(size=(400,400))
+                            lout = fig[1,1] = GridLayout()
+                            ax = Axis(lout[1,1], xlabel=fdivlabels[fdivname], ylabel="(Target 𝑦)/L", title=label_target(target_r,sdm), titlefont=:regular, xscale=log10)
+                            lines!(ax, SB.mean(fdivs_ancgen_valid[fdivname][:,i_boot,:]; dims=2)[:,1], ytgts; color=:orange, linewidth=4, label="Short DNS\n(90% CI)")
+                            for fdav = (fdivs_ancgen_valid_lo,fdivs_ancgen_valid_hi)
+                                lines!(ax, fdav, ytgts; color=:orange, linewidth=2, linestyle=(:dot,:dense))
+                            end
+                            # Max-entropy
+                            lines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=:red, linewidth=2, label=mixobj_labels["ent"][1])
+                            for (i_mcobj,mcobj) in enumerate(mixobjs[syncmc])
+                                lines!(ax, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,i_mcobj,i_scl], ytgts; color=i_mcobj, colorrange=(0,Nmcs[syncmc]), colormap=:managua, label=@sprintf("%.2f", mcobj))
+                            end
+                            lout[1,2] = Legend(fig, ax, mixcrit_labels[syncmc]; titlefont=:regular, labelsize=8, nbanks=2)
+
+                            save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl)_sync$(syncmc).png"), fig)
+                        end
+                    end
+                end
+            end
         end
     end
 
 
 
-    if todo["plot_mixcrits_ydep"] == 1
+    if 1 == todo["plot_mixcrits_ydep"]
         i_scl = 1
         # for any criterion like ei or r2, we can stratify by that criterion andmeasure the other criteria (or measures of PDF agreement) conditionally 
         mixcrits_ancmean = Dict()
