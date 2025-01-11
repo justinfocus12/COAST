@@ -685,7 +685,7 @@ function expt_config_COAST_analysis(cfg,pertop)
                   ) # mixing-related objectives to maximize when choosing a leadtime. Each entry of each list represents a different objective 
     lt2str(lt) = @sprintf("%.2f", lt)
     mixcrit_labels = Dict(
-                         "lt"=>"-AST", 
+                         "lt"=>"AST", 
                          "r2"=>"𝑅²",
                          "pth"=>"𝑞ₙ(μ)",
                          "ei"=>"Exp. Imp.",

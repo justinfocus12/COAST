@@ -103,6 +103,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                             )
                  end
                 )
+
         end
         # ----------------- Latitude dependent quantiles -------------------
         colargs = Dict(:colormap=>Reverse(:roma), :colorrange=>(1,length(ccdf_levels)))
@@ -308,32 +309,41 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
 
     if 1 == todo["plot_fdivs"]
 
+        dsts = ("b",)
+        rsps = ("2","e")
+        i_boot = 1
+
         fdivlabels = Dict("tv"=>"TV","chi2"=>"χ²","kl"=>"KL")
         for fdivname = fdivnames
             fdivs_ancgen_valid_pt,fdivs_ancgen_valid_lo,fdivs_ancgen_valid_hi = let
                 fdav = fdivs_ancgen_valid[fdivname]
-                (SB.mean(fdav), (QG2L.quantile_sliced(fdav, q, 2)[:,1] for q=(0.05,0.95))...)
+                (SB.mean(fdav; dims=2)[:,1], (QG2L.quantile_sliced(fdav, q, 2)[:,1] for q=(0.05,0.95))...)
             end
             for dst = dsts
                 for rsp = rsps
                     for i_scl = [1,8]
-                        for syncmc = ["lt","pth"]
-                            fig = Figure(size=(400,400))
-                            lout = fig[1,1] = GridLayout()
-                            ax = Axis(lout[1,1], xlabel=fdivlabels[fdivname], ylabel="(Target 𝑦)/L", title=label_target(target_r,sdm), titlefont=:regular, xscale=log10)
-                            lines!(ax, SB.mean(fdivs_ancgen_valid[fdivname][:,i_boot,:]; dims=2)[:,1], ytgts; color=:orange, linewidth=4, label="Short DNS\n(90% CI)")
+                        scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
+                        fig = Figure(size=(500,1000))
+                        lout = fig[1,1] = GridLayout()
+                        axs = [Axis(lout[i_syncmc,1], xlabel=fdivlabels[fdivname], ylabel="(Target 𝑦)/L", title="$(label_target(target_r,sdm)), $(scalestr)", titlefont=:regular, xscale=log10) for i_syncmc=1:2]
+                        for (i_syncmc,syncmc) in enumerate(["lt","pth"])
+                            ax = axs[i_syncmc]
+                            for (i_mcobj,mcobj) in enumerate(mixobjs[syncmc])
+                                lines!(ax, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,i_mcobj,i_scl], ytgts; color=i_mcobj, colorrange=(0,Nmcs[syncmc]), colormap=:managua, label=@sprintf("%.2f", mcobj))
+                            end
+                            # Short simulation
+                            lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:orange, linewidth=4, label="Short DNS\n(90% CI)")
                             for fdav = (fdivs_ancgen_valid_lo,fdivs_ancgen_valid_hi)
                                 lines!(ax, fdav, ytgts; color=:orange, linewidth=2, linestyle=(:dot,:dense))
                             end
                             # Max-entropy
                             lines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=:red, linewidth=2, label=mixobj_labels["ent"][1])
-                            for (i_mcobj,mcobj) in enumerate(mixobjs[syncmc])
-                                lines!(ax, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,i_mcobj,i_scl], ytgts; color=i_mcobj, colorrange=(0,Nmcs[syncmc]), colormap=:managua, label=@sprintf("%.2f", mcobj))
-                            end
-                            lout[1,2] = Legend(fig, ax, mixcrit_labels[syncmc]; titlefont=:regular, labelsize=8, nbanks=2)
+                            lout[i_syncmc,2] = Legend(fig, ax, mixcrit_labels[syncmc]; titlefont=:regular, labelsize=8, nbanks=2)
 
-                            save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl)_sync$(syncmc).png"), fig)
                         end
+                        linkxaxes!(axs...)
+                        save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl).png"), fig)
+                        # TODO Do a parallel figure bit with leadtime and committor as the independent variables, fdiv as the dependent variable 9just a slice of the phdgms from the one-latitude cases)
                     end
                 end
             end

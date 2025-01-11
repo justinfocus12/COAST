@@ -17,7 +17,8 @@ function shortfmt(xrange::Float64)
 end
 
 function quantile_sliced(X::Array{Float64}, q::Float64, dims::Integer)
-    qslices = mapslices(x->SB.quantile(x, q), X; dims=dims)
+    nanquantile(x,q) = SB.quantile(filter(!isnan, x), q)
+    qslices = mapslices(x->nanquantile(x, q), X; dims=dims)
     return qslices
 end
 
