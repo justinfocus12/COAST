@@ -16,7 +16,7 @@ import KernelDensity
 import JLD2
 import QuasiMonteCarlo as QMC
 import Extremes as Ext
-import Infiltrator as IFT
+using Infiltrator: @infiltrate
 
 using CairoMakie
 

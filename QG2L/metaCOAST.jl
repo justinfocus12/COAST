@@ -3,12 +3,13 @@
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict(
-                "remove_pngs" =>                    0,
+                "remove_pngs" =>                    1,
                 "plot_ccdfs_latdep" =>              0,
+                "plot_pot_ccdfs_latdep" =>          1,
                 "print_simtimes" =>                 0,
                 "plot_mixcrits_ydep" =>             0,
-                "compile_fdivs" =>                  1,
-                "plot_fdivs" =>                     1,
+                "compile_fdivs" =>                  0,
+                "plot_fdivs" =>                     0,
                 "plot_toast" =>                     0,
                )
     php,sdm = QG2L.expt_config()
@@ -66,6 +67,8 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     # Collect sizes of everything
     Nanc = cfgs[1].num_init_conds_max
     Nleadtime = length(leadtimes)
+    Nlev = length(ccdf_levels)
+    Nlev_exc = Nlev - i_thresh_cquantile + 1
     Nmcs = Dict(mc=>length(mixobjs[mc]) for mc=keys(mixobjs))
     Nscales = Dict(dst=>length(distn_scales[dst]) for dst=dsts)
 
@@ -73,11 +76,101 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     mkpath(resultdir)
     if todo["remove_pngs"] == 1
         for filename = readdir(resultdir, join=true)
-            if endswith(filename,"png")
+            if endswith(filename,"png") && occursin("ccdfs_pot_coast", filename)
                 rm(filename)
             end
         end
     end
+
+    if 1 == todo["plot_pot_ccdfs_latdep"]
+        # Two panels: (1) compare valid to ancgen, (2) compare valid to coast 
+        ccdfs_pot_valid,ccdfs_pot_ancgen = (zeros(Float64, (Nytgt,Nlev_exc)) for _=1:3)
+        for (i_ytgt,ytgt) in enumerate(ytgts)
+            cfgstr = strrep_ConfigCOAST(cfgs[i_ytgt])
+            resultdir_COAST = joinpath(exptdirs_COAST[i_ytgt], "results")
+            JLD2.jldopen(joinpath(resultdir_COAST, "objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
+                ccdfs_pot_ancgen[i_ytgt,:] .= f["ccdf_pot_ancgen_seplon"][:,1]
+                ccdfs_pot_valid[i_ytgt,:] .= f["ccdf_pot_valid_agglon"]
+            end
+        end
+        potccdfmixs = Dict()
+        for dst = dsts
+            potccdfmixs[dst] = Dict()
+            for rsp = rsps
+                potccdfmixs[dst][rsp] = Dict()
+                for mc = ["pth","ent",]
+                    potccdfmixs[dst][rsp][mc] = zeros(Float64, (Nytgt,Nlev_exc,Nmcs[mc],Nscales[dst]))
+                end
+            end
+        end
+        i_boot = 1
+        for (i_ytgt,ytgt) in enumerate(ytgts)
+            resultdir_COAST = joinpath(exptdirs_COAST[i_ytgt], "results")
+            JLD2.jldopen(joinpath(resultdir_COAST, "ccdfs_regressed.jld2"),"r") do f
+                for dst = dsts
+                    for rsp = rsps
+                        for mc = ["ent","pth"]
+                            potccdfmixs[dst][rsp][mc][i_ytgt,1:Nlev_exc,1:Nmcs[mc],1:Nscales[dst]] .= f["ccdfmixs"][dst][rsp][mc][i_thresh_cquantile:end, i_boot, :, :]
+                        end
+                    end
+                end
+            end
+        end
+
+        for dst = ["b",]
+            for rsp = ["2","e"]
+                for mc = ["ent","pth"]
+                    i_mcobj = ("ent" == mc ? 1 : 13)
+                    for i_scl = [1,8]
+                        scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
+                        fig = Figure(size=(500,1000))
+                        lout = fig[1,1] = GridLayout()
+                        title_suffixes = ["Short DNS","$(mixcrit_labels[mc]) = $(mixobjs[mc][i_mcobj])"]
+                        axag,axcoast = [
+                                        Axis(lout[i,1], 
+                                             xlabel="Peak-adjusted log₂(exceedance probability)", ylabel="(Target 𝑦)/𝐿", title="$(label_target(target_r,sdm)), $(scalestr), $(title_suffixes[i])", 
+                                             titlefont=:regular, xgridvisible=false, ygridvisible=false,
+                                             xscale=log2, xticks=(ccdf_levels[i_thresh_cquantile:end], string.(-i_thresh_cquantile:-1:-Nlev))
+                                            )
+                                        for i=1:2
+                                       ]
+                        colargs = Dict(:colormap=>Reverse(:roma), :colorrange=>(i_thresh_cquantile,length(ccdf_levels)))
+
+                        for ax = (axag,axcoast)
+                            for i_lev = 1:Nlev_exc
+                                #lines!(ax, thresh_cquantile.*ccdfs_pot_valid[:,i_lev], ytgts; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=(:dash,:dense))
+                                vlines!(ax, ccdf_levels[i_thresh_cquantile+i_lev-1]; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=(:dash,:dense))
+                            end
+                        end
+                        epsilon = ccdf_levels[end]/2
+                        for i_lev = 1:Nlev_exc
+                            lines!(axag, 
+                                   max.(epsilon, 
+                                         ccdf_levels[i_thresh_cquantile+i_lev-1]
+                                         .*ccdfs_pot_ancgen[:,i_lev]
+                                         ./ccdfs_pot_valid[:,i_lev], 
+                                        ),
+                                    ytgts; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=:solid
+                                  )
+                            lines!(axcoast, 
+                                   max.(epsilon, 
+                                        ccdf_levels[i_thresh_cquantile+i_lev-1]
+                                        .*potccdfmixs[dst][rsp][mc][:,i_lev,i_mcobj,i_scl]
+                                        ./(thresh_cquantile.*ccdfs_pot_valid[:,i_lev])
+                                       ),
+                                   ytgts; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=:solid)
+                        end
+                        for ax = (axag,axcoast)
+                            xlims!(ax, epsilon/2, thresh_cquantile*1.01)
+                        end
+                        linkxaxes!(axag, axcoast)
+                        save(joinpath(resultdir,"ccdfs_pot_coast_$(dst)_$(rsp)_$(mc)_$(i_mcobj)_$(i_scl).png"), fig)
+                    end
+                end
+            end
+        end
+    end
+
 
 
     if 1 == todo["plot_ccdfs_latdep"]
@@ -85,24 +178,19 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         Rccdfs_valid = zeros(Float64, (length(ccdf_levels),Nytgt))
         Rmean_ancgen = zeros(Float64, Nytgt)
         Rmean_valid = zeros(Float64, Nytgt)
+
         (gpd_scale_valid,gpd_shape_valid,std_valid) = (zeros(Float64,Nytgt) for _=1:3)
 
         for (i_ytgt,ytgt) in enumerate(ytgts)
             cfgstr = strrep_ConfigCOAST(cfgs[i_ytgt])
             resultdir_COAST = joinpath(exptdirs_COAST[i_ytgt], "results")
-            (
-             Rccdfs_ancgen[:,i_ytgt],Rccdfs_valid[:,i_ytgt],
-             Rmean_ancgen[i_ytgt],Rmean_valid[i_ytgt],
-             gpd_scale_valid[i_ytgt],gpd_shape_valid[i_ytgt],std_valid[i_ytgt],
-            ) = (
-                 JLD2.jldopen(joinpath(resultdir_COAST, "objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
-                     return (
-                             f["Rccdf_ancgen_seplon"][:,1],f["Rccdf_valid_agglon"],
-                             SB.mean(f["Roft_ancgen_seplon"][:,1]),SB.mean(f["Roft_valid_seplon"]),
-                             f["gpdpar_valid_agglon"][1],f["gpdpar_valid_agglon"][2],f["std_valid_agglon"]
-                            )
-                 end
-                )
+            JLD2.jldopen(joinpath(resultdir_COAST, "objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
+                Rccdfs_ancgen[:,i_ytgt] .= f["Rccdf_ancgen_seplon"][:,1]
+                Rccdfs_valid[:,i_ytgt] .= f["Rccdf_valid_agglon"]
+                gpd_scale_valid[i_ytgt] = f["gpdpar_valid_agglon"][1]
+                gpd_shape_valid[i_ytgt] = f["gpdpar_valid_agglon"][2]
+                std_valid[i_ytgt] = f["std_valid_agglon"]
+            end
 
         end
         # ----------------- Latitude dependent quantiles -------------------
@@ -124,8 +212,8 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             lines!(ax, Rccdfs_valid[i_cl,:].-Rccdf_rough, ytgts; linewidth=2, linestyle=(:dash,:dense), color=i_cl, colargs..., label="Short DNS")
             lines!(ax, Rccdfs_ancgen[i_cl,:].-Rccdf_rough, ytgts; linewidth=1, linestyle=:solid, color=i_cl, colargs..., label="Long DNS")
         end
-        xmin = min(minimum(Rmean_valid .- Rccdf_rough), minimum(Rccdfs_valid.-Rccdf_rough')) - 0.02
-        xmax = max(maximum(Rmean_valid .- Rccdf_rough), maximum(Rccdfs_valid.-Rccdf_rough')) + 0.02
+        xmin = minimum(Rccdfs_valid.-Rccdf_rough') - 0.02
+        xmax = maximum(Rccdfs_valid.-Rccdf_rough') + 0.02
         xlims!(ax, xmin, xmax)
         ylims!(ax, 0.0, 1.0)
         lout[1,2] = Legend(fig, ax, "Exceedance probabilities\n(½)ᵏ, k ∈ {1,...,15}"; framevisible=false, titlefont=:regular, titlehalign=:left, merge=true, linecolor=:black)
@@ -306,6 +394,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     end
 
     #IFT.@infiltrate
+    #
 
     if 1 == todo["plot_fdivs"]
 
@@ -349,6 +438,8 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             end
         end
     end
+
+
 
 
 
