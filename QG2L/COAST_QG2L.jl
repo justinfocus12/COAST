@@ -35,7 +35,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     todo = Dict{String,Bool}(
                              "upgrade_ensemble" =>                               0,
                              "update_paths" =>                                   0,
-                             "plot_pertop" =>                                    0,
+                             "plot_pertop" =>                                    1,
                              "compute_dns_objective" =>                          1,
                              "plot_dns_objective_stats" =>                       1,
                              "anchor" =>                                         1,
@@ -108,8 +108,11 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     obj_fun_COAST_from_file,obj_fun_COAST_from_histories = obj_fun_COAST_registrar(cfg.target_field, sdm, cop, cfg.target_xPerL, cfg.target_rxPerL, cfg.target_yPerL, cfg.target_ryPerL)
     ensdir_COAST = joinpath(exptdir_COAST,"ensemble_data")
     ensfile_COAST = joinpath(ensdir_COAST,"ens.jld2")
+    ensfile_COAST_backup = joinpath(ensdir_COAST,"ens_backup.jld2")
     coastfile_COAST = joinpath(ensdir_COAST,"coast.jld2") 
+    coastfile_COAST_backup = joinpath(ensdir_COAST,"coast_backup.jld2") 
     rngfile_COAST = joinpath(ensdir_COAST,"rng.bin")
+    rngfile_COAST_backup = joinpath(ensdir_COAST,"rng_backup.bin")
     resultdir = joinpath(exptdir_COAST,"results")
     figdir = joinpath(exptdir_COAST,"figures")
     
@@ -138,11 +141,14 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         ens = EM.Ensemble()
         rng = Random.MersenneTwister(3718)
         coast = COASTState(pertop.pert_dim)
-        EM.save_Ensemble(ens, ensfile_COAST)
-        save_COASTState(coast, coastfile_COAST)
-        open(rngfile_COAST,"w") do f
+        EM.save_Ensemble(ens, ensfile_COAST_backup)
+        cp(ensfile_COAST_backup, ensfile_COAST, force=true)
+        save_COASTState(coast, coastfile_COAST_backup)
+        cp(coastfile_COAST_backup, coastfile_COAST, force=true)
+        open(rngfile_COAST_backup,"w") do f
             Serialization.serialize(f, rng)
         end
+        cp(rngfile_COAST_backup, rngfile_COAST, force=true)
     end
 
     ensfile_dns = joinpath(ensdir_dns, "ens.jld2")
@@ -368,12 +374,13 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
             push!(coast.ancestor_init_conds, init_cond_file)
             push!(coast.ancestor_init_cond_prehistories, prehistory_file)
             save_COASTState(coast, coastfile_COAST)
+            cp(ensfile_COAST, ensfile_COAST_backup, force=true)
+            cp(coastfile_COAST, coastfile_COAST_backup, force=true)
             new_peak_frontier_time = t_downcross
         end
         @show coast.dns_peaks
         @show coast.dns_peak_times
 
-        @infiltrate
 
         # Reset termination, in case the capacity has been expanded
         if coast.peak_times_upper_bounds[end] >= new_peak_backier_time
@@ -414,11 +421,14 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 i_anc = findfirst(coast.ancestors .== anc)
             end
             # Save the state for next round
-            EM.save_Ensemble(ens, ensfile_COAST)
-            open(rngfile_COAST,"w") do f
+            EM.save_Ensemble(ens, ensfile_COAST_backup)
+            cp(ensfile_COAST_backup, ensfile_COAST, force=true)
+            open(rngfile_COAST_backup,"w") do f
                 Serialization.serialize(f, rng)
             end
-            save_COASTState(coast, coastfile_COAST)
+            cp(rngfile_COAST_backup, rngfile_COAST, force=true)
+            save_COASTState(coast, coastfile_COAST_backup)
+            cp(coastfile_COAST_backup, coastfile_COAST, force=true)
             if mod(Nmem,100) == 0
                 GC.gc()
             end
@@ -1083,7 +1093,8 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [1,2,3]
     elseif "COAST" == all_procedures[i_proc]
-        idx_expt = vec([3,6][2:2] .+ [0,1][1:1]'.*11) #Vector{Int64}([6,9])
+        #idx_expt = vec([3,6][2:2] .+ [0,1][1:1]'.*11) #Vector{Int64}([6,9])
+        idx_expt = [7]
     end
 end
 
