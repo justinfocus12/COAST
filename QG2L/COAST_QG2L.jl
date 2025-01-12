@@ -32,28 +32,28 @@ include("./metaCOAST.jl")
 
 
 function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing, overwrite_expt_setup=false, overwrite_ensemble=false, old_path_part::String, new_path_part::String)
-    todo = Dict(
-                "upgrade_ensemble" =>                               0,
-                "update_paths" =>                                   0,
-                "plot_pertop" =>                                    0,
-                "compute_dns_objective" =>                          0,
-                "plot_dns_objective_stats" =>                       0,
-                "anchor" =>                                         0,
-                "sail" =>                                           0, 
-                "regress_lead_dependent_risk_polynomial" =>         0, 
-                "plot_objective" =>                                 0, 
-                "mix_COAST_distributions_polynomial" =>             1,
-                "plot_COAST_mixture" =>                             1,
-                "mixture_COAST_phase_diagram" =>                    1,
-                # Danger zone 
-                "remove_pngs" =>                                    0,
-                # vestigial or hibernating
-                "fit_dns_pot" =>                                    0, 
-                "plot_contour_divergence" =>                        0,
-                "plot_dispersion_metrics" =>                        0,
-                "quantify_dispersion" =>                            0,
-                "plot_risk_regression_polynomial" =>                0,
-               )
+    todo = Dict{String,Bool}(
+                             "upgrade_ensemble" =>                               0,
+                             "update_paths" =>                                   0,
+                             "plot_pertop" =>                                    0,
+                             "compute_dns_objective" =>                          0,
+                             "plot_dns_objective_stats" =>                       0,
+                             "anchor" =>                                         1,
+                             "sail" =>                                           1, 
+                             "regress_lead_dependent_risk_polynomial" =>         0, 
+                             "plot_objective" =>                                 0, 
+                             "mix_COAST_distributions_polynomial" =>             1,
+                             "plot_COAST_mixture" =>                             1,
+                             "mixture_COAST_phase_diagram" =>                    1,
+                             # Danger zone 
+                             "remove_pngs" =>                                    0,
+                             # vestigial or hibernating
+                             "fit_dns_pot" =>                                    0, 
+                             "plot_contour_divergence" =>                        0,
+                             "plot_dispersion_metrics" =>                        0,
+                             "quantify_dispersion" =>                            0,
+                             "plot_risk_regression_polynomial" =>                0,
+                            )
 
     println("expt_config: ")
     php,sdm = QG2L.expt_config()
@@ -120,7 +120,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     mkpath(resultdir)
     mkpath(figdir)
 
-    if 1 == todo["remove_pngs"]
+    if todo["remove_pngs"]
         for filename = readdir(figdir, join=true)
             if endswith(filename,"png") && (!startswith(filename,"GPD"))
                 rm(filename)
@@ -128,7 +128,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         end
     end
 
-    if 1 == todo["plot_pertop"]
+    if todo["plot_pertop"]
         QG2L.plot_PerturbationOperator(pertop, sdm, figdir)
     end
 
@@ -146,7 +146,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
     ensfile_dns = joinpath(ensdir_dns, "ens.jld2")
 
-    if todo["upgrade_ensemble"] == 1
+    if todo["upgrade_ensemble"]
         #upgrade_Ensemble!(ensfile_dns, ensfile_dns)
         upgrade_Ensemble!(ensfile_COAST, ensfile_COAST)
     end
@@ -169,7 +169,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     rng = Serialization.deserialize(rngfile_COAST)
 
 
-    if 1 == todo["compute_dns_objective"]
+    if todo["compute_dns_objective"]
         Nmem = EM.get_Nmem(ens_dns)
         # Collect a whole family of parameterized functions 
         Nxshifts = div(sdm.Nx, xstride_valid_dns)
@@ -256,7 +256,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
              end
             )
     end
-    if 1 == todo["plot_dns_objective_stats"]
+    if todo["plot_dns_objective_stats"]
         # TODO do some plotting and quantify the difference between ancgen and valid (train and test?) distributions 
         fig = Figure()
         lout = fig[1,1] = GridLayout()
@@ -335,7 +335,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
     #
     # ------------ Establish single threshold to be used by all downstream tasks ----------------
-    if todo["fit_dns_pot"] == 1
+    if todo["fit_dns_pot"]
         # Measure the objective function in DNS, augmenting with zonal symmetry, to be used downstream. This might replicate some effort from DNS. 
         # ------------------- DNS: fit a GP to threshold exceedances -------------
         duration_dns_pot = 40000.0
@@ -389,7 +389,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
     # -------------------------------------------------------------------------------------------
 
-    if todo["anchor"] == 1
+    if todo["anchor"]
         new_peak_frontier_time = round(Int, time_spinup_dns_ph/sdm.tu)
         if length(coast.ancestor_init_conds) > 0
             new_peak_frontier_time = coast.peak_times_upper_bounds[end]
@@ -419,6 +419,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         @show coast.dns_peaks
         @show coast.dns_peak_times
 
+        @infiltrate
+
         # Reset termination, in case the capacity has been expanded
         if length(coast.ancestors) < cfg.num_init_conds_max
             coast.terminate = false 
@@ -435,8 +437,10 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         end
     end
 
+    @infiltrate
 
-    if todo["sail"] == 1
+
+    if todo["sail"]
         # pre-allocate  
         # TODO if we extend this to multi-threading, must allocate separately per thread 
         tgrid = zeros(Int64, cfg.lead_time_max + cfg.follow_time)
@@ -465,6 +469,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
             end
         end
     end
+    @infiltrate
     adjust_scores!(coast, ens, cfg, sdm)
     Nmem = EM.get_Nmem(ens)
     Nanc = length(coast.ancestors)
@@ -478,7 +483,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     idx_anc_strat = intersect(1:Nanc, idx_anc_strat)
     # ---------------------------------------------------------------------------------
     #
-    if 1 == todo["regress_lead_dependent_risk_polynomial"]
+    if todo["regress_lead_dependent_risk_polynomial"]
         (
          coefs_linear,residmse_linear,rsquared_linear,resid_range_linear,
          coefs_quadratic,residmse_quadratic,rsquared_quadratic,resid_range_quadratic,
@@ -500,13 +505,13 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     end
         
 
-    if 1 == todo["plot_objective"]
+    if todo["plot_objective"]
         rxystr = @sprintf("%.3f",cfg.target_ryPerL*sdm.Ly)
         ytgtstr = @sprintf("%.2f",cfg.target_yPerL*sdm.Ly)
-        todosub = Dict(
-                       "plot_spaghetti" =>              1,
-                       "plot_response" =>               1,
-                      )
+        todosub = Dict{String,Bool}(
+                                    "plot_spaghetti" =>              1,
+                                    "plot_response" =>               1,
+                                   )
         @show idx_anc_strat
 
         regcoefs_filename = joinpath(resultdir,"regression_coefs.jld2")
@@ -524,13 +529,13 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         end
 
         Threads.@threads for i_anc = idx_anc_strat
-            if 1 == todosub["plot_spaghetti"]
+            if todosub["plot_spaghetti"]
                 plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thresh, figdir)
             end
 
 
             # ------------- Plot 3: perturbations in the complex plane, along with level sets of the linear and quadratic models. Also show R^2 ------------
-            if 1 == todosub["plot_response"]
+            if todosub["plot_response"]
                 plot_objective_response_linquad(
                     cfg, sdm, cop, pertop, ens, coast, i_anc, 
                     coefs_linear, residmse_linear, rsquared_linear,
@@ -544,18 +549,18 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
 
 
-    if todo["mix_COAST_distributions_polynomial"] == 1
+    if todo["mix_COAST_distributions_polynomial"]
         println("About to mix COAST distributions")
         mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir)
         println("Finished mixing")
     end
-    if 1 == todo["plot_COAST_mixture"]
+    if todo["plot_COAST_mixture"]
         println("Aabout to plot COAST mixtures")
-        todosub = Dict(
-                       "gains_topt" =>              0,
-                       "rainbow_pdfs" =>            1,
-                       "mixed_ccdfs" =>             1,
-                      )
+        todosub = Dict{String,Bool}(
+                                    "gains_topt" =>              0,
+                                    "rainbow_pdfs" =>            1,
+                                    "mixed_ccdfs" =>             1,
+                                   )
 
         ytgtstr = @sprintf("%.2f", cfg.target_yPerL*sdm.Ly)
         rxystr = @sprintf("%.3f", cfg.target_ryPerL*sdm.Ly)
@@ -610,7 +615,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 end
 
                 # --------------- Dependence between (lead time chosen by criteria) and (score) ---------
-                if 1 == todosub["gains_topt"]
+                if todosub["gains_topt"]
                     #Threads.@threads for i_scl = 1:Nscales
                     for i_scl = 1:Nscales
                         scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
@@ -656,7 +661,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
 
                 # ---------------- Single-ancestor plots ---------------
-                if 1 == todosub["rainbow_pdfs"]
+                if todosub["rainbow_pdfs"]
                     @assert all(isfinite.(pdfs[dst][rsp]))
                     mixcrits2plot = ["pth","r2","ent"]
                     rspstr = ("1" == rsp ? "linear" : "quadratic")
@@ -728,7 +733,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     end
                 end
                 # ----------------- Mixed-ancestor plots -----------------
-                if 1 == todosub["mixed_ccdfs"]
+                if todosub["mixed_ccdfs"]
                     boot_midlohi_pdf(p,avg=false) = begin
                         pmid = clippdf.((avg ? SB.mean(p; dims=2) : p)[:,1])
                         plo,phi = (clippdf.(QG2L.quantile_sliced(p, q, 2)[:,1]) for q=(0.05,0.95))
@@ -841,7 +846,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     end
 
 
-    if todo["plot_contour_divergence"] == 1
+    if todo["plot_contour_divergence"]
         todo_anim = Dict(
                          "eke1" =>         ("eke1" == cfg.target_field),
                          "sf2" =>          ("sf2" == cfg.target_field),
@@ -956,17 +961,17 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     end
 
 
-    if todo["mixture_COAST_phase_diagram"] == 1
+    if todo["mixture_COAST_phase_diagram"]
         # TODO upgrade
         ytgtstr = @sprintf("%.2f", cfg.target_yPerL*sdm.Ly)
         rxystr = @sprintf("%.3f", cfg.target_ryPerL*sdm.Ly)
         # ------------- Lead-time parameterized ---------------
         # heat map of TV as a function of lead time and scale
-        todosub = Dict(
-                       "mcmean_heatmap" =>             1,
-                       "fdiv_heatmap" =>               1,
-                       "phdgm_slices" =>               1,
-                      )
+        todosub = Dict{String,Bool}(
+                                    "mcmean_heatmap" =>             1,
+                                    "fdiv_heatmap" =>               1,
+                                    "phdgm_slices" =>               1,
+                                   )
         (
          leadtimes,r2threshes,dsts,rsps,mixobjs,
          mixcrit_labels,mixobj_labels,distn_scales,
@@ -987,7 +992,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     continue
                 end
                 # Plot the entropy as a 2D phase plot: both its mean and its variance (not just the proportion of time it's optimal)
-                if 1 == todosub["mcmean_heatmap"]
+                if todosub["mcmean_heatmap"]
                     lt_r2thresh_mean,lt_r2thresh_mean_lo,lt_r2thresh_mean_hi = let
                         ost = leadtimes[iltmixs[dst][rsp]["r2"][i_r2thresh,:,1]]
                         mid = sum(ost)/length(ost)
@@ -1018,7 +1023,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     # TODO heat map of leadtime as a function of probability
                 end
 
-                if 1 == todosub["fdiv_heatmap"]
+                if todosub["fdiv_heatmap"]
                     lt_r2thresh_mean = SB.mean(leadtimes[iltmixs[dst][rsp]["r2"][i_r2thresh,:,1]])
                     for (i_fdivname,fdivname) in enumerate(fdivs2plot)
                         # pth as the independent variable 
@@ -1055,7 +1060,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 end
                 # Compare entropy-optimizing advance split time with the one-size-fits-all advance split time 
                 # 3 curves to compare: (1) constant lead time across all scales, (2) maximum-average-entropy leadtime across all scales, (3) maximum-initial-condition-dependent-entropy leadtime
-                if 1 == todosub["phdgm_slices"]
+                if todosub["phdgm_slices"]
                     for (i_fdivname,fdivname) in enumerate(fdivs2plot)
                         fdiv_max_ent = fdivs[dst][rsp]["ent"][fdivname][i_boot,1,:]
                         fdiv_last_r2 = fdivs[dst][rsp]["r2"][fdivname][i_boot,1,:]
@@ -1110,7 +1115,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 
 # TODO augment META with composites, lead times displays etc
 
@@ -1123,7 +1128,7 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [1,2,3]
     elseif "COAST" == all_procedures[i_proc]
-        idx_expt = vec([6,9][2:2] .+ [0,1,2][2:2]'.*15) #Vector{Int64}([6,9])
+        idx_expt = vec([6,9][2:2] .+ [0,1,2][3:3]'.*15) #Vector{Int64}([6,9])
     end
 end
 

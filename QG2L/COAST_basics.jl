@@ -374,6 +374,8 @@ function prepare_init_cond_from_dns(
     Nmem = EM.get_Nmem(ens_dns)-1
     tphinits_dns = [ens_dns.trajs[mem].tphinit for mem=1:Nmem]
     @show tphinits_dns 
+    @infiltrate
+    mem_dns_
     mems_dns = collect(range(findfirst(round.(Int,tphinits_dns./sdm.tu) .>= tmin), Nmem, step=1))
     tgrid_dns = collect((ens_dns.trajs[mems_dns[1]-1].tfin+1):1:ens_dns.trajs[mems_dns[end]].tfin)
     @show mems_dns
@@ -713,7 +715,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     fdivnames = ("kl","chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    i_thresh_cquantile = 5
+    i_thresh_cquantile = 8
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000
