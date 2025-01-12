@@ -18,14 +18,14 @@ end
 function ConfigCOAST(
         tu,
         ;
-        lead_time_min_ph::Float64 = 4.0,
-        lead_time_max_ph::Float64 = 30.0,
+        lead_time_min_ph::Float64 = 2.0,
+        lead_time_max_ph::Float64 = 40.0,
         lead_time_inc_ph::Float64 = 2.0, 
         follow_time_ph::Float64 = 20.0,
         peak_prebuffer_time_ph::Float64 = 30.0,
         dtRmax_max_ph::Float64 = 4.0,
         num_init_conds_max::Int64 = 16,
-        num_perts_max_per_lead_time::Int64 = 12,
+        num_perts_max_per_lead_time::Int64 = 6,
         target_field::String = "conc1",
         target_xPerL::Float64 = 0.5,
         target_rxPerL::Float64 = 1/64,
@@ -366,26 +366,32 @@ function prepare_init_cond_from_dns(
         pertop::QG2L.PerturbationOperator, 
         init_cond_file::String,
         prehistory_file::String,
-        tmin::Int64, # 1 for the initial ancestor, 2 for the second, etc. 
+        tmin::Int64, # a strict lower bound on the first permissible time index to start searching 
+        tmax::Int64,
         thresh_hi::Float64,
         ;
         num_peaks_to_skip = 0
     )
-    Nmem = EM.get_Nmem(ens_dns)-1
+    Nmem = EM.get_Nmem(ens_dns)
     tphinits_dns = [ens_dns.trajs[mem].tphinit for mem=1:Nmem]
+    tinits_dns = round.(Int,tphinits_dns./sdm.tu) # These start BEFORE the timeseries of the corresponding member 
+    tfins_dns = [ens_dns.trajs[mem].tfin for mem=1:Nmem]
     @show tphinits_dns 
-    @infiltrate
-    mem_dns_
-    mems_dns = collect(range(findfirst(round.(Int,tphinits_dns./sdm.tu) .>= tmin), Nmem, step=1))
-    tgrid_dns = collect((ens_dns.trajs[mems_dns[1]-1].tfin+1):1:ens_dns.trajs[mems_dns[end]].tfin)
+    mem_dns_first = findfirst(tfins_dns .> tmin)
+    mem_dns_last = findlast(tinits_dns .< tmax)
+    if isnothing(mem_dns_first) || isnothing(mem_dns_last)
+        return nothing
+    end
+    front_clip = tmin - tinits_dns[mem_dns_first] 
+    back_clip = max(0, tfins_dns[mem_dns_last] - tmax)
+    
+    mems_dns = collect(range(mem_dns_first, mem_dns_last, step=1))
+    tgrid_dns = collect(tinits_dns[mem_dns_first]+1:1:tfins_dns[mem_dns_last])[front_clip+1:end-back_clip]
     @show mems_dns
     @show tgrid_dns[1:10]
-
-
-
     
     hist_filenames = [ens_dns.trajs[mem].history for mem=mems_dns]
-    obj_val_dns = reduce(vcat, QG2L.compute_observable_ensemble(hist_filenames, obj_fun_COAST))
+    obj_val_dns = reduce(vcat, QG2L.compute_observable_ensemble(hist_filenames, obj_fun_COAST))[front_clip+1:end-back_clip]
     # TODO include zonal symmetry for better estimate 
     pot = QG2L.peaks_over_threshold(obj_val_dns, thresh_hi, cfg.peak_prebuffer_time, cfg.follow_time, max(cfg.peak_prebuffer_time,cfg.lead_time_max))
     if isnothing(pot)
@@ -397,7 +403,10 @@ function prepare_init_cond_from_dns(
     it_downcross = downcross_tidx[num_peaks_to_skip+1]
     @show it_peak
     @show obj_val_dns[it_peak-2:it_peak+2]
-    @assert obj_val_dns[it_peak] >= max(obj_val_dns[it_peak-1],obj_val_dns[it_peak+1])
+    if !(obj_val_dns[it_peak] >= max(obj_val_dns[it_peak-1],obj_val_dns[it_peak+1]))
+        @infiltrate
+        error()
+    end
     
 
     init_time = tgrid_dns[it_peak] - cfg.lead_time_max - 1
@@ -643,8 +652,8 @@ end
 
 
 function paramsets()
-    target_yPerLs = collect(range(0, 1; length=17)[2:end-1]) #1/2 .+ [-1/4,-1/8,0,1/8,1/4][1:3]
-    target_rs = (1/16) .* sqrt.([0.5, 1.0, 2.0])
+    target_yPerLs = collect(range(0, 1; length=17)[4:14]) #1/2 .+ [-1/4,-1/8,0,1/8,1/4][1:3]
+    target_rs = (1/16) .* sqrt.([1.0, 4.0])
     return target_yPerLs, target_rs
 end
 
@@ -654,7 +663,7 @@ function expt_config_COAST(; i_expt=nothing)
     vbl_param_arrs = [target_yPerLs, target_rs]
     cartinds = CartesianIndices(tuple((length(arr) for arr in vbl_param_arrs)...))
     if isnothing(i_expt) || i_expt == 0
-        ci_expt = CartesianIndex(6,1)
+        ci_expt = CartesianIndex(4,1)
     else
         ci_expt = cartinds[i_expt]
     end

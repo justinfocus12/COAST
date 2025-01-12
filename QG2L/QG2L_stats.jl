@@ -129,6 +129,9 @@ function flag_running_max(x::Vector{Float64}, buffer::Int64)
 end
 
 function peaks_over_threshold(x::Vector{Float64}, thresh::Float64, prebuffer::Int64, postbuffer::Int64, initbuffer::Int64)
+    if prebuffer + postbuffer + initbuffer >= length(x)
+        return nothing
+    end
     xismop = flag_running_max(x, prebuffer) # x is maximum of past
     xismof = reverse(flag_running_max(reverse(x), postbuffer)) # x is maximum of future 
     xispeak = zeros(Bool,length(x))

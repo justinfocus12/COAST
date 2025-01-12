@@ -36,12 +36,12 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                              "upgrade_ensemble" =>                               0,
                              "update_paths" =>                                   0,
                              "plot_pertop" =>                                    0,
-                             "compute_dns_objective" =>                          0,
-                             "plot_dns_objective_stats" =>                       0,
+                             "compute_dns_objective" =>                          1,
+                             "plot_dns_objective_stats" =>                       1,
                              "anchor" =>                                         1,
                              "sail" =>                                           1, 
-                             "regress_lead_dependent_risk_polynomial" =>         0, 
-                             "plot_objective" =>                                 0, 
+                             "regress_lead_dependent_risk_polynomial" =>         1, 
+                             "plot_objective" =>                                 1, 
                              "mix_COAST_distributions_polynomial" =>             1,
                              "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    1,
@@ -59,6 +59,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     php,sdm = QG2L.expt_config()
     println("done")
     println("cop_pertop:")
+    mkpath(expt_supdir)
     cop_pertop_file = joinpath(expt_supdir,"cop_pertop.jld2")
     if isfile(cop_pertop_file)
         println("Loading...")
@@ -333,54 +334,6 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     end
 
 
-    #
-    # ------------ Establish single threshold to be used by all downstream tasks ----------------
-    if todo["fit_dns_pot"]
-        # Measure the objective function in DNS, augmenting with zonal symmetry, to be used downstream. This might replicate some effort from DNS. 
-        # ------------------- DNS: fit a GP to threshold exceedances -------------
-        duration_dns_pot = 40000.0
-        duration_dns = round(Int, duration_dns_pot/sdm.tu)
-        ens_dns = EM.load_Ensemble(ensfile_dns)
-        Nmem_dns = EM.get_Nmem(ens_dns)
-        tphinits_dns = [ens_dns.trajs[mem].tphinit for mem=1:Nmem_dns]
-        @show Nmem_dns, tphinits_dns
-        tfins = [ens_dns.trajs[mem].tfin for mem=1:Nmem_dns]
-        memfirst = findfirst(tphinits_dns .> time_spinup_dns_ph)
-        tfin_requested = round(Int, (time_spinup_dns_ph + duration_dns)/sdm.tu)
-        memlast = Nmem_dns
-        if tfins[memlast] > tfin_requested
-            memlast = findfirst(tfins .>= tfin_requested)
-        end
-        @show memfirst,memlast
-        mems_dns = collect(range(memfirst, memlast, step=1))
-        tgrid_dns = collect((ens_dns.trajs[mems_dns[1]-1].tfin+1):1:ens_dns.trajs[mems_dns[end]].tfin)
-        hist_filenames = [ens_dns.trajs[mem].history for mem=mems_dns]
-        xstride = div(sdm.Nx, 8)
-        Nxshifts = div(sdm.Nx, xstride)
-        GPD_dns_results = (
-             QG2L.compute_local_GPD_params_zonsym_multiple_fits(hist_filenames, obj_fun_COAST_xshiftable, cfg.peak_prebuffer_time, cfg.follow_time, cfg.lead_time_max, Nxshifts, xstride, figdir, obj_label)
-            )
-        JLD2.jldopen(joinpath(resultdir,"GPD_dns.jld2"), "w") do f
-            keys = split(
-                         "ccdf_at_thresh,thresh,scale,shape,"*
-                         "peak_vals,peak_tidx,upcross_tidx,downcross_tidx,"*
-                         "levels,ccdfs_emp,ccdf_GPD_xall"
-                         ,","
-                         )
-            for (i_key,key) in enumerate(keys)
-                f[key] = GPD_dns_results[i_key]
-            end
-        end
-    end
-
-
-    if false
-        thresh,scale,shape,levels_dns_emp,ccdfs_dns_emp = JLD2.jldopen(joinpath(resultdir,"GPD_dns.jld2"),"r") do f
-            return f["thresh"],f["scale"],f["shape"],f["levels"],f["ccdfs_emp"]
-        end
-        pdfs_dns_emp = -diff(ccdfs_dns_emp; dims=1) ./ diff(levels_dns_emp)
-        levels_mid_dns_emp = 0.5*(levels_dns_emp[1:end-1] .+ levels_dns_emp[2:end])
-    end
 
     # --------------- THE KING OF THRESHES -----------
     thresh = Rccdf_valid_agglon[i_thresh_cquantile] 
@@ -391,15 +344,16 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
 
     if todo["anchor"]
         new_peak_frontier_time = round(Int, time_spinup_dns_ph/sdm.tu)
+        new_peak_backier_time = new_peak_frontier_time + round(Int, time_ancgen_dns_ph/sdm.tu)
         if length(coast.ancestor_init_conds) > 0
             new_peak_frontier_time = coast.peak_times_upper_bounds[end]
         end
-        while length(coast.ancestor_init_conds) < cfg.num_init_conds_max
+        while (new_peak_frontier_time < new_peak_backier_time) && (length(coast.ancestor_init_conds) < cfg.num_init_conds_max)
             i_anc = length(coast.ancestor_init_conds) + 1
             println("Preparing initial condition for i_anc $(i_anc)")
             init_cond_file = joinpath(init_cond_dir,"init_cond_anc$(i_anc).jld2")
             prehistory_file = joinpath(init_cond_dir,"init_cond_prehistory_anc$(i_anc).jld2")
-            init_prep = prepare_init_cond_from_dns(ens_dns, obj_fun_COAST_from_file, cfg, sdm, cop, php, pertop, init_cond_file, prehistory_file, new_peak_frontier_time, thresh; num_peaks_to_skip=0)
+            init_prep = prepare_init_cond_from_dns(ens_dns, obj_fun_COAST_from_file, cfg, sdm, cop, php, pertop, init_cond_file, prehistory_file, new_peak_frontier_time, new_peak_backier_time, thresh; num_peaks_to_skip=0)
             if isnothing(init_prep)
                 println("WARNING ran out of peaks to boost")
                 cfg.num_init_conds_max = i_anc-1
@@ -422,7 +376,9 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         @infiltrate
 
         # Reset termination, in case the capacity has been expanded
-        if length(coast.ancestors) < cfg.num_init_conds_max
+        if coast.peak_times_upper_bounds[end] >= new_peak_backier_time
+            coast.terminate = true
+        elseif length(coast.ancestors) < cfg.num_init_conds_max
             coast.terminate = false 
         else
             coast.terminate = true
@@ -437,7 +393,6 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         end
     end
 
-    @infiltrate
 
 
     if todo["sail"]
@@ -1128,7 +1083,7 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [1,2,3]
     elseif "COAST" == all_procedures[i_proc]
-        idx_expt = vec([6,9][2:2] .+ [0,1,2][3:3]'.*15) #Vector{Int64}([6,9])
+        idx_expt = vec([3,6][2:2] .+ [0,1][1:1]'.*11) #Vector{Int64}([6,9])
     end
 end
 
@@ -1138,7 +1093,7 @@ sdmstr = QG2L.strrep_SpaceDomain(sdm)
 computer = "engaging"
 if computer == "engaging"
     expt_supdir_dns = "/orcd/archive/pog/001/ju26596/COAST/QG2L/2024-12-29/0/$(phpstr)_$(sdmstr)"
-    expt_supdir_COAST = "/orcd/archive/pog/001/ju26596/COAST/QG2L/2024-12-29/2/$(phpstr)_$(sdmstr)"
+    expt_supdir_COAST = "/orcd/archive/pog/001/ju26596/COAST/QG2L/2024-12-29/3/$(phpstr)_$(sdmstr)"
 else
     expt_supdir_dns = "/Users/justinfinkel/Documents/postdoc_mit/computing/tracer_extremes_resuls/2024-10-22/0/$(phpstr)_$(sdmstr)"
     expt_supdir_COAST = "/Users/justinfinkel/Documents/postdoc_mit/computing/tracer_extremes_resuls/2024-10-22/0/$(phpstr)_$(sdmstr)"

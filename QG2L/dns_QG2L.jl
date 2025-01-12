@@ -70,20 +70,20 @@ end
 
 function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_setup=false, overwrite_ensemble=false)
     todo = Dict(
-                "integrate" =>                      0,
+                "integrate" =>                      1,
                 "compute_moments" =>                0,
                 "plot_moment_map" =>                0,
                 "compute_rough_quantiles" =>        0,
                 "compute_global_histograms" =>      0,
                 "compute_extrema" =>                0,
-                "plot_energy" =>                    0,
+                "plot_energy" =>                    1,
                 "compute_local_GPD_params" =>       0,
                 "plot_GPD_param_map" =>             0,
                 "plot_hovmoller" =>                 1, 
-                "animate" =>                        0,
+                "animate" =>                        1,
                )
     php,sdm = QG2L.expt_config(i_expt=i_expt)
-    cfg = ConfigDNS(; duration_spinup_ph=500.0, duration_spinon_ph=1000.0, num_chunks_max=26)
+    cfg = ConfigDNS(; duration_spinup_ph=500.0, duration_spinon_ph=1000.0, num_chunks_max=28)
 
     # ------------------ Set up save-out place --------------
     phpstr = QG2L.strrep_PhysicalParams(php)
