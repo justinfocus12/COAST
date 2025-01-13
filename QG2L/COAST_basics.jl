@@ -25,7 +25,7 @@ function ConfigCOAST(
         peak_prebuffer_time_ph::Float64 = 30.0,
         dtRmax_max_ph::Float64 = 4.0,
         num_init_conds_max::Int64 = 16,
-        num_perts_max_per_lead_time::Int64 = 6,
+        num_perts_max_per_lead_time::Int64 = 12,
         target_field::String = "conc1",
         target_xPerL::Float64 = 0.5,
         target_rxPerL::Float64 = 1/64,
@@ -724,7 +724,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     fdivnames = ("kl","chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    i_thresh_cquantile = 8
+    i_thresh_cquantile = 5
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000

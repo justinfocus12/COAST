@@ -4,7 +4,7 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
     t0str = @sprintf("%.0f", t0ph)
     ytgtstr = @sprintf("%.2f", cfg.target_yPerL*sdm.Ly)
     rxystr = @sprintf("%.3f", cfg.target_ryPerL*sdm.Ly)
-    Rmin = minimum([minimum(coast.anc_Roft[i_anc]) for i_anc=1:length(coast.ancestors)]) #cfg.num_init_conds_max])
+    Rmin = minimum([minimum(coast.anc_Roft[i_anc]) for i_anc=1:length(coast.ancestors)]) 
     obj_label,short_obj_label = label_objective(cfg)
 
     # ------- Plot 0: ancestor only --------
@@ -83,6 +83,7 @@ function plot_objective_response_linquad(
     color_quad = :sienna1
     Nleadtime = length(leadtimes)
     Nleadtimes2plot = 4
+    Nanc = length(coast.ancestors)
     println("Gonna show phases and responses now")
     anc = coast.ancestors[i_anc]
     descendants = Graphs.outneighbors(ens.famtree, anc)
@@ -92,7 +93,7 @@ function plot_objective_response_linquad(
     t0str = @sprintf("%.0f", t0ph)
     ytgtstr = @sprintf("%.2f", cfg.target_yPerL*sdm.Ly)
     rxystr = @sprintf("%.3f", cfg.target_ryPerL*sdm.Ly)
-    Rmin = minimum([minimum(coast.anc_Roft[i_anc]) for i_anc=1:cfg.num_init_conds_max])
+    Rmin = minimum([minimum(coast.anc_Roft[i_anc]) for i_anc=1:Nanc])
     obj_label,short_obj_label = label_objective(cfg)
 
     fig = Figure(size=(100*Nleadtimes2plot,125*(2+0.5)))

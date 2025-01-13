@@ -228,10 +228,6 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         end
                     end
                     # optimize each mixing objective across lead times 
-                    # Lead time itself (this loop is just pedantic) 
-                    for i_leadtime = 1:Nleadtime
-                        iltmixs[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = i_leadtime
-                    end
                     # R-squared
                     for (i_r2thresh,r2thresh) in enumerate(r2threshes)
                         first_inceedance = findfirst(mixcrits[dst][rsp]["r2"][:,i_anc,i_scl] .< r2thresh)
@@ -239,13 +235,17 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         # TODO investigate whether last exceedance is better
                         iltmixs[dst][rsp]["r2"][i_r2thresh,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
                     end
+                    ilt_r2 = iltmixs[dst][rsp]["r2"][1,i_anc,i_scl]
+                    # Lead time itself (this loop is just pedantic) 
+                    for i_leadtime = 1:Nleadtime
+                        iltmixs[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = min(i_leadtime, ilt_r2)
+                    end
                     for (i_pth,pth) in enumerate(mixobjs["pth"])
-                        # TODO maybe take some kind of weighted average 
                         first_inceedance = findfirst(mixcrits[dst][rsp]["pth"][:,i_anc,i_scl] .< pth)
-                        last_exceedance = findlast(mixcrits[dst][rsp]["pth"][:,i_anc,i_scl] .>= pth)
+                        last_exceedance = findlast(mixcrits[dst][rsp]["pth"][1:ilt_r2,i_anc,i_scl] .>= pth)
                         #IFT.@infiltrate ("b" == dst) && ("2" == rsp) && (i_scl >= 3) 
                         # TODO investigate whether last exceedance is better
-                        #iltmixs[dst][rsp]["pth"][i_pth,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
+                        #iltmixs[dst][rsp]["pth"][i_pth,i_anc,i_scl] = (isnothing(first_inceedance) ? ilt_r2 : max(1, first_inceedance-1))
                         iltmixs[dst][rsp]["pth"][i_pth,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
                     end
 

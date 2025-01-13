@@ -35,11 +35,11 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     todo = Dict{String,Bool}(
                              "upgrade_ensemble" =>                               0,
                              "update_paths" =>                                   0,
-                             "plot_pertop" =>                                    1,
-                             "compute_dns_objective" =>                          1,
-                             "plot_dns_objective_stats" =>                       1,
-                             "anchor" =>                                         1,
-                             "sail" =>                                           1, 
+                             "plot_pertop" =>                                    0,
+                             "compute_dns_objective" =>                          0,
+                             "plot_dns_objective_stats" =>                       0,
+                             "anchor" =>                                         0,
+                             "sail" =>                                           0, 
                              "regress_lead_dependent_risk_polynomial" =>         1, 
                              "plot_objective" =>                                 1, 
                              "mix_COAST_distributions_polynomial" =>             1,
@@ -735,7 +735,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     pdf_gpd = thresh_cquantile.*clippdf.(Dists.pdf.(GPD, levels_exc_mid))
                     ccdf_gpd = thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc))
 
-                    for i_scl = [1,round(Int,length(distn_scales[dst])/2)]
+                    for i_scl = [1,round(Int,1/2*length(distn_scales[dst])),round(Int,3/4*length(distn_scales[dst]))]
                         for (fdivname,fdivlabel) = (("kl","KL"),("chi2","χ²"),("tv","TV"))
                             scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
 
@@ -1091,10 +1091,10 @@ if length(ARGS) > 0
     end
 else
     if "metaCOAST" == all_procedures[i_proc]
-        idx_expt = [1,2,3]
+        idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
         #idx_expt = vec([3,6][2:2] .+ [0,1][1:1]'.*11) #Vector{Int64}([6,9])
-        idx_expt = [7]
+        idx_expt = [15]
     end
 end
 

@@ -4,12 +4,12 @@
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
                              "remove_pngs" =>                    0,
-                             "plot_ccdfs_latdep" =>              0,
-                             "plot_pot_ccdfs_latdep" =>          0,
+                             "plot_ccdfs_latdep" =>              1,
+                             "plot_pot_ccdfs_latdep" =>          1,
                              "print_simtimes" =>                 0,
                              "plot_mixcrits_ydep" =>             1,
-                             "compile_fdivs" =>                  0,
-                             "plot_fdivs" =>                     0,
+                             "compile_fdivs" =>                  1,
+                             "plot_fdivs" =>                     1,
                              "plot_toast" =>                     0,
                             )
     php,sdm = QG2L.expt_config()
@@ -65,7 +65,6 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     println("Collected the cfgs")
     obj_label,short_obj_label = label_objective(cfgs[1])
     # Collect sizes of everything
-    Nanc = cfgs[1].num_init_conds_max
     Nleadtime = length(leadtimes)
     Nlev = length(ccdf_levels)
     Nlev_exc = Nlev - i_thresh_cquantile + 1
@@ -160,6 +159,9 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
 
         colgap!(lout, 1, 0.0)
         colgap!(lout, 2, 0.0)
+        for ax = (axstd,axscale,axshape)
+            ylims!(ax, 0.0, 1.0)
+        end
         save(joinpath(resultdir,"gpdpars_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
     end
 
@@ -202,7 +204,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             for rsp = ["2","e"]
                 for mc = ["ent","pth"]
                     i_mcobj = ("ent" == mc ? 1 : 13)
-                    for i_scl = [1,8]
+                    for i_scl = [1,8,11]
                         scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
                         fig = Figure(size=(500,1000))
                         lout = fig[1,1] = GridLayout()
@@ -276,71 +278,6 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     @show keys(mixobjs)
     
 
-    if todo["plot_toast"]
-        iltmixs = Dict()
-        for dst = dsts
-            iltmixs[dst] = Dict()
-            for rsp = rsps
-                iltmixs[dst][rsp] = Dict()
-                for mc = keys(mixobjs)
-                    iltmixs[dst][rsp][mc] = zeros(Int64, (Nytgt,length(mixobjs[mc]),Nanc,length(distn_scales[dst])))
-                end
-            end
-        end
-        for (i_y,y) in enumerate(ytgts)
-            resultdir_y = joinpath(exptdirs_COAST[i_y],"results")
-            iltmixs_y = JLD2.jldopen(joinpath(resultdir_y,"ccdfs_regressed.jld2"),"r") do f
-                return f["iltmixs"]
-            end
-            for dst = dsts
-                for rsp = rsps
-                    if ("g" == dst) && ("2" == rsp)
-                        continue
-                    end
-                    for mc = keys(mixobjs)
-                        iltmixs[dst][rsp][mc][i_y,:,:,:] .= iltmixs_y[dst][rsp][mc]
-                    end
-                end
-            end
-        end
-        for dst = ["b"]
-            for rsp = ["2"]
-                if ("g" == dst) && (rsp in ["1+u","2","2+u"])
-                    continue
-                end
-                for mc = ["ent"] #keys(mixobjs)
-                    i_mixobj = 1
-                    for i_scl = 1:length(distn_scales[dst])
-                        ost_counts = zeros(Int64, (Nleadtime,Nytgt))
-                        ilts = iltmixs[dst][rsp][mc][:,i_mixobj,:,i_scl]
-                        fig = Figure(size=(300,300))
-                        lout = fig[1,1] = GridLayout()
-                        ax = Axis(lout[1,1]; xlabel=L"$t_{\mathrm{pert}}$", ylabel=L"$$Target lat.", title=L"$t_{\mathrm{pert}}$ PMF, Box size %$(rxystr), Scale$=$%$(distn_scales[dst][i_scl])", ylabelsize=12, xlabelsize=12, xticklabelsize=9, yticklabelsize=9, xticklabelrotation=pi/2, titlesize=9)
-                        for (i_y,ytgt) in enumerate(ytgts)
-                            for i_anc = 1:Nanc
-                                ost_counts[ilts[i_y,i_anc],i_y] += 1
-                            end
-                        end
-                        hm = heatmap!(ax, -sdm.tu.*leadtimes, ytgts, ost_counts./sum(ost_counts; dims=1); colormap=:Reds)
-                        #cbar = Colorbar(lout[1,2], hm; vertical=true, labelsiz=6)
-                        (ost_mode,ost_mean,ost_mean_lo,ost_mean_hi,ost_q1,ost_q3) = (zeros(Float64,(Nytgt,)) for _=1:6)
-                        for i_y = 1:Nytgt
-                            ost_mean[i_y] = sum(leadtimes .* ost_counts[:,i_y]) / sum(ost_counts[:,i_y])
-                            ost_mean_lo[i_y] = sum(leadtimes .* (leadtimes .< ost_mean[i_y]) .* ost_counts[:,i_y]) / sum((leadtimes .< ost_mean[i_y]) .* ost_counts[:,i_y])
-                            ost_mean_hi[i_y] = sum(leadtimes .* (leadtimes .> ost_mean[i_y]) .* ost_counts[:,i_y]) / sum((leadtimes .> ost_mean[i_y]) .* ost_counts[:,i_y])
-                            ost_mode[i_y] = leadtimes[argmax(ost_counts[:,i_y])]
-                        end
-                        lines!(ax, -sdm.tu.*(ost_mean), ytgts; color=:black, linestyle=:solid, label=L"$$Mean")
-                        lines!(ax, -sdm.tu.*(ost_mean_lo), ytgts; color=:black, linestyle=(:dot,:dense),label=L"$$Trunc. mean")
-                        lines!(ax, -sdm.tu.*(ost_mean_hi), ytgts; color=:black, linestyle=(:dot,:dense))
-                        lines!(ax, -sdm.tu.*(ost_mode), ytgts; color=:cyan, linestyle=:solid, label=L"$$Mode")
-                        axislegend(ax; labelsize=7, position=:lt)
-                        save(joinpath(resultdir,"toast_$(dst)_$(rsp)_$(mc)_$(i_scl).png"), fig)
-                    end
-                end
-            end
-        end
-    end
 
     if todo["compile_fdivs"] 
         # Plot the TV achieved by (a) maximizing entropy, and (b) choosing a specific lead time, as a function of latitude. Do this with two vertically stacked plots
@@ -412,7 +349,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             end
             for dst = dsts
                 for rsp = rsps
-                    for i_scl = [1,8]
+                    for i_scl = [1,8,11]
                         scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
                         fig = Figure(size=(500,1000))
                         lout = fig[1,1] = GridLayout()
@@ -448,186 +385,45 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     if todo["plot_mixcrits_ydep"]
         dst = "b"
         rsp = "2"
+        i_boot = 1
         # Time and threshprob
         colorrange = (0,1)
-        i_scl = 8
-        i_boot = 1
-        (pth_of_ast,kl_of_ast) = (zeros(Float64, (Nleadtime,Nytgt)) for _=1:2)
-        (ast_of_pth,kl_of_pth) = (zeros(Float64, (Nmcs["pth"],Nytgt)) for _=1:2)
-        for (i_ytgt,ytgt) in enumerate(ytgts)
-            JLD2.jldopen(joinpath(exptdirs_COAST[i_ytgt],"results","ccdfs_regressed.jld2"),"r") do f
-                @infiltrate size(f["mixcrits"][dst][rsp]["pth"],2) < cfgs[i_ytgt].num_init_conds_max
-                pth_of_ast[:,i_ytgt] .= SB.mean(f["mixcrits"][dst][rsp]["pth"][1:Nleadtime,1:Nanc,i_scl]; dims=2)[:,1]
-                kl_of_ast[:,i_ytgt] .= (f["fdivs"][dst][rsp]["lt"]["kl"][i_boot,1:Nleadtime,i_scl])
-                ilts = f["iltmixs"][dst][rsp]["pth"][1:Nmcs["pth"],1:Nanc,i_scl]
-                ast_of_pth[:,i_ytgt] .= sdm.tu.*SB.mean(leadtimes[ilts]; dims=2)[:,1]
-                kl_of_pth[:,i_ytgt] .= (f["fdivs"][dst][rsp]["pth"]["kl"][i_boot,1:Nmcs["pth"],i_scl])
-            end
-        end
-        kl_of_ast .= (kl_of_ast .- minimum(kl_of_ast; dims=1))./(maximum(kl_of_ast; dims=1) .- minimum(kl_of_ast; dims=1))
-        kl_of_pth .= (kl_of_pth .- minimum(kl_of_pth; dims=1))./(maximum(kl_of_pth; dims=1) .- minimum(kl_of_pth; dims=1))
-        fig = Figure(size=(400,300))
-        lout = fig[1,1] = GridLayout()
-        axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6)
-        cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6)
-        ax1 = Axis(lout[1,1]; xlabel="−AST", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
-        ax2 = Axis(lout[1,2]; xlabel="𝑞(μ)", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
-        leadtime_bounds = tuple((-sdm.tu .* [1.5*leadtimes[end]-0.5*leadtimes[end-1], 1.5*leadtimes[1]-0.5*leadtimes[2]])...)
-        hm1 = heatmap!(ax1, leadtime_bounds, (0,1), kl_of_ast; colormap=:managua, )
-        co1 = contour!(ax1, -leadtimes.*sdm.tu, ytgts, pth_of_ast; color=:black, labels=false)
-        cbar1 = Colorbar(lout[0,1], hm1; vertical=false, label="Normalized KL [synchron]", cbarargs...)
-        hm2 = heatmap!(ax2, (0,1), (0,1), kl_of_pth; colormap=:managua) 
-        co2 = contour!(ax2, mixobjs["pth"], ytgts, ast_of_pth; color=:black, labels=false)
-        cbar1 = Colorbar(lout[0,2], hm2; vertical=false, label="Normalized KL [synprob]", cbarargs...)
-        save(joinpath(resultdir,"phdgm_pth_ast_$(dst)_$(rsp)_$(i_scl).png"), fig)
-
-    end
-    if false
-        mixcrits_ancmean = Dict()
-        fdivs = Dict()
-
-        for dst = dsts
-            mixcrits_ancmean[dst] = Dict()
-            fdivs[dst] = Dict()
-            gpdpars[dst] = Dict()
-            for rsp = rsps
-                mixcrits_ancmean[dst][rsp] = Dict()
-                fdivs[dst][rsp] = Dict()
-                gpdpars[dst][rsp] = Dict()
-                for mc = keys(mixobjs)
-                    mixcrits_ancmean[dst][rsp][mc] = zeros(Float64, (length(mixobjs[mc]), Nytgt))
-                    fdivs[dst][rsp][mc] = Dict()
-                    gpdpars[dst][rsp][mc] = Dict(key=>zeros(Float64, (Nboot+1,length(mixobjs[mc]),Nytgt)) for key=("scale","shape"))
-                    for fdivname = fdivnames
-                        fdivs[dst][rsp][mc][fdivname] = zeros(Float64, (Nboot+1,length(mixobjs[mc]), Nytgt))
-                    end
+        for i_scl = [1,8,11]
+            (pth_of_ast,kl_of_ast) = (zeros(Float64, (Nleadtime,Nytgt)) for _=1:2)
+            (ast_of_pth,kl_of_pth) = (zeros(Float64, (Nmcs["pth"],Nytgt)) for _=1:2)
+            for (i_ytgt,ytgt) in enumerate(ytgts)
+                JLD2.jldopen(joinpath(exptdirs_COAST[i_ytgt],"results","ccdfs_regressed.jld2"),"r") do f
+                    Nancy = size(f["mixcrits"][dst][rsp]["pth"],2)
+                    #@infiltrate Nancy < cfgs[i_ytgt].num_init_conds_max
+                    pth_of_ast[:,i_ytgt] .= SB.mean(f["mixcrits"][dst][rsp]["pth"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
+                    kl_of_ast[:,i_ytgt] .= (f["fdivs"][dst][rsp]["lt"]["kl"][i_boot,1:Nleadtime,i_scl])
+                    ilts = f["iltmixs"][dst][rsp]["pth"][1:Nmcs["pth"],1:Nancy,i_scl]
+                    ast_of_pth[:,i_ytgt] .= sdm.tu.*SB.mean(leadtimes[ilts]; dims=2)[:,1]
+                    kl_of_pth[:,i_ytgt] .= (f["fdivs"][dst][rsp]["pth"]["kl"][i_boot,1:Nmcs["pth"],i_scl])
                 end
             end
-        end
-        for (i_y,y) in enumerate(ytgts)
-            resultdir_y = joinpath(exptdirs_COAST[i_y],"results")
-            mixcrits_y, mixobjs_y, iltmixs_y, fdivs_y, fdivs_ancs_y, gpdpar_y, gpdpar_ancs_y = JLD2.jldopen(joinpath(resultdir_y,"ccdfs_regressed.jld2"),"r") do f
-                return (f["mixcrits"],f["mixobjs"],f["iltmixs"],f["fdivs"],f["fdivs_ancs"],f["gpdpar"],f["gpdpar_ancs"])
-            end
-            @show keys(gpdpar_ancs_y)
-            gpdpars_ancs["scale"][:,i_y] .= gpdpar_ancs_y["scale_gpd"]
-            gpdpars_ancs["shape"][:,i_y] .= gpdpar_ancs_y["shape_gpd"]
-            (
-             gpd_threshes[i_y],gpdpars_dns["scale"][i_y],gpdpars_dns["shape"][i_y]
-            ) = (
-                 JLD2.jldopen(joinpath(resultdir_y,"GPD_dns.jld2"),"r") do f
-                     return (f["thresh"],f["scale"],f["shape"])
-                 end
-                )
-            for fdivname = fdivnames
-                fdivs_ancs[fdivname][:,i_y] .= fdivs_ancs_y[fdivname]
-            end
-            i_scl = 1
-            for dst = dsts
-                for rsp = rsps
-                    if (dst == "g") && (rsp == "2")
-                        continue
-                    end
-                    for mc = keys(mixobjs)
-                        for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
-                            if any(iltmixs_y[dst][rsp][mc] .== 0)
-                                error()
-                            end
-                            mixcrits_ancmean[dst][rsp][mc][i_mcobj,i_y] = SB.mean(mixcrits_y[dst][rsp][mc][iltmixs_y[dst][rsp][mc][i_mcobj,:,i_scl]])
-                            for fdivname = fdivnames
-                                lhs = fdivs[dst][rsp][mc][fdivname][:,i_mcobj,i_y]
-                                rhs = fdivs_y[dst][rsp][mc][fdivname][:,i_mcobj,i_scl]
-                                if !(size(lhs) == size(rhs))
-                                    @show size(lhs)
-                                    @show size(rhs)
-                                    @show i_y,dst,rsp,mc,i_mcobj,fdivname
-                                    error()
-                                end
-                                fdivs[dst][rsp][mc][fdivname][:,i_mcobj,i_y] .= fdivs_y[dst][rsp][mc][fdivname][:,i_mcobj,i_scl]
-                            end
-                            for gpdparname = ("scale","shape")
-                                gpdpars[dst][rsp][mc][gpdparname][:,i_mcobj,i_y] .= gpdpar_y[dst][rsp][mc][gpdparname][:,i_mcobj,i_scl]
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        # Plot the GPD parameters
-        for dst = dsts
-            for rsp = rsps
-                for mc = keys(mixobjs)
-                    fig = Figure(size=(600,300))
-                    lout = fig[1,1] = GridLayout()
-                    ax1 = Axis(lout[1,1], xlabel=L"$\sigma$", ylabel=L"$y$")
-                    lines!(ax1, gpdpars_dns["scale"], ytgts; color=:black, linestyle=(:dot,:dense))
-                    ax2 = Axis(lout[1,2], xlabel=L"$\xi$", ylabel=L"$y$")
-                    lines!(ax2, gpdpars_dns["shape"], ytgts; color=:black, linestyle=(:dot,:dense))
-                    for i_mcobj = 1:length(mixobjs[mc])
-                        colargs = Dict(:color=>i_mcobj,:colormap=>(length(mixobjs[mc]) > 1 ? :managua : :coolwarm),:colorrange=>(0,length(mixobjs[mc])))
-                        scale_pt = gpdpars[dst][rsp][mc]["scale"][1,i_mcobj,:]
-                        scale_lo = vec(mapslices(m->SB.quantile(m,0.05), gpdpars[dst][rsp][mc]["scale"][2:end,i_mcobj,:]; dims=1))
-                        scale_hi = vec(mapslices(m->SB.quantile(m,0.95), gpdpars[dst][rsp][mc]["scale"][2:end,i_mcobj,:]; dims=1))
-                        lines!(ax1,scale_pt,ytgts; colargs..., linewidth=1.5)
-                        lines!(ax1,scale_lo,ytgts; colargs..., linewidth=0.5)
-                        lines!(ax1,scale_hi,ytgts; colargs..., linewidth=0.5)
-                        shape_pt = gpdpars[dst][rsp][mc]["shape"][1,i_mcobj,:]
-                        shape_lo = vec(mapslices(m->SB.quantile(m,0.05), gpdpars[dst][rsp][mc]["shape"][2:end,i_mcobj,:]; dims=1))
-                        shape_hi = vec(mapslices(m->SB.quantile(m,0.95), gpdpars[dst][rsp][mc]["shape"][2:end,i_mcobj,:]; dims=1))
-                        lines!(ax2,shape_pt,ytgts; colargs..., linewidth=1.5)
-                        lines!(ax2,shape_lo,ytgts; colargs..., linewidth=0.5)
-                        lines!(ax2,shape_hi,ytgts; colargs..., linewidth=0.5)
-                    end
-                    lines!(ax1,gpdpars_ancs["scale"][1,:],ytgts,color=:dodgerblue,linewidth=1.5)
-                    scale_pt = gpdpars_ancs["scale"][1,:]
-                    scale_lo = vec(mapslices(m->SB.quantile(m,0.05),gpdpars_ancs["scale"][2:end,:]; dims=1))
-                    scale_hi = vec(mapslices(m->SB.quantile(m,0.95),gpdpars_ancs["scale"][2:end,:]; dims=1))
-                    lines!(ax1,scale_pt,ytgts,color=:dodgerblue,linewidth=1.5)
-                    lines!(ax1,scale_lo,ytgts,color=:dodgerblue,linewidth=0.5)
-                    lines!(ax1,scale_hi,ytgts,color=:dodgerblue,linewidth=0.5)
-                    shape_pt = gpdpars_ancs["shape"][1,:]
-                    shape_lo = vec(mapslices(m->SB.quantile(m,0.05),gpdpars_ancs["shape"][2:end,:]; dims=1))
-                    shape_hi = vec(mapslices(m->SB.quantile(m,0.95),gpdpars_ancs["shape"][2:end,:]; dims=1))
-                    lines!(ax2,shape_pt,ytgts,color=:dodgerblue,linewidth=1.5)
-                    lines!(ax2,shape_lo,ytgts,color=:dodgerblue,linewidth=0.5)
-                    lines!(ax2,shape_hi,ytgts,color=:dodgerblue,linewidth=0.5)
-                    save(joinpath(resultdir,"gpd_$(dst)_$(rsp)_$(mc).png"),fig)
-                end
-            end
-        end
-
-
-        # Plot the F-divergences according to various criteria 
-        fdivlabels = Dict("chi2"=>L"$\chi^2$", "kl"=>L"KL$$", "tv"=>L"TV$$")
-        for dst = dsts
-            for rsp = rsps
-                for mc = keys(mixobjs)
-                    mc_multiplier = (mc == "lt" ? -sdm.tu : 1)
-                    for fdivname = fdivnames
-                        if length(mixobjs[mc]) > 1
-                            fig = Figure(size=(300,400))
-                            lout = fig[1,1:2] = GridLayout()
-                            ax = Axis(lout[1,1]; xlabel=mixcrit_labels[mc], ylabel="Target latitude", title=L"Mean %$(fdivlabels[fdivname]) grouped by %$(mixcrit_labels[mc])$$")
-                            hm = heatmap!(ax, mc_multiplier.*mixobjs[mc], ytgts, fdivs[dst][rsp][mc][fdivname][1,:,:]; colormap=:managua)
-                            cbar = Colorbar(lout[1,2], hm, vertical=true)
-                            ax = Axis(lout[1,2]; xlabel=fdivlabels[fdivname], ylabelvisible=false, yticklabelsvisible=false)
-                            save(joinpath(resultdir, "mixfidelity_$(mc)_$(dst)_$(rsp)_$(fdivname)_heatmap.png"), fig)
-                        end
-                        fig = Figure(size=(400,300))
-                        lout = fig[1,1] = GridLayout()
-                        ax = Axis(lout[1,1]; xlabel=fdivlabels[fdivname], ylabel="Target latitude", xscale=log10, xticklabelrotation=pi/2)
-                        for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
-                            label = mixobj_labels[mc][i_mcobj]
-                            lines!(ax, fdivs[dst][rsp][mc][fdivname][1,i_mcobj,:], ytgts; color=i_mcobj, colorrange=(0,length(mixobjs[mc])), colormap=(length(mixobjs[mc])>1 ? :managua : :coolwarm), label=label, alpha=0.5)
-                        end
-                        lines!(ax, fdivs_ancs[fdivname][1,:], ytgts; color=:black, linewidth=1.5, linestyle=(:dash,:dense), label="KDE")
-                        xlims!(ax, extrema(filter(F->((F>0)&(isfinite(F))), vcat(vec(fdivs[dst][rsp][mc][fdivname][1,:,:]),fdivs_ancs[fdivname][1,:])))...)
-                        lout[1,2] = Legend(fig, ax; framevisible=false, labelsize=6, title=mixobj_labels[mc])
-                        colsize!(lout, 1, Relative(8/10))
-                        save(joinpath(resultdir, "mixfidelity_$(mc)_$(dst)_$(rsp)_$(fdivname)_lines.png"), fig)
-                    end
-                end
-            end
+            #kl_of_ast .= (kl_of_ast .- minimum(kl_of_ast; dims=1))./(maximum(kl_of_ast; dims=1) .- minimum(kl_of_ast; dims=1))
+            #kl_of_pth .= (kl_of_pth .- minimum(kl_of_pth; dims=1))./(maximum(kl_of_pth; dims=1) .- minimum(kl_of_pth; dims=1))
+            fig = Figure(size=(400,300))
+            lout = fig[1,1] = GridLayout()
+            axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6)
+            cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :valign=>:bottom)
+            colorrange = (min(minimum(kl_of_ast),minimum(kl_of_pth)), max(maximum(kl_of_ast),maximum(kl_of_pth)))
+            ax1 = Axis(lout[2,1]; xlabel="−AST", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
+            ax2 = Axis(lout[2,2]; xlabel="𝑞(μ)", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
+            threshcquantstr = @sprintf("%.2E",thresh_cquantile)
+            toplabel = "$(label_target(target_r, sdm)), scale $(distn_scales[dst][i_scl]), threshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))=$(threshcquantstr)"
+            Label(lout[1,1:2,Top()], toplabel, padding=(0.0,0.0,12.0,0.0), valign=:bottom, halign=:center, fontsize=8, font=:regular)
+            leadtime_bounds = tuple((-sdm.tu .* [1.5*leadtimes[end]-0.5*leadtimes[end-1], 1.5*leadtimes[1]-0.5*leadtimes[2]])...)
+            hm1 = heatmap!(ax1, leadtime_bounds, (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(kl_of_ast; dims=1); colormap=:managua, colorrange=colorrange)
+            co1 = contour!(ax1, -leadtimes.*sdm.tu, ytgts, reverse(pth_of_ast; dims=1); color=:black, labels=false)
+            cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label="KL [synchron]", cbarargs...)
+            hm2 = heatmap!(ax2, (0,1), (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(kl_of_pth; dims=1); colormap=:managua, colorrange=colorrange) 
+            co2 = contour!(ax2, mixobjs["pth"], ytgts, reverse(ast_of_pth; dims=1); color=:black, labels=false)
+            cbar1 = Colorbar(lout[1,2], hm2; vertical=false, label="KL [synprob]", cbarargs...)
+            #rowsize!(lout, 0, Relative(1/8))
+            rowsize!(lout, 1, Relative(1/6))
+            save(joinpath(resultdir,"phdgm_pth_ast_$(dst)_$(rsp)_$(i_scl).png"), fig)
         end
     end
 end
