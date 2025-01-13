@@ -38,8 +38,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                              "plot_pertop" =>                                    0,
                              "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
-                             "anchor" =>                                         0,
-                             "sail" =>                                           0, 
+                             "anchor" =>                                         1,
+                             "sail" =>                                           1, 
                              "regress_lead_dependent_risk_polynomial" =>         1, 
                              "plot_objective" =>                                 1, 
                              "mix_COAST_distributions_polynomial" =>             1,
@@ -1094,7 +1094,7 @@ else
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
         #idx_expt = vec([3,6][2:2] .+ [0,1][1:1]'.*11) #Vector{Int64}([6,9])
-        idx_expt = [15]
+        idx_expt = [5]
     end
 end
 
