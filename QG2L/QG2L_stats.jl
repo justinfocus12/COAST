@@ -980,14 +980,19 @@ function pdf2pmfnorm(pdf, edges)
     return pmf
 end
 
+function check_ccdf_validity(ccdf::Vector{Float64})
+    return (minimum(ccdf) >= 0) & (maximum(diff(ccdf)) .<= 0)
+end
+
+
 function ccdf2pmf(ccdf)
-    @assert (minimum(ccdf) >= 0) & (maximum(diff(ccdf)) .<= 0)
+    @assert check_ccdf_validity(ccdf)
     pmf = vcat(-diff(ccdf), [ccdf[end]]) ./ ccdf[1]
     return pmf
 end
 
 
-function fdiv_fun_ccdf(ccdf1, ccdf2, fdivname)
+function fdiv_fun_ccdf(ccdf1, ccdf2, levels1, levels2, fdivname)
     pmf1 = ccdf2pmf(ccdf1)
     pmf2 = ccdf2pmf(ccdf2)
     if fdivname == "chi2"
@@ -996,6 +1001,8 @@ function fdiv_fun_ccdf(ccdf1, ccdf2, fdivname)
         return kldiv_fun(pmf1,pmf2)
     elseif fdivname == "tv"
         return tvdist_fun(pmf1,pmf2)
+    elseif fdivname == "qrmse"
+        return quantile_rmse_from_unnormalized(ccdf1, ccdf2, levels1, levels2)
     else
         error("Only supported F-divergences are chi2,kl,tv")
     end
@@ -1036,7 +1043,13 @@ function kldiv_fun(pmf1, pmf2)
         error()
     end
     idx = findall((pmf1 .>= 0) .& (pmf2 .> 0))
-    kl = sum(xlogx.(pmf1[idx]) .- pmf1[idx] .* log.(pmf2[idx]))
+    # HACK replace with relative error
+    hacky = true
+    if hacky
+        kl = sum(abs.(pmf1[idx] .- pmf2[idx])./pmf2[idx])
+    else
+        kl = sum(xlogx.(pmf1[idx]) .- pmf1[idx] .* log.(pmf2[idx]))
+    end
     if kl < 0
         @show pmf1,sum(pmf1)
         @show pmf2,sum(pmf2)
@@ -1052,7 +1065,94 @@ function entropy_fun_ccdf(ccdf)
     pmf = ccdf2pmf(ccdf)
     return -sum(xlogx.(pmf))
 end
+
+function quantile_rmse_from_unnormalized(ccdf1, ccdf2, levels1, levels2)
+    N = 50
+    either_is_zero = false
+    logccdfmin = Inf
+    if ccdf1[1] == 0
+        either_is_zero = true
+    else
+        N1 = findlast(ccdf1 .> 0)
+        logccdf1 = log.(ccdf1[1:N1])
+        logccdf1 .-= logccdf1[1]
+        logccdfmin = min(logccdfmin, logccdf1[end])
+    end
+    if ccdf2[1] == 0
+        either_is_zero = true
+    else
+        N2 = findlast(ccdf2 .> 0)
+        logccdf2 = log.(ccdf2[1:N2])
+        logccdf2 .-= logccdf2[1]
+        logccdfmin = min(logccdfmin, logccdf2[end])
+    end
+    dlogccdf = -logccdfmin/(N-2)
+    logccdf = collect(range(0, logccdfmin-dlogccdf; length=N))
+    if ccdf1[1] == 0
+        levels1_interp = levels1[1] .* ones(Float64, N)
+    else
+        levels1_interp = interpolate_logccdf_to_grid(levels1[1:N1], logccdf1, logccdf)
+    end
+    if ccdf2[1] == 0
+        levels2_interp = levels2[1] .* ones(Float64, N)
+    else
+        levels2_interp = interpolate_logccdf_to_grid(levels2[1:N2], logccdf2, logccdf)
+    end
+    return sum((levels1_interp .- levels2_interp).^2) / N
+end
+
+
+
+function interpolate_logccdf_to_grid(levels_src, logccdf_src, logccdf_dst)
+    Ndst = length(logccdf_dst)
+    Nsrc = length(logccdf_src)
+    @assert 0 == logccdf_src[1] == logccdf_dst[1]
+    @assert (Nsrc == 1) || (minimum(diff(levels_src)) > 0)
+    @assert maximum(diff(logccdf_dst)) < 0
+    @assert logccdf_dst[end] < logccdf_src[end]
+    levels_dst = zeros(Float64, Ndst)
+    levels_dst[1] = levels_src[1]
+    i_dst_prev = 1
+    i_dst_next = 2
+    i_src_prev = 1 # keep track of this in case we need to skp one 
+    for i_src = 2:Nsrc
+        if (i_src < Nsrc) && (logccdf_src[i_src] == logccdf_src[i_src+1])
+            continue
+        end
+        if (i_src == Nsrc) && (logccdf_src[i_src] == logccdf_src[i_src-1])
+            continue
+        end
+        i_dst_next = i_dst_prev + findfirst(logccdf_src[i_src] .> logccdf_dst[i_dst_prev+1:Ndst]) - 1
+        # account for multiple values at same ccdf value
+        
+        dlev_dlogccdf = (levels_src[i_src] - levels_src[i_src_prev]) / (logccdf_src[i_src] - logccdf_src[i_src_prev])
+        @infiltrate dlev_dlogccdf > 0
+        @assert dlev_dlogccdf <= 0
+        levels_dst[i_dst_prev+1:i_dst_next] .= levels_src[i_src_prev] .+ (dlev_dlogccdf) .* (logccdf_dst[i_dst_prev+1:i_dst_next] .- logccdf_src[i_src_prev])
+        @infiltrate levels_dst[i_dst_next] > levels_src[Nsrc]
+        @assert levels_dst[i_dst_next] <= levels_src[Nsrc]
+        i_dst_prev = i_dst_next
+        i_src_prev = i_src
+    end
+    levels_dst[i_dst_next+1:Ndst] .= levels_src[Nsrc]
+    return levels_dst
+end
+
+function test_interpolate_logccdf_to_grid()
+    levels_src = [9,9.5,10.25,10.75,11.1,11.2,11.8]
+    logccdf_src = [0,-1.5,-2.25,-2.75,-3.5,-3.8,-5.5]
+    logccdf_dst = collect(range(0,-7;step=-1))
+    levels_dst = interpolate_logccdf_to_grid(levels_src,logccdf_src,logccdf_dst)
+    return levels_dst
+end
+
+
    
+
+
+
+
+
 
 
 

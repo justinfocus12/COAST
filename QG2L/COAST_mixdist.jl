@@ -235,13 +235,12 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         # TODO investigate whether last exceedance is better
                         iltmixs[dst][rsp]["r2"][i_r2thresh,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
                     end
-                    ilt_r2 = iltmixs[dst][rsp]["r2"][1,i_anc,i_scl]
-                    # Lead time itself (this loop is just pedantic) 
+                    ilt_r2 = ("e" == rsp ? Nleadtime : iltmixs[dst][rsp]["r2"][1,i_anc,i_scl])
                     for i_leadtime = 1:Nleadtime
                         iltmixs[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = min(i_leadtime, ilt_r2)
                     end
                     for (i_pth,pth) in enumerate(mixobjs["pth"])
-                        first_inceedance = findfirst(mixcrits[dst][rsp]["pth"][:,i_anc,i_scl] .< pth)
+                        first_inceedance = findfirst(mixcrits[dst][rsp]["pth"][1:ilt_r2,i_anc,i_scl] .< pth)
                         last_exceedance = findlast(mixcrits[dst][rsp]["pth"][1:ilt_r2,i_anc,i_scl] .>= pth)
                         #IFT.@infiltrate ("b" == dst) && ("2" == rsp) && (i_scl >= 3) 
                         # TODO investigate whether last exceedance is better
@@ -297,7 +296,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         for i_boot = 1:Nboot+1
                             for fdivname = fdivnames
                                 # TODO get the right baseline for subasymptotic POt
-                                fdivs[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][i_thresh_cquantile:end,i_boot,i_mcobj,i_scl], ccdf_pot_valid_agglon, fdivname)
+                                fdivs[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][i_thresh_cquantile:end,i_boot,i_mcobj,i_scl], ccdf_pot_valid_agglon, levels_exc, levels_exc, fdivname)
                             end
                         end
                     end
@@ -308,7 +307,8 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
     end
     fdivs_ancgen_valid = Dict()
     for fdivname = fdivnames
-        fdivs_ancgen_valid[fdivname] = mapslices(ccdf->QG2L.fdiv_fun_ccdf(ccdf, ccdf_pot_valid_agglon, fdivname), ccdf_pot_ancgen_seplon; dims=1)[1,:]
+        fdivs_ancgen_valid[fdivname] = mapslices(ccdf->QG2L.fdiv_fun_ccdf(ccdf, ccdf_pot_valid_agglon, levels[i_thresh_cquantile:end], levels[i_thresh_cquantile:end], fdivname), ccdf_pot_ancgen_seplon; dims=1)[1,:]
+        #@infiltrate any(isnan.(fdivs_ancgen_valid[fdivname]))
     end
 
     JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed.jld2"),"w") do f

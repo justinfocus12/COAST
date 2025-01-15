@@ -12,7 +12,7 @@ import Random
 import JLD2
 import QuasiMonteCarlo as QMC
 using CairoMakie
-import Infiltrator as IFT
+using Infiltrator: @infiltrate
 
 #
 include("./QG2L_typedefs.jl")

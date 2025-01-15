@@ -317,8 +317,8 @@ function plot_snapshots(tgrid::Vector{Int64}, fheat::Array{Float64,4},fcont::Arr
         hidespines!(ax)
     end
     for iz = 1:2
-        xlims!(axes[iz], (0,sdm.Lx))
-        ylims!(axes[iz], (0,sdm.Ly))
+        xlims!(axes[iz], (0,1)) #sdm.Lx))
+        ylims!(axes[iz], (0,1)) #sdm.Ly))
     end
     fcont_max_glob = vec(maximum(abs.(fcont[:,:,:,:]), dims=[1,2,4]))
     fheat_max_glob = vec(maximum(abs.(fheat[:,:,:,:]), dims=[1,2,4]))
@@ -345,7 +345,7 @@ function plot_snapshots(tgrid::Vector{Int64}, fheat::Array{Float64,4},fcont::Arr
             tstr = @sprintf("%.2f", t_snap*sdm.tu)
             ax.title = "$(titles[iz]), 𝑡 = $(tstr)"
             ax.titlefont = :regular
-            img = image!(ax, (0,sdm.Lx), (0,sdm.Ly), fheat[:,:,iz,i_snap], colormap=colormap, colorrange=(-fheat_max[iz]*(!fheat_posdef),fheat_max[iz]*(!fheat_negdef)),)
+            img = image!(ax, (0,1), (0,1), fheat[:,:,iz,i_snap], colormap=colormap, colorrange=(-fheat_max[iz]*(!fheat_posdef),fheat_max[iz]*(!fheat_negdef)),)
             push!(objs, (ax,img))
             ## colorbar 
             cbar = Colorbar(lout[iz,2], img, vertical=true)
@@ -353,9 +353,9 @@ function plot_snapshots(tgrid::Vector{Int64}, fheat::Array{Float64,4},fcont::Arr
             ## contours
             levneg = collect(range(-fcont_max[iz], 0, length=8)[1:end-1])
             levpos = collect(range(0, fcont_max[iz], length=8)[2:end])
-            contneg = contour!(ax, sdm.xgrid, sdm.ygrid, fcont[:,:,iz,i_snap],levels=levneg,color=:black,linestyle=:dash)
+            contneg = contour!(ax, sdm.xgrid./sdm.Lx, sdm.ygrid./sdm.Ly, fcont[:,:,iz,i_snap],levels=levneg,color=:black,linestyle=:dash)
             push!(objs, (ax,contneg))
-            contpos = contour!(ax, sdm.xgrid, sdm.ygrid, fcont[:,:,iz,i_snap],levels=levpos,color=:black)
+            contpos = contour!(ax, sdm.xgrid./sdm.Lx, sdm.ygrid./sdm.Ly, fcont[:,:,iz,i_snap],levels=levpos,color=:black)
             push!(objs, (ax,contpos))
         end
         save("$(outfile_prefix)_$(i_snap).png", fig)

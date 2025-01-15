@@ -23,7 +23,7 @@ function ConfigCOAST(
         lead_time_inc_ph::Float64 = 2.0, 
         follow_time_ph::Float64 = 20.0,
         peak_prebuffer_time_ph::Float64 = 30.0,
-        dtRmax_max_ph::Float64 = 4.0,
+        dtRmax_max_ph::Float64 = 40.0,
         num_init_conds_max::Int64 = 16,
         num_perts_max_per_lead_time::Int64 = 12,
         target_field::String = "conc1",
@@ -675,7 +675,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     Nleadtime = length(leadtimes)
     
 
-    r2threshes = [0.8] #[0.8,0.7,0.6,0.5]
+    r2threshes = [0.7] #[0.8,0.7,0.6,0.5]
     pths = collect(range(1.0, 0.0; length=26)) 
     Nr2th = length(r2threshes)
 
@@ -692,7 +692,7 @@ function expt_config_COAST_analysis(cfg,pertop)
                    "went"=>["max"],
                    "ent"=>["max"],
                    "max"=>["max"],
-                   "pi"=>["max"],
+                   "pi"=>["max"], # TODO make this another way to parameterize time 
                   ) # mixing-related objectives to maximize when choosing a leadtime. Each entry of each list represents a different objective 
     lt2str(lt) = @sprintf("%.2f", lt)
     mixcrit_labels = Dict(
@@ -721,10 +721,10 @@ function expt_config_COAST_analysis(cfg,pertop)
                         "u" => Rmin .+ (Rmax-Rmin).*[0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0],
                         "g" => Rmin .+ (Rmax-Rmin).*[0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0],
                        )
-    fdivnames = ("kl","chi2","tv")
+    fdivnames = ("qrmse","kl","chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    i_thresh_cquantile = 8
+    i_thresh_cquantile = 5
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000

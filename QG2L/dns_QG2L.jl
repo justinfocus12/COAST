@@ -6,6 +6,7 @@ import .EnsembleMod as EM
 
 import Printf
 using Printf: @sprintf
+using Infiltrator: @infiltrate
 import Random
 import StatsBase as SB
 import Distributions as Dists
@@ -70,17 +71,17 @@ end
 
 function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_setup=false, overwrite_ensemble=false)
     todo = Dict(
-                "integrate" =>                      1,
+                "integrate" =>                      0,
                 "compute_moments" =>                0,
                 "plot_moment_map" =>                0,
                 "compute_rough_quantiles" =>        0,
                 "compute_global_histograms" =>      0,
                 "compute_extrema" =>                0,
-                "plot_energy" =>                    1,
+                "plot_energy" =>                    0,
                 "compute_local_GPD_params" =>       0,
                 "plot_GPD_param_map" =>             0,
                 "plot_hovmoller" =>                 1, 
-                "animate" =>                        1,
+                "animate" =>                        0,
                )
     php,sdm = QG2L.expt_config(i_expt=i_expt)
     cfg = ConfigDNS(; duration_spinup_ph=500.0, duration_spinon_ph=1000.0, num_chunks_max=28)
@@ -447,6 +448,7 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
         tgrid = range(hovmoller_timespan[1], hovmoller_timespan[2]; step=1) #range(tfins[memfirst_hov-1]+1, tfins[memlast_hov]; step=1)
         tidx_snap = round.(Int, range(1, length(tgrid); length=Nsnap))
         sf_2d = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs["sf"])..., dims=4)[:,:,:,tidx_hov[tidx_snap]]
+        #@infiltrate
         for obs_name = obs2plot
             anomaly_cont = true
             anomaly_heat = true
