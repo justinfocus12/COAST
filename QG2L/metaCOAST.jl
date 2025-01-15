@@ -341,7 +341,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         rsps = ("2","e")
         i_boot = 1
 
-        fdivlabels = Dict("tv"=>"TV","chi2"=>"χ²","kl"=>"KL")
+        fdivlabels = Dict("qrmse"=>"𝐿²","tv"=>"TV","chi2"=>"χ²","kl"=>"KL")
         for fdivname = fdivnames
             fdivs_ancgen_valid_pt,fdivs_ancgen_valid_lo,fdivs_ancgen_valid_hi = let
                 fdav = fdivs_ancgen_valid[fdivname]
@@ -384,46 +384,49 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
 
     if todo["plot_mixcrits_ydep"]
         dst = "b"
-        rsp = "2"
+        rsp = "e"
         i_boot = 1
+        fdivname = "qrmse"
+        fdivlabel = "𝐿²"
         # Time and threshprob
         colorrange = (0,1)
         for i_scl = [1,8,11]
-            (pth_of_ast,kl_of_ast) = (zeros(Float64, (Nleadtime,Nytgt)) for _=1:2)
-            (ast_of_pth,kl_of_pth) = (zeros(Float64, (Nmcs["pth"],Nytgt)) for _=1:2)
+            (pth_of_ast,fdiv_of_ast) = (zeros(Float64, (Nleadtime,Nytgt)) for _=1:2)
+            (ast_of_pth,fdiv_of_pth) = (zeros(Float64, (Nmcs["pth"],Nytgt)) for _=1:2)
             for (i_ytgt,ytgt) in enumerate(ytgts)
                 JLD2.jldopen(joinpath(exptdirs_COAST[i_ytgt],"results","ccdfs_regressed.jld2"),"r") do f
                     Nancy = size(f["mixcrits"][dst][rsp]["pth"],2)
                     #@infiltrate Nancy < cfgs[i_ytgt].num_init_conds_max
                     pth_of_ast[:,i_ytgt] .= SB.mean(f["mixcrits"][dst][rsp]["pth"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
-                    kl_of_ast[:,i_ytgt] .= (f["fdivs"][dst][rsp]["lt"]["kl"][i_boot,1:Nleadtime,i_scl])
+                    fdiv_of_ast[:,i_ytgt] .= (f["fdivs"][dst][rsp]["lt"][fdivname][i_boot,1:Nleadtime,i_scl])
                     ilts = f["iltmixs"][dst][rsp]["pth"][1:Nmcs["pth"],1:Nancy,i_scl]
                     ast_of_pth[:,i_ytgt] .= sdm.tu.*SB.mean(leadtimes[ilts]; dims=2)[:,1]
-                    kl_of_pth[:,i_ytgt] .= (f["fdivs"][dst][rsp]["pth"]["kl"][i_boot,1:Nmcs["pth"],i_scl])
+                    fdiv_of_pth[:,i_ytgt] .= (f["fdivs"][dst][rsp]["pth"][fdivname][i_boot,1:Nmcs["pth"],i_scl])
                 end
             end
-            #kl_of_ast .= (kl_of_ast .- minimum(kl_of_ast; dims=1))./(maximum(kl_of_ast; dims=1) .- minimum(kl_of_ast; dims=1))
-            #kl_of_pth .= (kl_of_pth .- minimum(kl_of_pth; dims=1))./(maximum(kl_of_pth; dims=1) .- minimum(kl_of_pth; dims=1))
+            # Normalize per latitude
+            fdiv_of_ast .= (fdiv_of_ast .- minimum(fdiv_of_ast; dims=1)) ./ (maximum(fdiv_of_ast; dims=1) .- minimum(fdiv_of_ast; dims=1))
+            fdiv_of_pth .= (fdiv_of_pth .- minimum(fdiv_of_pth; dims=1)) ./ (maximum(fdiv_of_pth; dims=1) .- minimum(fdiv_of_pth; dims=1))
             fig = Figure(size=(400,300))
             lout = fig[1,1] = GridLayout()
             axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6)
             cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :valign=>:bottom)
-            colorrange = (min(minimum(kl_of_ast),minimum(kl_of_pth)), max(maximum(kl_of_ast),maximum(kl_of_pth)))
+            #colorrange = (min(minimum(fdiv_of_ast),minimum(fdiv_of_pth)), max(maximum(fdiv_of_ast),maximum(fdiv_of_pth)))
             ax1 = Axis(lout[2,1]; xlabel="−AST", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
             ax2 = Axis(lout[2,2]; xlabel="𝑞(μ)", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
             threshcquantstr = @sprintf("%.2E",thresh_cquantile)
             toplabel = "$(label_target(target_r, sdm)), scale $(distn_scales[dst][i_scl]), threshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))=$(threshcquantstr)"
             Label(lout[1,1:2,Top()], toplabel, padding=(0.0,0.0,12.0,0.0), valign=:bottom, halign=:center, fontsize=8, font=:regular)
             leadtime_bounds = tuple((-sdm.tu .* [1.5*leadtimes[end]-0.5*leadtimes[end-1], 1.5*leadtimes[1]-0.5*leadtimes[2]])...)
-            hm1 = heatmap!(ax1, leadtime_bounds, (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(kl_of_ast; dims=1); colormap=:managua, colorrange=colorrange)
+            hm1 = heatmap!(ax1, leadtime_bounds, (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(fdiv_of_ast; dims=1); colormap=:managua, colorscale=identity)
             co1 = contour!(ax1, -leadtimes.*sdm.tu, ytgts, reverse(pth_of_ast; dims=1); color=:black, labels=false)
-            cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label="KL [synchron]", cbarargs...)
-            hm2 = heatmap!(ax2, (0,1), (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(kl_of_pth; dims=1); colormap=:managua, colorrange=colorrange) 
+            cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label="$(fdivlabel) [synchron]", cbarargs...)
+            hm2 = heatmap!(ax2, (0,1), (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(fdiv_of_pth; dims=1); colormap=:managua, colorscale=identity) 
             co2 = contour!(ax2, mixobjs["pth"], ytgts, reverse(ast_of_pth; dims=1); color=:black, labels=false)
-            cbar1 = Colorbar(lout[1,2], hm2; vertical=false, label="KL [synprob]", cbarargs...)
+            cbar1 = Colorbar(lout[1,2], hm2; vertical=false, label="$(fdivlabel) [synprob]", cbarargs...)
             #rowsize!(lout, 0, Relative(1/8))
             rowsize!(lout, 1, Relative(1/6))
-            save(joinpath(resultdir,"phdgm_pth_ast_$(dst)_$(rsp)_$(i_scl).png"), fig)
+            save(joinpath(resultdir,"phdgm_pth_ast_$(dst)_$(rsp)_$(i_scl)_$(fdivname).png"), fig)
         end
     end
 end

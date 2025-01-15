@@ -42,11 +42,11 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                              "sail" =>                                           0, 
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "plot_objective" =>                                 0, 
-                             "mix_COAST_distributions_polynomial" =>             0,
-                             "plot_COAST_mixture" =>                             0,
+                             "mix_COAST_distributions_polynomial" =>             1,
+                             "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    1,
                              # Danger zone 
-                             "remove_pngs" =>                                    0,
+                             "remove_pngs" =>                                    1,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -1091,7 +1091,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 
 # TODO augment META with composites, lead times displays etc
 
@@ -1105,7 +1105,7 @@ else
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
         #idx_expt = vec([3,6][2:2] .+ [0,1][1:1]'.*11) #Vector{Int64}([6,9])
-        idx_expt = [15]
+        idx_expt = [1]
     end
 end
 

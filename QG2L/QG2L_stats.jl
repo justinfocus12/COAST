@@ -1115,11 +1115,9 @@ function interpolate_logccdf_to_grid(levels_src, logccdf_src, logccdf_dst)
     i_dst_prev = 1
     i_dst_next = 2
     i_src_prev = 1 # keep track of this in case we need to skp one 
-    for i_src = 2:Nsrc
-        if (i_src < Nsrc) && (logccdf_src[i_src] == logccdf_src[i_src+1])
-            continue
-        end
-        if (i_src == Nsrc) && (logccdf_src[i_src] == logccdf_src[i_src-1])
+    for i_src = 1:Nsrc
+        if logccdf_src[i_src] == logccdf_src[i_src_prev]
+            i_src_prev = i_src
             continue
         end
         i_dst_next = i_dst_prev + findfirst(logccdf_src[i_src] .> logccdf_dst[i_dst_prev+1:Ndst]) - 1
