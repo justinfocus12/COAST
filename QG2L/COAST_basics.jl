@@ -688,30 +688,30 @@ function expt_config_COAST_analysis(cfg,pertop)
                    "lt"=>leadtimes, 
                    "r2"=>r2threshes, 
                    "pth"=>pths,
+                   "pim"=>pths, 
                    "ei"=>["max"],  # reinterpreted as expected exceedance over threshold 
                    "went"=>["max"],
                    "ent"=>["max"],
                    "max"=>["max"],
-                   "pi"=>["max"], # TODO make this another way to parameterize time 
                   ) # mixing-related objectives to maximize when choosing a leadtime. Each entry of each list represents a different objective 
     lt2str(lt) = @sprintf("%.2f", lt)
     mixcrit_labels = Dict(
                          "lt"=>"AST", 
                          "r2"=>"𝑅²",
                          "pth"=>"𝑞ₙ(μ)",
+                         "pim"=>"𝑞ₙ(𝑅ₙ*)",
                          "ei"=>"Exp. Imp.",
                          "went"=>"WEntropy",
                          "ent"=>"Ent",
-                         "pi"=>"Prob. Imp.",
                         )
     mixobj_labels = Dict(
                          "lt"=>["AST = $(lt2str(lt))" for lt=leadtimes],
                          "r2"=>["𝑅² = $(lt2str(r2))" for r2=r2threshes],
                          "ei"=>["Max. Exp. Imp."],
                          "pth"=>[@sprintf("𝑞ₙ(μ)≈%.2f", pth) for pth=pths],
+                         "pim"=>[@sprintf("𝑞ₙ(𝑅ₙ*)≈%.2f", pth) for pth=pths],
                          "went"=>["Max. WEnt."],
                          "ent"=>["Max. Ent"],
-                         "pi"=>["Max. Prob. Imp."],
                          # TODO add expected exceedance over threshold (tee or eet or ete)
                         )
     i_mode_sf = 1
@@ -724,7 +724,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     fdivnames = ("qrmse","kl","chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    i_thresh_cquantile = 8
+    i_thresh_cquantile = 5
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000

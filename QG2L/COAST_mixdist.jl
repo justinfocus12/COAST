@@ -224,7 +224,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
                         mixcrits[dst][rsp]["went"][i_leadtime,i_anc,i_scl] = ccdf[i_thresh_cquantile] * QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
                         if levels[end] > Rmaxanc
-                            mixcrits[dst][rsp]["pi"][i_leadtime,i_anc,i_scl] = ccdf[findfirst(levels .> Rmaxanc)]
+                            mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] = ccdf[findfirst(levels .> Rmaxanc)]
                         end
                     end
                     # optimize each mixing objective across lead times 
@@ -247,6 +247,14 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         #iltmixs[dst][rsp]["pth"][i_pth,i_anc,i_scl] = (isnothing(first_inceedance) ? ilt_r2 : max(1, first_inceedance-1))
                         iltmixs[dst][rsp]["pth"][i_pth,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
                     end
+                    for (i_pim,pim) in enumerate(mixobjs["pim"])
+                        first_inceedance = findfirst(mixcrits[dst][rsp]["pim"][1:ilt_r2,i_anc,i_scl] .< pim)
+                        last_exceedance = findlast(mixcrits[dst][rsp]["pim"][1:ilt_r2,i_anc,i_scl] .>= pim)
+                        #IFT.@infiltrate ("b" == dst) && ("2" == rsp) && (i_scl >= 3) 
+                        # TODO investigate whether last exceedance is better
+                        #iltmixs[dst][rsp]["pim"][i_pim,i_anc,i_scl] = (isnothing(first_inceedance) ? ilt_r2 : max(1, first_inceedance-1))
+                        iltmixs[dst][rsp]["pim"][i_pim,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
+                    end
 
                     # Other objectives to condition on R^2 
                     for mc = ("ent",)
@@ -258,7 +266,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 # Now average together the PDFs and CCDFs based on the criteria from above 
                 println("Starting to sum together pdfs and ccdfs")
                 #IFT.@infiltrate ((dst=="b")&(rsp=="2"))
-                for mc = ("pth","ent","lt","r2",) #keys(mixobjs)
+                for mc = ("pim","pth","ent","lt","r2",) #keys(mixobjs)
                     for i_anc = 1:Nanc
                         for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                             ilt = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl] 
@@ -290,7 +298,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 #IFT.@infiltrate ((dst=="b")&(rsp=="2")&(i_scl==2))
                 println("Starting to compute fdivs")
                 # baseline: ancestor generator
-                for mc = ["pth","ent","lt","r2"] #keys(mixobjs)
+                for mc = ["pim","pth","ent","lt","r2"] #keys(mixobjs)
                     #IFT.@infiltrate ("lt"==mc)
                     for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                         for i_boot = 1:Nboot+1

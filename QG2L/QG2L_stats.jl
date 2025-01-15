@@ -1044,7 +1044,7 @@ function kldiv_fun(pmf1, pmf2)
     end
     idx = findall((pmf1 .>= 0) .& (pmf2 .> 0))
     # HACK replace with relative error
-    hacky = true
+    hacky = false
     if hacky
         kl = sum(abs.(pmf1[idx] .- pmf2[idx])./pmf2[idx])
     else
