@@ -3,14 +3,13 @@
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
-                             "remove_pngs" =>                    0,
-                             "plot_ccdfs_latdep" =>              1,
+                             "remove_pngs" =>                    1,
                              "plot_pot_ccdfs_latdep" =>          1,
-                             "print_simtimes" =>                 0,
+                             "print_simtimes" =>                 1,
                              "plot_mixcrits_ydep" =>             1,
                              "compile_fdivs" =>                  1,
                              "plot_fdivs" =>                     1,
-                             "plot_toast" =>                     0,
+                             "plot_ccdfs_latdep" =>              1,
                             )
     php,sdm = QG2L.expt_config()
     cop_pertop_file = joinpath(expt_supdir,"cop_pertop.jld2")
@@ -56,6 +55,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
      i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfgs[1],pertop)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
+    scales2plot = [1,4,8,12]
     threshstr = @sprintf("thrt%d", round(Int, 1/thresh_cquantile))
     for (i_y,y) in enumerate(ytgts)
         cfgstr = strrep_ConfigCOAST(cfgs[i_y])
@@ -75,7 +75,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     mkpath(resultdir)
     if todo["remove_pngs"]
         for filename = readdir(resultdir, join=true)
-            if endswith(filename,"png") && occursin("ccdfs_pot_coast", filename)
+            if endswith(filename,"png") #&& occursin("ccdfs_pot_coast", filename)
                 rm(filename)
             end
         end
@@ -165,94 +165,6 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         save(joinpath(resultdir,"gpdpars_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
     end
 
-    if todo["plot_pot_ccdfs_latdep"]
-        # Two panels: (1) compare valid to ancgen, (2) compare valid to coast 
-        ccdfs_pot_valid,ccdfs_pot_ancgen = (zeros(Float64, (Nytgt,Nlev_exc)) for _=1:3)
-        for (i_ytgt,ytgt) in enumerate(ytgts)
-            cfgstr = strrep_ConfigCOAST(cfgs[i_ytgt])
-            resultdir_COAST = joinpath(exptdirs_COAST[i_ytgt], "results")
-            JLD2.jldopen(joinpath(resultdir_COAST, "objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
-                ccdfs_pot_ancgen[i_ytgt,:] .= f["ccdf_pot_ancgen_seplon"][:,1]
-                ccdfs_pot_valid[i_ytgt,:] .= f["ccdf_pot_valid_agglon"]
-            end
-        end
-        potccdfmixs = Dict()
-        for dst = dsts
-            potccdfmixs[dst] = Dict()
-            for rsp = rsps
-                potccdfmixs[dst][rsp] = Dict()
-                for mc = ["pth","ent",]
-                    potccdfmixs[dst][rsp][mc] = zeros(Float64, (Nytgt,Nlev_exc,Nmcs[mc],Nscales[dst]))
-                end
-            end
-        end
-        i_boot = 1
-        for (i_ytgt,ytgt) in enumerate(ytgts)
-            resultdir_COAST = joinpath(exptdirs_COAST[i_ytgt], "results")
-            JLD2.jldopen(joinpath(resultdir_COAST, "ccdfs_regressed.jld2"),"r") do f
-                for dst = dsts
-                    for rsp = rsps
-                        for mc = ["ent","pth"]
-                            potccdfmixs[dst][rsp][mc][i_ytgt,1:Nlev_exc,1:Nmcs[mc],1:Nscales[dst]] .= f["ccdfmixs"][dst][rsp][mc][i_thresh_cquantile:end, i_boot, :, :]
-                        end
-                    end
-                end
-            end
-        end
-
-        for dst = ["b",]
-            for rsp = ["2","e"]
-                for mc = ["ent","pth"]
-                    i_mcobj = ("ent" == mc ? 1 : 13)
-                    for i_scl = [1,8,11]
-                        scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
-                        fig = Figure(size=(500,1000))
-                        lout = fig[1,1] = GridLayout()
-                        title_suffixes = ["Short DNS","$(mixcrit_labels[mc]) = $(mixobjs[mc][i_mcobj])"]
-                        axag,axcoast = [
-                                        Axis(lout[i,1], 
-                                             xlabel="Peak-adjusted log₂(exceedance probability)", ylabel="(Target 𝑦)/𝐿", title="$(label_target(target_r,sdm)), $(scalestr), $(title_suffixes[i])", 
-                                             titlefont=:regular, xgridvisible=false, ygridvisible=false,
-                                             xscale=log2, xticks=(ccdf_levels[i_thresh_cquantile:end], string.(-i_thresh_cquantile:-1:-Nlev))
-                                            )
-                                        for i=1:2
-                                       ]
-                        colargs = Dict(:colormap=>Reverse(:roma), :colorrange=>(i_thresh_cquantile,length(ccdf_levels)))
-
-                        for ax = (axag,axcoast)
-                            for i_lev = 1:Nlev_exc
-                                #lines!(ax, thresh_cquantile.*ccdfs_pot_valid[:,i_lev], ytgts; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=(:dash,:dense))
-                                vlines!(ax, ccdf_levels[i_thresh_cquantile+i_lev-1]; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=(:dash,:dense))
-                            end
-                        end
-                        epsilon = ccdf_levels[end]/2
-                        for i_lev = 1:Nlev_exc
-                            lines!(axag, 
-                                   max.(epsilon, 
-                                         ccdf_levels[i_thresh_cquantile+i_lev-1]
-                                         .*ccdfs_pot_ancgen[:,i_lev]
-                                         ./ccdfs_pot_valid[:,i_lev], 
-                                        ),
-                                    ytgts; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=:solid
-                                  )
-                            lines!(axcoast, 
-                                   max.(epsilon, 
-                                        ccdf_levels[i_thresh_cquantile+i_lev-1]
-                                        .*potccdfmixs[dst][rsp][mc][:,i_lev,i_mcobj,i_scl]
-                                        ./(thresh_cquantile.*ccdfs_pot_valid[:,i_lev])
-                                       ),
-                                   ytgts; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=:solid)
-                        end
-                        for ax = (axag,axcoast)
-                            xlims!(ax, epsilon/2, thresh_cquantile*1.01)
-                        end
-                        linkxaxes!(axag, axcoast)
-                        save(joinpath(resultdir,"ccdfs_pot_coast_$(dst)_$(rsp)_$(mc)_$(i_mcobj)_$(i_scl).png"), fig)
-                    end
-                end
-            end
-        end
-    end
 
 
     if todo["print_simtimes"]
@@ -292,7 +204,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             fdivs[dst] = Dict()
             for rsp = rsps
                 fdivs[dst][rsp] = Dict()
-                for mc = ["pth","ent","lt","r2"]
+                for mc = ["pim","pth","ent","lt","r2"]
                     fdivs[dst][rsp][mc] = Dict()
                     for fdivname = fdivnames
                         fdivs[dst][rsp][mc][fdivname] = zeros(Float64, (Nytgt,Nboot+1,Nmcs[mc],Nscales[dst]))
@@ -309,7 +221,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             JLD2.jldopen(joinpath(resultdir_y,"ccdfs_regressed.jld2"),"r") do f
                 for dst = dsts
                     for rsp = rsps
-                        for mc = ["pth","ent","lt","r2"]
+                        for mc = ["pim","pth","ent","lt","r2"]
                             for fdivname = fdivnames
                                 fdivs[dst][rsp][mc][fdivname][i_ytgt,:,:,:] .= f["fdivs"][dst][rsp][mc][fdivname][:,:,:]
                             end
@@ -349,12 +261,12 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             end
             for dst = dsts
                 for rsp = rsps
-                    for i_scl = [1,8,11]
+                    for i_scl = scales2plot
                         scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
-                        fig = Figure(size=(500,1000))
+                        fig = Figure(size=(600,1200))
                         lout = fig[1,1] = GridLayout()
-                        axs = [Axis(lout[i_syncmc,1], xlabel=fdivlabels[fdivname], ylabel="(Target 𝑦)/L", title="$(label_target(target_r,sdm)), $(scalestr)", titlefont=:regular, xscale=log10) for i_syncmc=1:2]
-                        for (i_syncmc,syncmc) in enumerate(["lt","pth"])
+                        axs = [Axis(lout[i_syncmc,1], xlabel=fdivlabels[fdivname], ylabel="(Target 𝑦)/L", title="$(label_target(target_r,sdm)), $(scalestr)", xlabelvisible=false, xticklabelsvisible=false, titlevisible=false, titlefont=:regular, xscale=log10) for i_syncmc=1:3]
+                        for (i_syncmc,syncmc) in enumerate(["lt","pth","pim"])
                             ax = axs[i_syncmc]
                             for (i_mcobj,mcobj) in enumerate(mixobjs[syncmc])
                                 lines!(ax, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,i_mcobj,i_scl], ytgts; color=i_mcobj, colorrange=(0,Nmcs[syncmc]), colormap=:managua, label=@sprintf("%.2f", mcobj))
@@ -366,10 +278,15 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                             end
                             # Max-entropy
                             lines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=:red, linewidth=2, label=mixobj_labels["ent"][1])
-                            lout[i_syncmc,2] = Legend(fig, ax, mixcrit_labels[syncmc]; titlefont=:regular, labelsize=8, nbanks=2)
+                            lout[i_syncmc,2] = Legend(fig, ax, mixcrit_labels[syncmc]; titlefont=:regular, labelsize=8, nbanks=3)
 
                         end
                         linkxaxes!(axs...)
+                        axs[1].titlevisible = true
+                        axs[end].xlabelvisible = axs[end].xticklabelsvisible = true
+                        for i = 1:length(axs)-1
+                            rowgap!(lout, i, 0)
+                        end
                         save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl).png"), fig)
                         # TODO Do a parallel figure bit with leadtime and committor as the independent variables, fdiv as the dependent variable 9just a slice of the phdgms from the one-latitude cases)
                     end
@@ -390,43 +307,153 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         fdivlabel = "𝐿²"
         # Time and threshprob
         colorrange = (0,1)
-        for i_scl = [1,8,11]
-            (pth_of_ast,fdiv_of_ast) = (zeros(Float64, (Nleadtime,Nytgt)) for _=1:2)
+        for i_scl = scales2plot
+            (pim_of_ast,pth_of_ast,fdiv_of_ast) = (zeros(Float64, (Nleadtime,Nytgt)) for _=1:3)
             (ast_of_pth,fdiv_of_pth) = (zeros(Float64, (Nmcs["pth"],Nytgt)) for _=1:2)
+            (ast_of_pim,fdiv_of_pim) = (zeros(Float64, (Nmcs["pim"],Nytgt)) for _=1:2)
             for (i_ytgt,ytgt) in enumerate(ytgts)
                 JLD2.jldopen(joinpath(exptdirs_COAST[i_ytgt],"results","ccdfs_regressed.jld2"),"r") do f
                     Nancy = size(f["mixcrits"][dst][rsp]["pth"],2)
                     #@infiltrate Nancy < cfgs[i_ytgt].num_init_conds_max
                     pth_of_ast[:,i_ytgt] .= SB.mean(f["mixcrits"][dst][rsp]["pth"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
+                    pim_of_ast[:,i_ytgt] .= SB.mean(f["mixcrits"][dst][rsp]["pim"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
                     fdiv_of_ast[:,i_ytgt] .= (f["fdivs"][dst][rsp]["lt"][fdivname][i_boot,1:Nleadtime,i_scl])
+                    ilts = f["iltmixs"][dst][rsp]["pim"][1:Nmcs["pim"],1:Nancy,i_scl]
+                    ast_of_pim[:,i_ytgt] .= sdm.tu.*SB.mean(leadtimes[ilts]; dims=2)[:,1]
+                    fdiv_of_pim[:,i_ytgt] .= (f["fdivs"][dst][rsp]["pim"][fdivname][i_boot,1:Nmcs["pim"],i_scl])
                     ilts = f["iltmixs"][dst][rsp]["pth"][1:Nmcs["pth"],1:Nancy,i_scl]
                     ast_of_pth[:,i_ytgt] .= sdm.tu.*SB.mean(leadtimes[ilts]; dims=2)[:,1]
                     fdiv_of_pth[:,i_ytgt] .= (f["fdivs"][dst][rsp]["pth"][fdivname][i_boot,1:Nmcs["pth"],i_scl])
                 end
             end
             # Normalize per latitude
-            fdiv_of_ast .= (fdiv_of_ast .- minimum(fdiv_of_ast; dims=1)) ./ (maximum(fdiv_of_ast; dims=1) .- minimum(fdiv_of_ast; dims=1))
-            fdiv_of_pth .= (fdiv_of_pth .- minimum(fdiv_of_pth; dims=1)) ./ (maximum(fdiv_of_pth; dims=1) .- minimum(fdiv_of_pth; dims=1))
+            #fdiv_of_ast .= (fdiv_of_ast .- minimum(fdiv_of_ast; dims=1)) ./ (maximum(fdiv_of_ast; dims=1) .- minimum(fdiv_of_ast; dims=1))
+            #fdiv_of_pth .= (fdiv_of_pth .- minimum(fdiv_of_pth; dims=1)) ./ (maximum(fdiv_of_pth; dims=1) .- minimum(fdiv_of_pth; dims=1))
+            #fdiv_of_pim .= (fdiv_of_pim .- minimum(fdiv_of_pim; dims=1)) ./ (maximum(fdiv_of_pim; dims=1) .- minimum(fdiv_of_pim; dims=1))
             fig = Figure(size=(400,300))
             lout = fig[1,1] = GridLayout()
             axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6)
             cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :valign=>:bottom)
-            #colorrange = (min(minimum(fdiv_of_ast),minimum(fdiv_of_pth)), max(maximum(fdiv_of_ast),maximum(fdiv_of_pth)))
+            colorrange = (minimum(minimum.([fdiv_of_ast,fdiv_of_pth,fdiv_of_pim])),maximum(maximum.([fdiv_of_ast,fdiv_of_pth,fdiv_of_pim])))
             ax1 = Axis(lout[2,1]; xlabel="−AST", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
+            axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
             ax2 = Axis(lout[2,2]; xlabel="𝑞(μ)", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
+            ax3 = Axis(lout[2,3]; xlabel="𝑞(𝑅*))", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
             threshcquantstr = @sprintf("%.2E",thresh_cquantile)
             toplabel = "$(label_target(target_r, sdm)), scale $(distn_scales[dst][i_scl]), threshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))=$(threshcquantstr)"
-            Label(lout[1,1:2,Top()], toplabel, padding=(0.0,0.0,12.0,0.0), valign=:bottom, halign=:center, fontsize=8, font=:regular)
+            Label(lout[1,1:3,Top()], toplabel, padding=(0.0,0.0,12.0,0.0), valign=:bottom, halign=:center, fontsize=8, font=:regular)
             leadtime_bounds = tuple((-sdm.tu .* [1.5*leadtimes[end]-0.5*leadtimes[end-1], 1.5*leadtimes[1]-0.5*leadtimes[2]])...)
-            hm1 = heatmap!(ax1, leadtime_bounds, (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(fdiv_of_ast; dims=1); colormap=:managua, colorscale=identity)
-            co1 = contour!(ax1, -leadtimes.*sdm.tu, ytgts, reverse(pth_of_ast; dims=1); color=:black, labels=false)
+            # First heatmap: AST as independent variable
+            hm1 = heatmap!(ax1, leadtime_bounds, (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(fdiv_of_ast; dims=1); colormap=:managua, colorscale=log10, colorrange=colorrange)
+            #co1pth = contour!(ax1, -leadtimes.*sdm.tu, ytgts, reverse(pth_of_ast; dims=1); color=:gray, linewidth=2, alpha=0.5, labels=false)
+            #co1pim = contour!(ax1, -leadtimes.*sdm.tu, ytgts, reverse(pim_of_ast; dims=1); color=:black, linestyle=(:dot,:dense), labels=false)
             cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label="$(fdivlabel) [synchron]", cbarargs...)
-            hm2 = heatmap!(ax2, (0,1), (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(fdiv_of_pth; dims=1); colormap=:managua, colorscale=identity) 
-            co2 = contour!(ax2, mixobjs["pth"], ytgts, reverse(ast_of_pth; dims=1); color=:black, labels=false)
-            cbar1 = Colorbar(lout[1,2], hm2; vertical=false, label="$(fdivlabel) [synprob]", cbarargs...)
+            # Second heatmap: PTH as independent variable
+            hm2 = heatmap!(ax2, (0,1), (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(fdiv_of_pth; dims=1); colormap=:managua, colorscale=log10, colorrange=colorrange) 
+            #co2 = contour!(ax2, mixobjs["pth"], ytgts, reverse(ast_of_pth; dims=1); color=:black, labels=false)
+            cbar2 = Colorbar(lout[1,2], hm2; vertical=false, label="$(fdivlabel) [synthrex]", cbarargs...)
+            # Third heatmap: PIM as independent variable
+            hm3 = heatmap!(ax3, (0,1), (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(fdiv_of_pim; dims=1); colormap=:managua, colorscale=log10, colorrange=colorrange) 
+            #co3 = contour!(ax3, mixobjs["pim"], ytgts, reverse(ast_of_pim; dims=1); color=:black, labels=false)
+            cbar3 = Colorbar(lout[1,3], hm3; vertical=false, label="$(fdivlabel) [synimp]", cbarargs...)
             #rowsize!(lout, 0, Relative(1/8))
+            rowgap!(lout, 1, 0)
+            colgap!(lout, 1, 0)
+            colgap!(lout, 2, 0)
+
             rowsize!(lout, 1, Relative(1/6))
-            save(joinpath(resultdir,"phdgm_pth_ast_$(dst)_$(rsp)_$(i_scl)_$(fdivname).png"), fig)
+            save(joinpath(resultdir,"phdgm_ast_pth_pim_$(dst)_$(rsp)_$(i_scl)_$(fdivname).png"), fig)
+        end
+    end
+    if todo["plot_pot_ccdfs_latdep"]
+        # Two panels: (1) compare valid to ancgen, (2) compare valid to coast 
+        ccdfs_pot_valid,ccdfs_pot_ancgen = (zeros(Float64, (Nytgt,Nlev_exc)) for _=1:3)
+        for (i_ytgt,ytgt) in enumerate(ytgts)
+            cfgstr = strrep_ConfigCOAST(cfgs[i_ytgt])
+            resultdir_COAST = joinpath(exptdirs_COAST[i_ytgt], "results")
+            JLD2.jldopen(joinpath(resultdir_COAST, "objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
+                ccdfs_pot_ancgen[i_ytgt,:] .= f["ccdf_pot_ancgen_seplon"][:,1]
+                ccdfs_pot_valid[i_ytgt,:] .= f["ccdf_pot_valid_agglon"]
+            end
+        end
+        potccdfmixs = Dict()
+        for dst = dsts
+            potccdfmixs[dst] = Dict()
+            for rsp = rsps
+                potccdfmixs[dst][rsp] = Dict()
+                for mc = ["pim","pth","ent",]
+                    potccdfmixs[dst][rsp][mc] = zeros(Float64, (Nytgt,Nlev_exc,Nmcs[mc],Nscales[dst]))
+                end
+            end
+        end
+        i_boot = 1
+        for (i_ytgt,ytgt) in enumerate(ytgts)
+            resultdir_COAST = joinpath(exptdirs_COAST[i_ytgt], "results")
+            JLD2.jldopen(joinpath(resultdir_COAST, "ccdfs_regressed.jld2"),"r") do f
+                for dst = dsts
+                    for rsp = rsps
+                        for mc = ["pim","ent","pth"]
+                            potccdfmixs[dst][rsp][mc][i_ytgt,1:Nlev_exc,1:Nmcs[mc],1:Nscales[dst]] .= f["ccdfmixs"][dst][rsp][mc][i_thresh_cquantile:end, i_boot, :, :]
+                        end
+                    end
+                end
+            end
+        end
+
+        for dst = ["b",]
+            for rsp = ["2","e"]
+                for mc = ["ent","pth","pim"]
+                    for fdivname = ["kl","qrmse"]
+                        for i_scl = [1,4,8,12]
+                            @infiltrate !(mc in keys(fdivs[dst][rsp]))
+                            idx_mcobj = mapslices(argmin, fdivs[dst][rsp][mc][fdivname][:,i_boot,:,i_scl]; dims=2)
+                            scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
+                            fig = Figure(size=(500,1000))
+                            lout = fig[1,1] = GridLayout()
+                            title_suffixes = ["Short DNS","best $(mixcrit_labels[mc])"]
+                            axag,axcoast = [
+                                            Axis(lout[i,1], 
+                                                 xlabel="Peak-adjusted log₂(exceedance probability)", ylabel="(Target 𝑦)/𝐿", title="$(label_target(target_r,sdm)), $(scalestr), $(title_suffixes[i])", 
+                                                 titlefont=:regular, xgridvisible=false, ygridvisible=false,
+                                                 xscale=log2, xticks=(ccdf_levels[i_thresh_cquantile:end], string.(-i_thresh_cquantile:-1:-Nlev))
+                                                )
+                                            for i=1:2
+                                           ]
+                            colargs = Dict(:colormap=>Reverse(:roma), :colorrange=>(i_thresh_cquantile,length(ccdf_levels)))
+
+                            for ax = (axag,axcoast)
+                                for i_lev = 1:Nlev_exc
+                                    #lines!(ax, thresh_cquantile.*ccdfs_pot_valid[:,i_lev], ytgts; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=(:dash,:dense))
+                                    vlines!(ax, ccdf_levels[i_thresh_cquantile+i_lev-1]; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=(:dash,:dense))
+                                end
+                            end
+                            epsilon = ccdf_levels[end]/2
+                            for i_lev = 1:Nlev_exc
+                                lines!(axag, 
+                                       max.(epsilon, 
+                                             ccdf_levels[i_thresh_cquantile+i_lev-1]
+                                             .*ccdfs_pot_ancgen[:,i_lev]
+                                             ./ccdfs_pot_valid[:,i_lev], 
+                                            ),
+                                        ytgts; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=:solid
+                                      )
+                                lines!(axcoast, 
+                                       max.(epsilon, 
+                                            ccdf_levels[i_thresh_cquantile+i_lev-1]
+                                            .*[potccdfmixs[dst][rsp][mc][i_ytgt,i_lev,idx_mcobj[i_ytgt],i_scl] for i_ytgt=1:Nytgt]
+                                            ./(thresh_cquantile.*ccdfs_pot_valid[:,i_lev])
+                                           ),
+                                       ytgts; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=:solid)
+                            end
+                            for ax = (axag,axcoast)
+                                xlims!(ax, epsilon/2, thresh_cquantile*1.01)
+                            end
+                            linkxaxes!(axag, axcoast)
+                            save(joinpath(resultdir,"ccdfs_pot_coast_$(dst)_$(rsp)_$(mc)_$(i_scl)_min$(fdivname).png"), fig)
+                        end
+                    end
+                end
+            end
         end
     end
 end

@@ -698,8 +698,8 @@ function expt_config_COAST_analysis(cfg,pertop)
     mixcrit_labels = Dict(
                          "lt"=>"AST", 
                          "r2"=>"𝑅²",
-                         "pth"=>"𝑞ₙ(μ)",
-                         "pim"=>"𝑞ₙ(𝑅ₙ*)",
+                         "pth"=>"𝑞(μ)",
+                         "pim"=>"𝑞(𝑅*)",
                          "ei"=>"Exp. Imp.",
                          "went"=>"WEntropy",
                          "ent"=>"Ent",
@@ -708,8 +708,8 @@ function expt_config_COAST_analysis(cfg,pertop)
                          "lt"=>["AST = $(lt2str(lt))" for lt=leadtimes],
                          "r2"=>["𝑅² = $(lt2str(r2))" for r2=r2threshes],
                          "ei"=>["Max. Exp. Imp."],
-                         "pth"=>[@sprintf("𝑞ₙ(μ)≈%.2f", pth) for pth=pths],
-                         "pim"=>[@sprintf("𝑞ₙ(𝑅ₙ*)≈%.2f", pth) for pth=pths],
+                         "pth"=>[@sprintf("𝑞(μ)≈%.2f", pth) for pth=pths],
+                         "pim"=>[@sprintf("𝑞(𝑅ₙ*)≈%.2f", pth) for pth=pths],
                          "went"=>["Max. WEnt."],
                          "ent"=>["Max. Ent"],
                          # TODO add expected exceedance over threshold (tee or eet or ete)

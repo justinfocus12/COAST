@@ -37,16 +37,16 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                              "update_paths" =>                                   0,
                              "plot_pertop" =>                                    0,
                              "compute_dns_objective" =>                          0,
-                             "plot_dns_objective_stats" =>                       0,
+                             "plot_dns_objective_stats" =>                       1,
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
                              "regress_lead_dependent_risk_polynomial" =>         0, 
-                             "plot_objective" =>                                 1, 
-                             "mix_COAST_distributions_polynomial" =>             1,
-                             "plot_COAST_mixture" =>                             1,
-                             "mixture_COAST_phase_diagram" =>                    1,
+                             "plot_objective" =>                                 0, 
+                             "mix_COAST_distributions_polynomial" =>             0,
+                             "plot_COAST_mixture" =>                             0,
+                             "mixture_COAST_phase_diagram" =>                    0,
                              # Danger zone 
-                             "remove_pngs" =>                                    1,
+                             "remove_pngs" =>                                    0,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -298,7 +298,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
             hlines!(axpdf, level; color=:gray, linewidth=1, alpha=0.5)
         end
         # CCDF
-        lines!(axccdf, thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc)), levels_exc, color=:gray, linewidth=3, alpha=0.5, label=@sprintf("GPD(%.2f,%.2f,%.2f)\nThresh. exc. prob. %s", thresh, gpdpar_valid_agglon..., powerofhalfstring(i_thresh_cquantile)))
+        lines!(axccdf, thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc)), levels_exc, color=:gray, linewidth=3, alpha=0.5, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)\nThresh. exc. prob. %s", thresh, gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2]), powerofhalfstring(i_thresh_cquantile)))
         lines!(axccdf, ccdf_levels, zero2nan(SB.mean(Rccdf_valid_seplon; dims=2)[:,1]); color=:black, linewidth=2, linestyle=(:dash,:dense))
         scatterlines!(axccdf, thresh_cquantile.*zero2nan(SB.mean(ccdf_pot_valid_seplon, ; dims=2)[:,1]), levels[i_thresh_cquantile:end]; color=:black, marker=:star6, label="Long DNS,\npeaks over threshold")
         lines!(axccdf, ccdf_levels, zero2nan(Rccdf_ancgen_seplon[:,1]); color=:orange, linewidth=2, linestyle=(:dash,:dense))
@@ -794,11 +794,11 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                                     scatterlines!(ax1, ccdf_synclt_mid[i_thresh_cquantile:end], levels_exc; color=:cyan, linestyle=:solid, marker=:star6, label="AST = $(ltstr) [synchron] \n$(fdivlabel) = $(fdivstr_synclt)", linewidth=4)
                                     scatterlines!(ax2, clipccdfratio.(ccdf_synclt_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:cyan, linestyle=:solid, marker=:star6, linewidth=4)
                                     # Probability-thresholded AST 
-                                    scatterlines!(ax1, ccdf_syncpth_mid[i_thresh_cquantile:end], levels_exc; color=:mediumpurple, linestyle=:solid, marker=:star6, label="𝑞ₙ(μ) = $(pthstr) [synthrex] \n$(fdivlabel) = $(fdivstr_syncpth)", linewidth=3)
-                                    scatterlines!(ax2, clipccdfratio.(ccdf_syncpth_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:mediumpurple, linestyle=:solid, marker=:star6, label="𝑞ₙ(μ) = $(pthstr) [synthrex] \n$(fdivlabel) = $(fdivstr_syncpth)", linewidth=3)
+                                    scatterlines!(ax1, ccdf_syncpth_mid[i_thresh_cquantile:end], levels_exc; color=:mediumpurple, linestyle=:solid, marker=:star6, label="𝑞(μ) = $(pthstr) [synthrex] \n$(fdivlabel) = $(fdivstr_syncpth)", linewidth=3)
+                                    scatterlines!(ax2, clipccdfratio.(ccdf_syncpth_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:mediumpurple, linestyle=:solid, marker=:star6, label="𝑞(μ) = $(pthstr) [synthrex] \n$(fdivlabel) = $(fdivstr_syncpth)", linewidth=3)
                                     # (Improvement-probability) AST
-                                    scatterlines!(ax1, ccdf_syncpim_mid[i_thresh_cquantile:end], levels_exc; color=:olivedrab3, linestyle=:solid, marker=:star6, label="𝑞ₙ(𝑅*) = $(pimstr) [synimp] \n$(fdivlabel) = $(fdivstr_syncpim)", linewidth=2)
-                                    scatterlines!(ax2, clipccdfratio.(ccdf_syncpim_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:olivedrab3, linestyle=:solid, marker=:star6, label="𝑞ₙ(𝑅*)", linewidth=2)
+                                    scatterlines!(ax1, ccdf_syncpim_mid[i_thresh_cquantile:end], levels_exc; color=:olivedrab3, linestyle=:solid, marker=:star6, label="𝑞(𝑅*) = $(pimstr) [synimp] \n$(fdivlabel) = $(fdivstr_syncpim)", linewidth=2)
+                                    scatterlines!(ax2, clipccdfratio.(ccdf_syncpim_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:olivedrab3, linestyle=:solid, marker=:star6, label="𝑞(𝑅*)", linewidth=2)
                                     # Conditionally optimal AST 
                                     scatterlines!(ax1, ccdf_cond_mid[i_thresh_cquantile:end], levels_exc; linewidth=1, color=:red, linestyle=:solid, label="$(mixobj_labels[mc][i_mcobj])\n$(fdivlabel) = $(fdivstr_cond)", marker=:star6)
                                     scatterlines!(ax2, clipccdfratio.(ccdf_cond_mid[i_thresh_cquantile:end]./dnspot), levels_exc; linewidth=1, color=:red, linestyle=:solid, marker=:star6)
@@ -1142,7 +1142,7 @@ else
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
         #idx_expt = vec([3,6][2:2] .+ [0,1][1:1]'.*11) #Vector{Int64}([6,9])
-        idx_expt = [4]
+        idx_expt = collect(1:22)
     end
 end
 
