@@ -404,7 +404,7 @@ function prepare_init_cond_from_dns(
     @show it_peak
     @show obj_val_dns[it_peak-2:it_peak+2]
     if !(obj_val_dns[it_peak] >= max(obj_val_dns[it_peak-1],obj_val_dns[it_peak+1]))
-        @infiltrate
+        #@infiltrate
         error()
     end
     
@@ -582,7 +582,7 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, rsp::String)
     elseif "e" == rsp
         rspstr = "empirical"
     end
-    label = "$(label_target(cfg, sdm)), $(rspstr)𝑅"
+    label = "$(label_target(cfg, sdm)), $(rspstr) 𝑅"
     return label
 end
 
@@ -729,7 +729,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000
     xstride_valid_dns = 1
-    adjust_ccdf_per_ancestor = false # Principled choice iis false 
+    adjust_ccdf_per_ancestor = Bool(1)
     return (leadtimes, r2threshes, distns, rsps, mixobjs, mixcrit_labels, mixobj_labels, distn_scales, fdivnames,Nboot,ccdf_levels,time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor)
 end
 

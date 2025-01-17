@@ -72,13 +72,13 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
     i_mode_sf = 1
     max_score = maximum(vcat(coast.anc_Rmax, (coast.desc_Rmax[i_anc] for i_anc=1:Nanc)...))
     # Set up bootstrap resamplings
-    anc_weights = zeros(Float64, (Nanc,Nboot+1))
-    anc_weights[:,1] .= 1 ./ Nanc
     rng_boot = Random.MersenneTwister(871940)
     ancs_boot = Random.rand(rng_boot, 1:Nanc, (Nanc, Nboot+1))
+    anc_boot_mults = zeros(Int64, (Nanc,Nboot+1)) # multiplicities
+    anc_boot_mults[:,1] .= 1
     for i_boot = 2:Nboot+1
         for i_anc = 1:Nanc
-            anc_weights[ancs_boot[i_anc,i_boot],i_boot] += 1/Nanc
+            anc_boot_mults[ancs_boot[i_anc,i_boot],i_boot] += 1
         end
     end
 
@@ -169,7 +169,8 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
             residmse = 0.0
             resid_range = zeros(Float64,2)
             resid_arg = NaN
-            Threads.@threads for i_scl = 1:length(distn_scales[dst])
+            #Threads.@threads for i_scl = 1:length(distn_scales[dst])
+            for i_scl = 1:length(distn_scales[dst])
                 println("Starting scale $(i_scl)")
                 scl = distn_scales[dst][i_scl]
                 #Threads.@threads for i_anc = 1:Nanc
@@ -197,11 +198,11 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         end
                         ccdf,pdf = r2dfun(dst,rsp,scl)(coefs_at_anc_and_leadtime(i_leadtime,i_anc), resid_arg)
                         pth = ccdf[i_thresh_cquantile]
-                        if adjust_ccdf_per_ancestor
-                            adjustment = (pth > 1e-10 ? thresh_cquantile/pth : 0)
-                            ccdf .*= adjustment
-                            pdf .*= adjustment
-                        end
+                        #adjustment_per_ancestor = (pth > 1e-10 ? thresh_cquantile/pth : 0)
+                        #if adjust_ccdf_per_ancestor
+                        #    ccdf .*= adjustment_per_ancestor
+                        #    pdf .*= adjustment_per_ancestor
+                        #end
                         ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= ccdf #.* adjustment
                         pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= pdf #.* adjustment
                         ccdfs[dst][rsp][1:i_thresh_cquantile-1,i_leadtime,i_anc,i_scl] .= thresh_cquantile
@@ -229,6 +230,10 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                             slope = (ccdf[i_lev_hi] - ccdf[i_lev_lo])/(levels[i_lev_hi] - levels[i_lev_lo])
                             mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] = ccdf[i_lev_lo] + slope*(Rmaxanc - levels[i_lev_lo])
                             @assert ccdf[i_lev_lo] >= mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] >= ccdf[i_lev_hi]
+                            #if adjust_ccdf_per_ancestor && (adjustment_per_ancestor > 0)
+                            #    mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] /= adjustment_per_ancestor
+                            #end
+
                         end
                     end
                     # optimize each mixing objective across lead times 
@@ -270,41 +275,36 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 # Now average together the PDFs and CCDFs based on the criteria from above 
                 println("Starting to sum together pdfs and ccdfs")
                 #IFT.@infiltrate ((dst=="b")&(rsp=="2"))
+                anc_weights = zeros(Float64, Nanc)
                 for mc = ("pim","pth","ent","lt","r2",) #keys(mixobjs)
-                    for i_anc = 1:Nanc
-                        for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
-                            ilt = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl] 
-                            for i_boot = 1:Nboot+1
-                                # TODO should we weight ancestors by their excedance probability over the threshold? 
-                                #IFT.@infiltrate (mc == "r2")
-                                ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= ccdfs[dst][rsp][:,ilt,i_anc,i_scl] .* anc_weights[i_anc,i_boot]
-                                pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= pdfs[dst][rsp][:,ilt,i_anc,i_scl] .* anc_weights[i_anc,i_boot]
+                    for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
+                        for i_boot = 1:Nboot+1
+                            anc_weights .= 0
+                            for i_anc = 1:Nanc
+                                ilt = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl] 
+                                pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
+                                if adjust_ccdf_per_ancestor
+                                    anc_weights[i_anc] = (0 == pth ? 0.0 : anc_boot_mults[i_anc]/pth)
+                                else
+                                    anc_weights[i_anc] = 1.0
+                                end
+                                ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*ccdfs[dst][rsp][:,ilt,i_anc,i_scl]
+                                pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*pdfs[dst][rsp][:,ilt,i_anc,i_scl] 
+                                #@infiltrate
                                 if !all(isfinite.(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl]))
                                     println("non-finite PDF for i_boot=$(i_boot)")
                                     display(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl])
                                     error()
                                 end
                             end
+                            adjustment = thresh_cquantile / ccdfmixs[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]
+                            ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
+                            pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
+                            #@infiltrate
                         end
-                    end
-                    # Correct for the known exceedance probability
-                    if !adjust_ccdf_per_ancestor
-                        for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
-                            for i_boot = 1:Nboot+1
-                                adjustment = thresh_cquantile / ccdfmixs[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]
-                                @assert adjustment > 0
-                                ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
-                                pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
-                            end
-                        end
-                    end
-                end
-                #IFT.@infiltrate ((dst=="b")&(rsp=="2")&(i_scl==2))
-                println("Starting to compute fdivs")
-                # baseline: ancestor generator
-                for mc = ["pim","pth","ent","lt","r2"] #keys(mixobjs)
-                    #IFT.@infiltrate ("lt"==mc)
-                    for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
+                        #IFT.@infiltrate ((dst=="b")&(rsp=="2")&(i_scl==2))
+                        #println("Starting to compute fdivs")
+                        #IFT.@infiltrate ("lt"==mc)
                         for i_boot = 1:Nboot+1
                             for fdivname = fdivnames
                                 # TODO get the right baseline for subasymptotic POt
@@ -323,7 +323,12 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
         #@infiltrate any(isnan.(fdivs_ancgen_valid[fdivname]))
     end
 
-    JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed.jld2"),"w") do f
+    for filename = readdir(resultdir,join=true)
+        if endswith(filename, "ccdfs_regressed.jld2")
+            rm(filename)
+        end
+    end
+    JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"w") do f
         # coordinates for parameters of distributions 
         f["levels"] = levels
         f["levels_mid"] = levels_mid

@@ -9,7 +9,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                              "plot_mixcrits_ydep" =>             1,
                              "compile_fdivs" =>                  1,
                              "plot_fdivs" =>                     1,
-                             "plot_ccdfs_latdep" =>              0,
+                             "plot_ccdfs_latdep" =>              1,
                             )
     php,sdm = QG2L.expt_config()
     cop_pertop_file = joinpath(expt_supdir,"cop_pertop.jld2")
@@ -128,7 +128,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         xlims!(ax, xmin, xmax)
         ylims!(ax, 0.0, 1.0)
         lout[1,2] = Legend(fig, ax, "Exceedance probabilities\n(½)ᵏ, k ∈ {1,...,15}"; framevisible=false, titlefont=:regular, titlehalign=:left, merge=true, linecolor=:black)
-        save(joinpath(resultdir,"ccdfs_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
+        save(joinpath(resultdir,"ccdfs_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph))_accpa$(Int(adjust_ccdf_per_ancestor)).png"),fig)
 
         # ---------- Plot GPD parameters along with moments ---------
         mssk = JLD2.jldopen(joinpath(resultdir_dns,"moments_mssk_$(cfgs[1].target_field[1:end-1]).jld2"),"r") do f
@@ -218,7 +218,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         end
         for (i_ytgt,ytgt) in enumerate(ytgts)
             resultdir_y = joinpath(exptdirs_COAST[i_ytgt],"results")
-            JLD2.jldopen(joinpath(resultdir_y,"ccdfs_regressed.jld2"),"r") do f
+            JLD2.jldopen(joinpath(resultdir_y,"ccdfs_regressed_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"r") do f
                 for dst = dsts
                     for rsp = rsps
                         for mc = ["pim","pth","ent","lt","r2"]
@@ -234,7 +234,12 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             end
         end
 
-        JLD2.jldopen(joinpath(resultdir,"fdivs.jld2"),"w") do f
+        for filename = readdir(resultdir,join=true)
+            if endswith(filename,"fdivs.jld2")
+                rm(filename)
+            end
+        end
+        JLD2.jldopen(joinpath(resultdir,"fdivs_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"w") do f
             f["fdivs"] = fdivs
             f["fdivs_ancgen_valid"] = fdivs_ancgen_valid
         end
@@ -250,11 +255,13 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     if todo["plot_fdivs"]
 
         dsts = ("b",)
-        rsps = ("2","e")
+        rsps = ("e",)
         i_boot = 1
 
+        fdivs2plot = ["qrmse",]
+
         fdivlabels = Dict("qrmse"=>"𝐿²","tv"=>"TV","chi2"=>"χ²","kl"=>"KL")
-        for fdivname = fdivnames
+        for fdivname = fdivs2plot
             fdivs_ancgen_valid_pt,fdivs_ancgen_valid_lo,fdivs_ancgen_valid_hi = let
                 fdav = fdivs_ancgen_valid[fdivname]
                 (SB.mean(fdav; dims=2)[:,1], (QG2L.quantile_sliced(fdav, q, 2)[:,1] for q=(0.05,0.95))...)
@@ -292,7 +299,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         for i = 1:length(axs)-1
                             rowgap!(lout, i, 0)
                         end
-                        save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl).png"), fig)
+                        save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                         # TODO Do a parallel figure bit with leadtime and committor as the independent variables, fdiv as the dependent variable 9just a slice of the phdgms from the one-latitude cases)
                     end
                 end
@@ -317,7 +324,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             (ast_of_pth,fdiv_of_pth) = (zeros(Float64, (Nmcs["pth"],Nytgt)) for _=1:2)
             (ast_of_pim,fdiv_of_pim) = (zeros(Float64, (Nmcs["pim"],Nytgt)) for _=1:2)
             for (i_ytgt,ytgt) in enumerate(ytgts)
-                JLD2.jldopen(joinpath(exptdirs_COAST[i_ytgt],"results","ccdfs_regressed.jld2"),"r") do f
+                JLD2.jldopen(joinpath(exptdirs_COAST[i_ytgt],"results","ccdfs_regressed_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"r") do f
                     Nancy = size(f["mixcrits"][dst][rsp]["pth"],2)
                     #@infiltrate Nancy < cfgs[i_ytgt].num_init_conds_max
                     pth_of_ast[:,i_ytgt] .= SB.mean(f["mixcrits"][dst][rsp]["pth"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
@@ -367,7 +374,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             colgap!(lout, 2, 0)
 
             rowsize!(lout, 1, Relative(1/6))
-            save(joinpath(resultdir,"phdgm_ast_pth_pim_$(dst)_$(rsp)_$(i_scl)_$(fdivname).png"), fig)
+            save(joinpath(resultdir,"phdgm_ast_pth_pim_$(dst)_$(rsp)_$(i_scl)_$(fdivname)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
         end
     end
     if todo["plot_pot_ccdfs_latdep"]
@@ -394,7 +401,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         i_boot = 1
         for (i_ytgt,ytgt) in enumerate(ytgts)
             resultdir_COAST = joinpath(exptdirs_COAST[i_ytgt], "results")
-            JLD2.jldopen(joinpath(resultdir_COAST, "ccdfs_regressed.jld2"),"r") do f
+            JLD2.jldopen(joinpath(resultdir_COAST, "ccdfs_regressed_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"r") do f
                 for dst = dsts
                     for rsp = rsps
                         for mc = ["pim","ent","pth"]
@@ -406,11 +413,10 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         end
 
         for dst = ["b",]
-            for rsp = ["2","e"]
+            for rsp = ["e"]
                 for mc = ["ent","pth","pim"]
-                    for fdivname = ["kl","qrmse"]
+                    for fdivname = ["qrmse"]
                         for i_scl = [1,4,8,12]
-                            @infiltrate !(mc in keys(fdivs[dst][rsp]))
                             idx_mcobj = mapslices(argmin, fdivs[dst][rsp][mc][fdivname][:,i_boot,:,i_scl]; dims=2)
                             scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
                             fig = Figure(size=(500,1000))
@@ -454,7 +460,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                                 xlims!(ax, epsilon/2, thresh_cquantile*1.01)
                             end
                             linkxaxes!(axag, axcoast)
-                            save(joinpath(resultdir,"ccdfs_pot_coast_$(dst)_$(rsp)_$(mc)_$(i_scl)_min$(fdivname).png"), fig)
+                            save(joinpath(resultdir,"ccdfs_pot_coast_$(dst)_$(rsp)_$(mc)_$(i_scl)_min$(fdivname)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                         end
                     end
                 end
