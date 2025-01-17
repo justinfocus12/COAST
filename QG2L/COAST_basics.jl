@@ -582,7 +582,7 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, rsp::String)
     elseif "e" == rsp
         rspstr = "empirical"
     end
-    label = "$(label_target(cfg, sdm)), $(rspstr)𝑅̂"
+    label = "$(label_target(cfg, sdm)), $(rspstr)𝑅"
     return label
 end
 
@@ -594,7 +594,7 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, scale::Float64, r
     elseif "e" == rsp
         rspstr = "empirical"
     end
-    label = "$(label_target(cfg, sdm, scale)), $(rspstr) 𝑅̂*"
+    label = "$(label_target(cfg, sdm, scale)), $(rspstr) 𝑅*"
     return label
 end
 
@@ -724,7 +724,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     fdivnames = ("qrmse","kl","chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    i_thresh_cquantile = 5
+    i_thresh_cquantile = 8
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000

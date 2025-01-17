@@ -1098,7 +1098,7 @@ function quantile_rmse_from_unnormalized(ccdf1, ccdf2, levels1, levels2)
     else
         levels2_interp = interpolate_logccdf_to_grid(levels2[1:N2], logccdf2, logccdf)
     end
-    return sum((levels1_interp .- levels2_interp).^2) / N
+    return sqrt(sum((levels1_interp .- levels2_interp).^2) / N)
 end
 
 

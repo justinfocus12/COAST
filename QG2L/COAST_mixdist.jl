@@ -223,8 +223,12 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         # weight the entropy by the probability of exceeding the threshold 
                         mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
                         mixcrits[dst][rsp]["went"][i_leadtime,i_anc,i_scl] = ccdf[i_thresh_cquantile] * QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
-                        if levels[end] > Rmaxanc
-                            mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] = ccdf[findfirst(levels .> Rmaxanc)]
+                        if levels[end] >= Rmaxanc
+                            i_lev_lo = findlast(levels .< Rmaxanc)
+                            i_lev_hi = findfirst(levels .>= Rmaxanc)
+                            slope = (ccdf[i_lev_hi] - ccdf[i_lev_lo])/(levels[i_lev_hi] - levels[i_lev_lo])
+                            mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] = ccdf[i_lev_lo] + slope*(Rmaxanc - levels[i_lev_lo])
+                            @assert ccdf[i_lev_lo] >= mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] >= ccdf[i_lev_hi]
                         end
                     end
                     # optimize each mixing objective across lead times 

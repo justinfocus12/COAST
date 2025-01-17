@@ -3,13 +3,13 @@
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
-                             "remove_pngs" =>                    1,
-                             "plot_pot_ccdfs_latdep" =>          1,
-                             "print_simtimes" =>                 1,
+                             "remove_pngs" =>                    0,
+                             "plot_pot_ccdfs_latdep" =>          0,
+                             "print_simtimes" =>                 0,
                              "plot_mixcrits_ydep" =>             1,
                              "compile_fdivs" =>                  1,
                              "plot_fdivs" =>                     1,
-                             "plot_ccdfs_latdep" =>              1,
+                             "plot_ccdfs_latdep" =>              0,
                             )
     php,sdm = QG2L.expt_config()
     cop_pertop_file = joinpath(expt_supdir,"cop_pertop.jld2")
@@ -263,22 +263,27 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 for rsp = rsps
                     for i_scl = scales2plot
                         scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
+                        threshcqstr = 
                         fig = Figure(size=(600,1200))
                         lout = fig[1,1] = GridLayout()
-                        axs = [Axis(lout[i_syncmc,1], xlabel=fdivlabels[fdivname], ylabel="(Target 𝑦)/L", title="$(label_target(target_r,sdm)), $(scalestr)", xlabelvisible=false, xticklabelsvisible=false, titlevisible=false, titlefont=:regular, xscale=log10) for i_syncmc=1:3]
+                        axs = [Axis(lout[i_syncmc,1], xlabel=fdivlabels[fdivname], ylabel="(Target 𝑦)/L", title="$(label_target(target_r,sdm)), $(scalestr)\nthreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", xlabelvisible=false, xticklabelsvisible=false, titlevisible=false, titlefont=:regular, xscale=log10) for i_syncmc=1:3]
                         for (i_syncmc,syncmc) in enumerate(["lt","pth","pim"])
                             ax = axs[i_syncmc]
                             for (i_mcobj,mcobj) in enumerate(mixobjs[syncmc])
                                 lines!(ax, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,i_mcobj,i_scl], ytgts; color=i_mcobj, colorrange=(0,Nmcs[syncmc]), colormap=:managua, label=@sprintf("%.2f", mcobj))
+                                # pick out the best mcobjs
                             end
-                            # Short simulation
-                            lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:orange, linewidth=4, label="Short DNS\n(90% CI)")
-                            for fdav = (fdivs_ancgen_valid_lo,fdivs_ancgen_valid_hi)
-                                lines!(ax, fdav, ytgts; color=:orange, linewidth=2, linestyle=(:dot,:dense))
-                            end
+                            idx_mcobj_best = mapslices(argmin, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1]
+                            scatter!(ax, [fdivs[dst][rsp][syncmc][fdivname][i_ytgt,i_boot,idx_mcobj_best[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=idx_mcobj_best, colorrange=(0,Nmcs[syncmc]), colormap=:managua)
                             # Max-entropy
-                            lines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=:red, linewidth=2, label=mixobj_labels["ent"][1])
+                            lines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=:red, linewidth=3, label=mixobj_labels["ent"][1], alpha=0.5)
                             lout[i_syncmc,2] = Legend(fig, ax, mixcrit_labels[syncmc]; titlefont=:regular, labelsize=8, nbanks=3)
+                            # Short simulation
+                            band!(ax, Point2f.(fdivs_ancgen_valid_lo,ytgts), Point2f.(fdivs_ancgen_valid_hi,ytgts); color=:gray, alpha=0.25)
+                            lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=4, label="Short DNS\n(90% CI)")
+                            #for fdav = (fdivs_ancgen_valid_lo,fdivs_ancgen_valid_hi)
+                            #    lines!(ax, fdav, ytgts; color=:gray, linewidth=5, linestyle=:solid, alpha=0.5)
+                            #end
 
                         end
                         linkxaxes!(axs...)

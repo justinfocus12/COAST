@@ -133,6 +133,7 @@ function plot_objective_response_linquad(
         ax2d = Axis(lout_2d[1,i_col]; xlabel="Re{ω}", ylabel="Im{ω}", title=title_2d,lblargs...,titlevisible=false, titlealign=:right)
         ax1d = Axis(lout_1d[1,i_col]; xlabel="Fitted severity", ylabel="Actual severity 𝑅*(ω)", title=title_1d, lblargs..., titlevisible=false, titlealign=:right)
         idx_desc = findall(round.(Int, coast.desc_tphpert[i_anc]./sdm.tu) .== tpert)
+        @infiltrate
         (Rmax_pred_linear,Rmax_pred_quadratic) = (zeros(Float64, length(idx_desc)) for _=1:2)
         Rmax_pred_linear_anc = coefs_linear[1,i_leadtime,i_anc]
         Rmax_pred_quadratic_anc = coefs_quadratic[1,i_leadtime,i_anc]

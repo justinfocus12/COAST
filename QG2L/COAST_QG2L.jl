@@ -37,9 +37,9 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                              "update_paths" =>                                   0,
                              "plot_pertop" =>                                    0,
                              "compute_dns_objective" =>                          0,
-                             "plot_dns_objective_stats" =>                       1,
-                             "anchor" =>                                         0,
-                             "sail" =>                                           0, 
+                             "plot_dns_objective_stats" =>                       0,
+                             "anchor" =>                                         1,
+                             "sail" =>                                           1, 
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "plot_objective" =>                                 0, 
                              "mix_COAST_distributions_polynomial" =>             0,
@@ -163,6 +163,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
     @show ens_dns.trajs[end].tfin
     ens = EM.load_Ensemble(ensfile_COAST)
     coast = load_COASTState(coastfile_COAST)
+    #@infiltrate
+    #error()
     if (1==todo["update_paths"]) && (!isnothing(old_path_part)) && (!isnothing(new_path_part))
         #adjust_paths!(ens_dns, old_path_part, new_path_part)
         #EM.save_Ensemble(ens_dns, ensfile_dns)
@@ -380,6 +382,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         end
         @show coast.dns_peaks
         @show coast.dns_peak_times
+
 
 
         # Reset termination, in case the capacity has been expanded
@@ -993,7 +996,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         display(mcmean)
                         println("mcstd = ")
                         display(mcstd)
-                        hmmean = heatmap!(axmean, -sdm.tu.*leadtimes, distn_scales[dst], mcmean; colormap=Reverse(:managua))
+                        hmmean = heatmap!(axmean, -sdm.tu.*leadtimes, distn_scales[dst], mcmean; colormap=Reverse(:managua), colorscale=identity)
                         for ax = (axmean,) #axstd)
                             vlines!(ax, -sdm.tu*lt_r2thresh_mean; color=:black, linestyle=:solid, linewidth=2)
                             vlines!(ax, -sdm.tu*lt_r2thresh_mean_lo; color=:black, linestyle=:dash, linewidth=2)
@@ -1021,7 +1024,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                                 ltmean[i_pim,i_scl] = SB.mean(leadtimes[iltmixs[dst][rsp]["pim"][i_pim,:,i_scl]])
                             end
                         end
-                        hm = heatmap!(ax, reverse(mixobjs["pim"]; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["pim"][fdivname][i_boot,:,:]; dims=1); colormap=:managua)
+                        hm = heatmap!(ax, reverse(mixobjs["pim"]; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["pim"][fdivname][i_boot,:,:]; dims=1); colormap=:managua, colorscale=log10)
                         cbar = Colorbar(lout[1,2], hm, vertical=true)
                         co = contour!(ax, mixobjs["pim"], distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*leadtimes, color=:black, labels=true)
                         save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_indeppim.png"), fig)
@@ -1038,7 +1041,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                                 ltmean[i_pth,i_scl] = SB.mean(leadtimes[iltmixs[dst][rsp]["pth"][i_pth,:,i_scl]])
                             end
                         end
-                        hm = heatmap!(ax, reverse(mixobjs["pth"]; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["pth"][fdivname][i_boot,:,:]; dims=1); colormap=:managua)
+                        hm = heatmap!(ax, reverse(mixobjs["pth"]; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["pth"][fdivname][i_boot,:,:]; dims=1); colormap=:managua, colorscale=log10)
                         cbar = Colorbar(lout[1,2], hm, vertical=true)
                         co = contour!(ax, mixobjs["pth"], distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*leadtimes, color=:black, labels=true)
                         save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_indeppth.png"), fig)
@@ -1046,7 +1049,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         fig = Figure(size=(500,400))
                         lout = fig[1,1] = GridLayout()
                         ax = Axis(lout[1,1], xlabel="−AST", ylabel="Scale", title="$(fdivlabels[i_fdivname]), $(label_target(cfg,sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular) 
-                        hm = heatmap!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["lt"][fdivname][i_boot,:,:]; dims=1); colormap=:managua)
+                        hm = heatmap!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["lt"][fdivname][i_boot,:,:]; dims=1); colormap=:managua, colorscale=log10)
                         cbar = Colorbar(lout[1,2], hm, vertical=true)
                         levels_pth = collect(range(mixobjs["pth"][[1,end]]..., length=12))
                         levels_pim = collect(range(mixobjs["pim"][[1,end]]..., length=12))
@@ -1142,7 +1145,7 @@ else
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
         #idx_expt = vec([3,6][2:2] .+ [0,1][1:1]'.*11) #Vector{Int64}([6,9])
-        idx_expt = collect(1:22)
+        idx_expt = [5]
     end
 end
 
