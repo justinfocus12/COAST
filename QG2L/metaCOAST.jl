@@ -7,9 +7,9 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                              "plot_pot_ccdfs_latdep" =>          0,
                              "print_simtimes" =>                 0,
                              "plot_mixcrits_ydep" =>             1,
-                             "compile_fdivs" =>                  1,
-                             "plot_fdivs" =>                     1,
-                             "plot_ccdfs_latdep" =>              1,
+                             "compile_fdivs" =>                  0,
+                             "plot_fdivs" =>                     0,
+                             "plot_ccdfs_latdep" =>              0,
                             )
     php,sdm = QG2L.expt_config()
     cop_pertop_file = joinpath(expt_supdir,"cop_pertop.jld2")
@@ -152,6 +152,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         # scale
         scatterlines!(axscale, gpd_scale_valid, ytgts; color=:black)
         vlines!(axscale, 0.0; color=:gray, alpha=0.5, linewidth=3)
+        xlims!(axscale, -0.005, 0.035)
         # shape
         vlines!(axshape, 0.0; color=:gray, alpha=0.5, linewidth=3)
         scatterlines!(axshape, gpd_shape_valid, ytgts; color=:black)
@@ -244,7 +245,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             f["fdivs_ancgen_valid"] = fdivs_ancgen_valid
         end
     else
-        fdivs,fdivs_ancgen_valid = JLD2.jldopen(joinpath(resultdir,"fdivs.jld2"),"r") do f
+        fdivs,fdivs_ancgen_valid = JLD2.jldopen(joinpath(resultdir,"fdivs_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"r") do f
             return f["fdivs"],f["fdivs_ancgen_valid"]
         end
     end
@@ -338,38 +339,44 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     fdiv_of_pth[:,i_ytgt] .= (f["fdivs"][dst][rsp]["pth"][fdivname][i_boot,1:Nmcs["pth"],i_scl])
                 end
             end
-            # Normalize per latitude
-            #fdiv_of_ast .= (fdiv_of_ast .- minimum(fdiv_of_ast; dims=1)) ./ (maximum(fdiv_of_ast; dims=1) .- minimum(fdiv_of_ast; dims=1))
-            #fdiv_of_pth .= (fdiv_of_pth .- minimum(fdiv_of_pth; dims=1)) ./ (maximum(fdiv_of_pth; dims=1) .- minimum(fdiv_of_pth; dims=1))
-            #fdiv_of_pim .= (fdiv_of_pim .- minimum(fdiv_of_pim; dims=1)) ./ (maximum(fdiv_of_pim; dims=1) .- minimum(fdiv_of_pim; dims=1))
+            normalize_by_latitude = true
+            if normalize_by_latitude
+                fdiv_of_ast .= (fdiv_of_ast .- minimum(fdiv_of_ast; dims=1)) ./ (maximum(fdiv_of_ast; dims=1) .- minimum(fdiv_of_ast; dims=1))
+                fdiv_of_pth .= (fdiv_of_pth .- minimum(fdiv_of_pth; dims=1)) ./ (maximum(fdiv_of_pth; dims=1) .- minimum(fdiv_of_pth; dims=1))
+                fdiv_of_pim .= (fdiv_of_pim .- minimum(fdiv_of_pim; dims=1)) ./ (maximum(fdiv_of_pim; dims=1) .- minimum(fdiv_of_pim; dims=1))
+                colorscale = identity
+                colorrange = (0,1)
+            else
+                colorscale = log10
+                colorrange = (minimum(minimum.([fdiv_of_ast,fdiv_of_pth,fdiv_of_pim])),maximum(maximum.([fdiv_of_ast,fdiv_of_pth,fdiv_of_pim])))
+            end
             fig = Figure(size=(400,300))
             lout = fig[1,1] = GridLayout()
             axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6)
             cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :valign=>:bottom)
-            colorrange = (minimum(minimum.([fdiv_of_ast,fdiv_of_pth,fdiv_of_pim])),maximum(maximum.([fdiv_of_ast,fdiv_of_pth,fdiv_of_pim])))
             ax1 = Axis(lout[2,1]; xlabel="−AST", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
             axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
             ax2 = Axis(lout[2,2]; xlabel="𝑞(μ)", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
-            ax3 = Axis(lout[2,3]; xlabel="𝑞(𝑅*))", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
+            ax3 = Axis(lout[2,3]; xlabel="𝑞(𝑅*)", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
             threshcquantstr = @sprintf("%.2E",thresh_cquantile)
             toplabel = "$(label_target(target_r, sdm)), scale $(distn_scales[dst][i_scl]), threshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))=$(threshcquantstr)"
             Label(lout[1,1:3,Top()], toplabel, padding=(0.0,0.0,12.0,0.0), valign=:bottom, halign=:center, fontsize=8, font=:regular)
             leadtime_bounds = tuple((-sdm.tu .* [1.5*leadtimes[end]-0.5*leadtimes[end-1], 1.5*leadtimes[1]-0.5*leadtimes[2]])...)
             # First heatmap: AST as independent variable
-            hm1 = heatmap!(ax1, leadtime_bounds, (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(fdiv_of_ast; dims=1); colormap=:managua, colorscale=log10, colorrange=colorrange)
+            hm1 = heatmap!(ax1, leadtime_bounds, (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(fdiv_of_ast; dims=1); colormap=:viridis, colorscale=colorscale, colorrange=colorrange)
             #co1pth = contour!(ax1, -leadtimes.*sdm.tu, ytgts, reverse(pth_of_ast; dims=1); color=:gray, linewidth=2, alpha=0.5, labels=false)
             #co1pim = contour!(ax1, -leadtimes.*sdm.tu, ytgts, reverse(pim_of_ast; dims=1); color=:black, linestyle=(:dot,:dense), labels=false)
             cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label="$(fdivlabel) [synchron]", cbarargs...)
             # Second heatmap: PTH as independent variable
-            hm2 = heatmap!(ax2, (0,1), (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(fdiv_of_pth; dims=1); colormap=:managua, colorscale=log10, colorrange=colorrange) 
+            hm2 = heatmap!(ax2, (0,1), (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(fdiv_of_pth; dims=1); colormap=:viridis, colorscale=colorscale, colorrange=colorrange) 
             #co2 = contour!(ax2, mixobjs["pth"], ytgts, reverse(ast_of_pth; dims=1); color=:black, labels=false)
             cbar2 = Colorbar(lout[1,2], hm2; vertical=false, label="$(fdivlabel) [synthrex]", cbarargs...)
             # Third heatmap: PIM as independent variable
-            hm3 = heatmap!(ax3, (0,1), (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(fdiv_of_pim; dims=1); colormap=:managua, colorscale=log10, colorrange=colorrange) 
+            hm3 = heatmap!(ax3, (0,1), (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1]), reverse(fdiv_of_pim; dims=1); colormap=:viridis, colorscale=colorscale, colorrange=colorrange) 
             #co3 = contour!(ax3, mixobjs["pim"], ytgts, reverse(ast_of_pim; dims=1); color=:black, labels=false)
             cbar3 = Colorbar(lout[1,3], hm3; vertical=false, label="$(fdivlabel) [synimp]", cbarargs...)
             #rowsize!(lout, 0, Relative(1/8))
-            rowgap!(lout, 1, 0)
+            rowgap!(lout, 1, 15)
             colgap!(lout, 1, 0)
             colgap!(lout, 2, 0)
 
