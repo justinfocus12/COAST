@@ -40,7 +40,7 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
    #
    kwargs = Dict(:colormap=>:managua10, :colorrange=>(cfg.lead_time_min,cfg.lead_time_max), :color=>1)
    leadtimes = collect(range(cfg.lead_time_min, cfg.lead_time_max; step=cfg.lead_time_inc))
-   spaghetti_leadtimes = leadtimes[round.(Int, range(1, length(leadtimes); length=5)[[1,3]])]
+   spaghetti_leadtimes = leadtimes[round.(Int, range(1, length(leadtimes); length=6)[[1,5]])]
    for (i_desc,desc) in enumerate(descendants)
        desc = descendants[i_desc]
        traj = ens.trajs[desc]
@@ -49,11 +49,11 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
        t_desc = (traj.tfin - Nt) .+ collect(1:1:Nt)
        tph_desc = t_desc .* sdm.tu
        leadtime = t0 - round(Int, coast.desc_tphpert[i_anc][i_desc]/sdm.tu) 
+       itpert = argmin(abs.(t_desc.*sdm.tu .- coast.desc_tphpert[i_anc][i_desc]))
        if leadtime in spaghetti_leadtimes
-           lines!(ax1, tph_desc .- t0ph, coast.desc_Roft[i_anc][i_desc]; kwargs...)
+           lines!(ax1, tph_desc[itpert:end] .- t0ph, coast.desc_Roft[i_anc][i_desc][itpert:end]; kwargs...)
            vlines!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph; kwargs...)
        end
-       itpert = argmin(abs.(t_desc.*sdm.tu .- coast.desc_tphpert[i_anc][i_desc]))
        scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Roft[i_anc][i_desc][itpert]; kwargs..., markersize=5)
        scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=6) 
        scatter!(ax2, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.anc_Rmax[i_anc]; kwargs..., markersize=8, label="Splits") 
@@ -90,7 +90,7 @@ function plot_objective_response_linquad(
     color_lin = :cyan
     color_quad = :sienna1
     Nleadtime = length(leadtimes)
-    Nleadtimes2plot = 4
+    Nleadtimes2plot = 2
     Nanc = length(coast.ancestors)
     println("Gonna show phases and responses now")
     anc = coast.ancestors[i_anc]
@@ -123,7 +123,7 @@ function plot_objective_response_linquad(
     end
     all_descs_2plot = vcat([desc_by_leadtime(coast, i_anc, leadtimes[ilt], sdm) for ilt=1:i_last_leadtime]...) #findall(coast.desc_tphpert[i_anc] .<= leadtimes[i_last_leadtime]*sdm.tu)
     Rbounds = [extrema(vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][all_descs_2plot]))...]
-    idx_leadtimes2plot = round.(Int, range(i_last_leadtime, 1; length=Nleadtimes2plot))
+    idx_leadtimes2plot = round.(Int, range(1, length(leadtimes); length=6)[[5,1]])
     for i_leadtime = idx_leadtimes2plot
         i_col += 1
         leadtime = leadtimes[i_leadtime]
@@ -131,7 +131,7 @@ function plot_objective_response_linquad(
         tpstr = @sprintf("%.2f", leadtime*sdm.tu)
         r2_lin_str = @sprintf("%.2f", rsquared_linear[i_leadtime,i_anc])
         r2_quad_str = @sprintf("%.2f", rsquared_quadratic[i_leadtime,i_anc])
-        lblargs = Dict(:xticklabelsize=>7,:xlabelsize=>8,:yticklabelsize=>7,:ylabelsize=>8,:titlesize=>10,:xlabelvisible=>false,:ylabelvisible=>(i_col==1),:xticklabelsvisible=>true,:yticklabelsvisible=>(i_col==1), :xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>0,:titlefont=>:regular, :xticksize=>2.0, :yticksize=>2.0, :xlabelpadding=>1.5, :ylabelpadding=>1.5)
+        lblargs = Dict(:xticklabelsize=>7,:xlabelsize=>8,:yticklabelsize=>7,:ylabelsize=>8,:titlesize=>10,:xlabelvisible=>false,:ylabelvisible=>(i_col==1),:xticklabelsvisible=>true, :xticklabelrotation=>pi/2, :yticklabelsvisible=>(i_col==1), :xgridvisible=>false, :ygridvisible=>false, :titlefont=>:regular, :xticksize=>2.0, :yticksize=>2.0, :xlabelpadding=>1.5, :ylabelpadding=>1.5)
         title_2d = "−$(tpstr)"
         title_1d = "($(r2_lin_str),$(r2_quad_str))"
         if i_col == 1
@@ -205,6 +205,8 @@ function plot_objective_response_linquad(
         scatter!(ax1d, Rmax_pred_quadratic_anc, coast.anc_Rmax[i_anc]; marker=:star5, color=color_quad)
         lines!(ax1d, Rbounds, Rbounds; color=:black, linestyle=(:dash,:dense))
         hlines!(ax1d, coast.anc_Rmax[i_anc]; color=:black, linestyle=(:dash, :dense))
+        xlims!(ax1d, extrema(scores)...)
+        ylims!(ax1d, extrema(scores)...)
         arc!(ax2d, Point2f(0,0), Amin, 0, 2pi; color=:gray, alpha=0.5)
         arc!(ax2d, Point2f(0,0), Amax, 0, 2pi; color=:gray, alpha=0.5)
     end
@@ -220,8 +222,8 @@ function plot_objective_response_linquad(
     ylims!(ax_r2, -0.1, 1.1)
 
     Label(lout_2d[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,5.0,5.0), valign=:bottom, fontsize=9)
-    Label(lout_2d[1,:,Bottom()], "Re{ω}", padding=(0,10,0,15), valign=:bottom, fontsize=8)
-    Label(lout_1d[1,:,Bottom()], "(Linear, quadratic)-fitted severity 𝑅̂*(ω)", padding=(0,10,0,15), valign=:bottom, fontsize=8)
+    Label(lout_2d[1,:,Bottom()], "Re{ω}", padding=(0,10,0,25), valign=:bottom, fontsize=8)
+    Label(lout_1d[1,:,Bottom()], "(Linear, quadratic)-fitted severity 𝑅̂*(ω)", padding=(0,10,0,25), valign=:bottom, fontsize=8)
     #rowsize!(lout_1d, 1, Relative(14/15))
     #rowsize!(lout_2d, 1, Relative(14/15))
     rowgap!(lout, 1, 10.0)

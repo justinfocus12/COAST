@@ -477,7 +477,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
         ytgtstr = @sprintf("%.2f",cfg.target_yPerL*sdm.Ly)
         todosub = Dict{String,Bool}(
                                     "plot_spaghetti" =>              1,
-                                    "plot_response" =>               0,
+                                    "plot_response" =>               1,
                                    )
         @show idx_anc_strat
 
