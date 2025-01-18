@@ -1,4 +1,5 @@
 function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thresh, figdir)
+    println("About to plot mom's spaghetti from ancestor $(i_anc)")
     t0 = coast.anc_tRmax[i_anc]
     t0ph = t0*sdm.tu
     t0str = @sprintf("%.0f", t0ph)
@@ -36,7 +37,10 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
        vlines!(ax, 0.0; color=:black, linestyle=(:dash,:dense), linewidth=1.0, alpha=1.0)
    end
    # First panel: just the timeseries
+   #
    kwargs = Dict(:colormap=>:managua10, :colorrange=>(cfg.lead_time_min,cfg.lead_time_max), :color=>1)
+   leadtimes = collect(range(cfg.lead_time_min, cfg.lead_time_max; step=cfg.lead_time_inc))
+   spaghetti_leadtimes = leadtimes[round.(Int, range(1, length(leadtimes); length=5)[[1,3]])]
    for (i_desc,desc) in enumerate(descendants)
        desc = descendants[i_desc]
        traj = ens.trajs[desc]
@@ -44,7 +48,11 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
        Nt = length(coast.desc_Roft[i_anc][i_desc])
        t_desc = (traj.tfin - Nt) .+ collect(1:1:Nt)
        tph_desc = t_desc .* sdm.tu
-       lines!(ax1, tph_desc .- t0ph, coast.desc_Roft[i_anc][i_desc]; kwargs...)
+       leadtime = t0 - round(Int, coast.desc_tphpert[i_anc][i_desc]/sdm.tu) 
+       if leadtime in spaghetti_leadtimes
+           lines!(ax1, tph_desc .- t0ph, coast.desc_Roft[i_anc][i_desc]; kwargs...)
+           vlines!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph; kwargs...)
+       end
        itpert = argmin(abs.(t_desc.*sdm.tu .- coast.desc_tphpert[i_anc][i_desc]))
        scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Roft[i_anc][i_desc][itpert]; kwargs..., markersize=5)
        scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=6) 
