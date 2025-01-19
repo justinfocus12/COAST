@@ -41,10 +41,10 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
                              "regress_lead_dependent_risk_polynomial" =>         0, 
-                             "plot_objective" =>                                 1, 
-                             "mix_COAST_distributions_polynomial" =>             0,
-                             "plot_COAST_mixture" =>                             0,
-                             "mixture_COAST_phase_diagram" =>                    0,
+                             "plot_objective" =>                                 0, 
+                             "mix_COAST_distributions_polynomial" =>             1,
+                             "plot_COAST_mixture" =>                             1,
+                             "mixture_COAST_phase_diagram" =>                    1,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
                              # vestigial or hibernating
@@ -629,9 +629,9 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 # ---------------- Single-ancestor plots ---------------
                 if todosub["rainbow_pdfs"]
                     @assert all(isfinite.(pdfs[dst][rsp]))
-                    mixcrits2plot = ["pim","pth","r2","ent"]
+                    mixcrits2plot = ["pim","pth","r2","ent","ei"]
                     rspstr = ("1" == rsp ? "linear" : "quadratic")
-                    mixcrits_ylabels = ["𝑞(𝑅*)","𝑞(μ)","𝑅² ($(rspstr))","Entropy"]
+                    mixcrits_ylabels = ["𝑞(𝑅*)","𝑞(μ)","𝑅² ($(rspstr))","Entropy","𝔼[(𝑅-𝑅*)₊]"]
                     Nleadtimes2plot = Nleadtime
                     #Threads.@threads for i_anc = idx_anc_strat
                     for i_anc = idx_anc_strat
@@ -752,7 +752,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                                 fdav = filter(!isnan, fdivs_ancgen_valid[fdivname]) 
                                 (SB.mean(fdav), SB.quantile(fdav, 0.05), SB.quantile(fdav, 0.95))
                             end
-                            for mc = ["ent"] #,"r2","ent"]
+                            for mc = ["ei","ent"] #,"r2","ent"]
                                 for i_mcobj = 1:length(mixobjs[mc])
                                     fdiv_cond = fdivs[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl]
                                     ltstr = @sprintf("%.1f",leadtimes[ilt_fdiv_synclt]*sdm.tu)
@@ -979,7 +979,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         (mid,lo,hi)
                     end
                     # Heatmap of various mixing criteria as a function of AST; below, reverse it
-                    for mc = ["pim","pth","ent","r2"]
+                    for mc = ["ei","pim","pth","ent","r2"]
                         fig = Figure(size=(500,400))
                         loutmean = fig[1,1] = GridLayout()
                         axmean = Axis(loutmean[1,1], xlabel="−AST", ylabel="Scale", title="Mean $(mixcrit_labels[mc]), $(label_target(cfg, sdm, rsp))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular)
@@ -1064,7 +1064,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 if todosub["phdgm_slices"]
                     for (i_fdivname,fdivname) in enumerate(fdivs2plot)
                         fdiv_max_ent = fdivs[dst][rsp]["ent"][fdivname][i_boot,1,:]
-                        fdiv_last_r2 = fdivs[dst][rsp]["r2"][fdivname][i_boot,1,:]
+                        fdiv_max_ei = fdivs[dst][rsp]["ei"][fdivname][i_boot,1,:]
                         fig = Figure(size=(750,1000))
                         lout = fig[1,1] = GridLayout()
                         (axlt,axpth, axpim) = (Axis(lout[i,1], xlabel=fdivlabels[i_fdivname], ylabel="Scale", title="$(label_target(cfg, sdm))\nThreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlefont=:regular, xscale=log10) for i=1:3)
@@ -1073,11 +1073,9 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         nanquantile(arr,q) = SB.quantile(filter(!isnan, arr), q)
                         for ax = (axlt,axpth,axpim)
                             scatterlines!(ax, fdiv_max_ent, distn_scales[dst]; label="Max. Ent.", color=:red, linestyle=(:dash,:dense), linewidth=3)
+                            scatterlines!(ax, fdiv_max_ei, distn_scales[dst]; label="Max. EI", color=:purple, linestyle=(:dash,:dense), linewidth=3)
                             vlines!(ax, nanmean(fdivs_ancgen_valid[fdivname]); color=:black, alpha=1.0, linewidth=4, label="Short DNS peaks\n(90% CI)")
                             band!(ax, (Point2f.(nanquantile(fdivs_ancgen_valid[fdivname], 0.5+0.5*sgn*0.9).*ones(Float64, length(distn_scales[dst])), distn_scales[dst]) for sgn=[-1,1])..., color=:gray, alpha=0.25)
-                            if ("e" != rsp) && (ax == axlt)
-                                scatterlines!(ax, fdiv_last_r2, distn_scales[dst]; label="𝑅²≈$(r2thresh)", color=:black, linestyle=(:dash,:dense), linewidth=3)
-                            end
                         end
                         # Synchron
                         ax = axlt
@@ -1101,8 +1099,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         lout[3,2] = Legend(fig, axpim, "𝑞(𝑅*) [synimp]"; framevisible=true, labelsize=10, nbanks=3, rowgap=2, titlefont=:regular)
 
                         filterfun(arr) = (!isnan(arr)) & (arr .> 0)
-                        fdivmin = min((minimum(filter(filterfun,fdiv)) for fdiv=(fdiv_max_ent,fdiv_last_r2,fdivs[dst][rsp]["lt"][fdivname],fdivs[dst][rsp]["pim"][fdivname],fdivs[dst][rsp]["pth"][fdivname],fdivs_ancgen_valid[fdivname]))...)
-                        fdivmax = max((maximum(filter(filterfun,fdiv)) for fdiv=(fdiv_max_ent,fdiv_last_r2,fdivs[dst][rsp]["lt"][fdivname],fdivs[dst][rsp]["pim"][fdivname],fdivs[dst][rsp]["pth"][fdivname],fdivs_ancgen_valid[fdivname]))...)
+                        fdivmin = min((minimum(filter(filterfun,fdiv)) for fdiv=(fdiv_max_ent,fdiv_max_ei,fdivs[dst][rsp]["lt"][fdivname],fdivs[dst][rsp]["pim"][fdivname],fdivs[dst][rsp]["pth"][fdivname],fdivs_ancgen_valid[fdivname]))...)
+                        fdivmax = max((maximum(filter(filterfun,fdiv)) for fdiv=(fdiv_max_ent,fdiv_max_ei,fdivs[dst][rsp]["lt"][fdivname],fdivs[dst][rsp]["pim"][fdivname],fdivs[dst][rsp]["pth"][fdivname],fdivs_ancgen_valid[fdivname]))...)
                         for ax = (axlt,axpth,axpim)
                             xlims!(ax, fdivmin, fdivmax)
                         end
@@ -1142,7 +1140,7 @@ else
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
         #idx_expt = vec([3,6][2:2] .+ [0,1][1:1]'.*11) #Vector{Int64}([6,9])
-        idx_expt = [5]
+        idx_expt = [5,7]
     end
 end
 

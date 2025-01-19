@@ -26,48 +26,50 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
     lblargs = Dict(:xticklabelsize=>6,:xlabelsize=>9,:yticklabelsize=>6,:ylabelsize=>9,)
     descendants = Graphs.outneighbors(ens.famtree, anc)
     #pert_dim = length(pertop.camplitudes)
-   fig = Figure(size=(400,300))
-   lout = fig[1:2,1] = GridLayout()
-   lblargs = Dict(:xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :titlesize=>14)
-   ax1 = Axis(lout[1,1]; xlabel="𝑡 − $(t0str)", ylabel="Intensity", title=label_target(cfg,sdm), xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, titlefont=:regular, lblargs...)
-   ax2 = Axis(lout[2,1]; xlabel="𝑡 − $(t0str)", ylabel="Severity", xgridvisible=false, ygridvisible=false, yticks=[minimum(coast.desc_Rmax[i_anc]), coast.anc_Rmax[i_anc]], ytickformat="{:.2f}", lblargs...)
-   for ax = (ax1,ax2)
-       hlines!(ax, thresh; color=:gray, alpha=0.25)
-       hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linestyle=(:dash,:dense), linewidth=1.0)
-       vlines!(ax, 0.0; color=:black, linestyle=(:dash,:dense), linewidth=1.0, alpha=1.0)
-   end
-   # First panel: just the timeseries
-   #
-   kwargs = Dict(:colormap=>:managua10, :colorrange=>(cfg.lead_time_min,cfg.lead_time_max), :color=>1)
-   leadtimes = collect(range(cfg.lead_time_min, cfg.lead_time_max; step=cfg.lead_time_inc))
-   spaghetti_leadtimes = leadtimes[round.(Int, range(1, length(leadtimes); length=6)[[1,5]])]
-   for (i_desc,desc) in enumerate(descendants)
-       desc = descendants[i_desc]
-       traj = ens.trajs[desc]
-       kwargs[:color] = t0 - round(Int, coast.desc_tphpert[i_anc][i_desc]/sdm.tu)
-       Nt = length(coast.desc_Roft[i_anc][i_desc])
-       t_desc = (traj.tfin - Nt) .+ collect(1:1:Nt)
-       tph_desc = t_desc .* sdm.tu
-       leadtime = t0 - round(Int, coast.desc_tphpert[i_anc][i_desc]/sdm.tu) 
-       itpert = argmin(abs.(t_desc.*sdm.tu .- coast.desc_tphpert[i_anc][i_desc]))
-       if leadtime in spaghetti_leadtimes
-           lines!(ax1, tph_desc[itpert:end] .- t0ph, coast.desc_Roft[i_anc][i_desc][itpert:end]; kwargs...)
-           vlines!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph; kwargs...)
-       end
-       scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Roft[i_anc][i_desc][itpert]; kwargs..., markersize=5)
-       scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=6) 
-       scatter!(ax2, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.anc_Rmax[i_anc]; kwargs..., markersize=8, label="Splits") 
-       scatter!(ax2, coast.desc_tRmax[i_anc][i_desc]*sdm.tu-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=8, marker=:star6, alpha=0.8, label="Peaks")
-   end
-   traj = ens.trajs[anc]
-   t_anc = traj.tfin .+ collect(range(-length(coast.anc_Roft[i_anc])+1, 0; step=1)) 
-   lines!(ax1, t_anc.*sdm.tu .- t0ph, coast.anc_Roft[i_anc]; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
-   axislegend(ax2; position=:lb, orientation=:horizontal, labelsize=10, merge=true, unique=true, framevisible=true, markercolor=:black, height=30)
-   linkxaxes!(ax1,ax2)
-   rowsize!(lout, 1, Relative(2/3))
-   rowgap!(lout, 0.0)
+    fig = Figure(size=(400,300))
+    lout = fig[1:2,1] = GridLayout()
+    lblargs = Dict(:xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :titlesize=>14)
+    ax1 = Axis(lout[1,1]; xlabel="𝑡 − $(t0str)", ylabel="Intensity", title=label_target(cfg,sdm), xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, titlefont=:regular, lblargs...)
+    ax2 = Axis(lout[2,1]; xlabel="𝑡 − $(t0str)", ylabel="Severity", xgridvisible=false, ygridvisible=false, yticks=[minimum(coast.desc_Rmax[i_anc]), coast.anc_Rmax[i_anc]], ytickformat="{:.2f}", lblargs...)
+    for ax = (ax1,ax2)
+        hlines!(ax, thresh; color=:gray, alpha=0.25)
+        hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linestyle=(:dash,:dense), linewidth=1.0)
+        vlines!(ax, 0.0; color=:black, linestyle=(:dash,:dense), linewidth=1.0, alpha=1.0)
+    end
+    # First panel: just the timeseries
+    #
+    kwargs = Dict(:colormap=>:RdYlBu_4, :colorrange=>(cfg.lead_time_min,cfg.lead_time_max), :color=>1)
+    leadtimes = collect(range(cfg.lead_time_min, cfg.lead_time_max; step=cfg.lead_time_inc))
+    idx_leadtimes2plot = unique(max.(1, min.(length(leadtimes), round.(Int, length(leadtimes).*[1/9, 2/3]))))
+    spaghetti_leadtimes = leadtimes[reverse(idx_leadtimes2plot)]
+    idx_leadtimes2plot = max.(1, min.(length(leadtimes), round.(Int, length(leadtimes).*[1/9, 2/3])))
+    for (i_desc,desc) in enumerate(descendants)
+        desc = descendants[i_desc]
+        traj = ens.trajs[desc]
+        kwargs[:color] = t0 - round(Int, coast.desc_tphpert[i_anc][i_desc]/sdm.tu)
+        Nt = length(coast.desc_Roft[i_anc][i_desc])
+        t_desc = (traj.tfin - Nt) .+ collect(1:1:Nt)
+        tph_desc = t_desc .* sdm.tu
+        leadtime = t0 - round(Int, coast.desc_tphpert[i_anc][i_desc]/sdm.tu) 
+        itpert = argmin(abs.(t_desc.*sdm.tu .- coast.desc_tphpert[i_anc][i_desc]))
+        if leadtime in spaghetti_leadtimes
+            lines!(ax1, tph_desc[itpert:end] .- t0ph, coast.desc_Roft[i_anc][i_desc][itpert:end]; kwargs...)
+            vlines!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph; kwargs...)
+        end
+        scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Roft[i_anc][i_desc][itpert]; kwargs..., markersize=5)
+        scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=6) 
+        scatter!(ax2, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.anc_Rmax[i_anc]; kwargs..., markersize=8, label="Splits") 
+        scatter!(ax2, coast.desc_tRmax[i_anc][i_desc]*sdm.tu-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=8, marker=:star6, alpha=0.8, label="Peaks")
+    end
+    traj = ens.trajs[anc]
+    t_anc = traj.tfin .+ collect(range(-length(coast.anc_Roft[i_anc])+1, 0; step=1)) 
+    lines!(ax1, t_anc.*sdm.tu .- t0ph, coast.anc_Roft[i_anc]; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
+    axislegend(ax2; position=:lb, orientation=:horizontal, labelsize=10, merge=true, unique=true, framevisible=true, markercolor=:black, height=30)
+    linkxaxes!(ax1,ax2)
+    rowsize!(lout, 1, Relative(2/3))
+    rowgap!(lout, 0.0)
 
-   save(joinpath(figdir,"objectives_anc$(i_anc).png"), fig)
+    save(joinpath(figdir,"objectives_anc$(i_anc).png"), fig)
    
 end
 
@@ -77,7 +79,6 @@ function plot_objective_response_linquad(
         coefs_quadratic, residmse_quadratic, rsquared_quadratic,
         figdir
     )
-
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,distn_scales,
@@ -104,7 +105,7 @@ function plot_objective_response_linquad(
     Rmin = minimum([minimum(coast.anc_Roft[i_anc]) for i_anc=1:Nanc])
     obj_label,short_obj_label = label_objective(cfg)
 
-    fig = Figure(size=(100*Nleadtimes2plot,125*(2+0.5)))
+    fig = Figure(size=(125*Nleadtimes2plot,150*(2+0.5)))
     i_mode_sf = 1
     @show leadtimes
     lout = fig[1:3,1] = GridLayout()
@@ -116,14 +117,8 @@ function plot_objective_response_linquad(
     Amin,Amax = pertop.sf_pert_amplitudes_min[i_mode_sf], pertop.sf_pert_amplitudes_max[i_mode_sf]
     
     i_col = 0
-    if minimum(rsquared_quadratic[:,i_anc]) < r2thresh
-        i_last_leadtime = max(Nleadtimes2plot, findfirst(rsquared_quadratic[:,i_anc] .< r2thresh))
-    else
-        i_last_leadtime = Nleadtime
-    end
-    all_descs_2plot = vcat([desc_by_leadtime(coast, i_anc, leadtimes[ilt], sdm) for ilt=1:i_last_leadtime]...) #findall(coast.desc_tphpert[i_anc] .<= leadtimes[i_last_leadtime]*sdm.tu)
-    Rbounds = [extrema(vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][all_descs_2plot]))...]
-    idx_leadtimes2plot = round.(Int, range(1, length(leadtimes); length=6)[[5,1]])
+    Rbounds = [minimum(scores),maximum(scores)]
+    idx_leadtimes2plot = reverse(unique(max.(1, min.(length(leadtimes), round.(Int, length(leadtimes).*[1/9, 2/3])))))
     for i_leadtime = idx_leadtimes2plot
         i_col += 1
         leadtime = leadtimes[i_leadtime]
@@ -205,8 +200,12 @@ function plot_objective_response_linquad(
         scatter!(ax1d, Rmax_pred_quadratic_anc, coast.anc_Rmax[i_anc]; marker=:star5, color=color_quad)
         lines!(ax1d, Rbounds, Rbounds; color=:black, linestyle=(:dash,:dense))
         hlines!(ax1d, coast.anc_Rmax[i_anc]; color=:black, linestyle=(:dash, :dense))
-        xlims!(ax1d, extrema(scores)...)
-        ylims!(ax1d, extrema(scores)...)
+        scores_lit = vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][idx_desc], Rmax_pred_linear_anc, Rmax_pred_quadratic_anc)
+        scoremin_lit,scoremax_lit = extrema(scores_lit)
+        inflation = 0.1
+        scorebounds_lit = [(1+inflation)*scoremin_lit-inflation*scoremax_lit, (1+inflation)*scoremax_lit-inflation*scoremin_lit]
+        xlims!(ax1d, scorebounds_lit...)
+        ylims!(ax1d, scorebounds_lit...)
         arc!(ax2d, Point2f(0,0), Amin, 0, 2pi; color=:gray, alpha=0.5)
         arc!(ax2d, Point2f(0,0), Amax, 0, 2pi; color=:gray, alpha=0.5)
     end
@@ -222,12 +221,12 @@ function plot_objective_response_linquad(
     ylims!(ax_r2, -0.1, 1.1)
 
     Label(lout_2d[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,5.0,5.0), valign=:bottom, fontsize=9)
-    Label(lout_2d[1,:,Bottom()], "Re{ω}", padding=(0,10,0,25), valign=:bottom, fontsize=8)
-    Label(lout_1d[1,:,Bottom()], "(Linear, quadratic)-fitted severity 𝑅̂*(ω)", padding=(0,10,0,25), valign=:bottom, fontsize=8)
+    Label(lout_2d[1,:,Bottom()], "Re{ω}", padding=(0,5,0,18), valign=:bottom, fontsize=8)
+    Label(lout_1d[1,:,Bottom()], "(Linear, quadratic)-fitted severity 𝑅̂*(ω)", padding=(0,5,0,20), valign=:bottom, fontsize=8)
     #rowsize!(lout_1d, 1, Relative(14/15))
     #rowsize!(lout_2d, 1, Relative(14/15))
-    rowgap!(lout, 1, 10.0)
-    rowgap!(lout, 2, 10.0)
+    rowgap!(lout, 1, 4.0)
+    rowgap!(lout, 2, 4.0)
     rowsize!(lout, 3, Relative(1/5))
 
     save(joinpath(figdir,"objective_response_anc$(i_anc)_linquad.png"), fig)

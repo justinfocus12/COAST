@@ -198,17 +198,9 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         end
                         ccdf,pdf = r2dfun(dst,rsp,scl)(coefs_at_anc_and_leadtime(i_leadtime,i_anc), resid_arg)
                         pth = ccdf[i_thresh_cquantile]
-                        #adjustment_per_ancestor = (pth > 1e-10 ? thresh_cquantile/pth : 0)
-                        #if adjust_ccdf_per_ancestor
-                        #    ccdf .*= adjustment_per_ancestor
-                        #    pdf .*= adjustment_per_ancestor
-                        #end
                         ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= ccdf #.* adjustment
                         pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= pdf #.* adjustment
                         ccdfs[dst][rsp][1:i_thresh_cquantile-1,i_leadtime,i_anc,i_scl] .= thresh_cquantile
-                        #pdfs[dst][rsp][1:i_thresh_cquantile-1,i_leadtime,i_anc,i_scl] .= 0.0
-                        #@show ccdfs[dst][rsp][i_thresh_cquantile,i_leadtime,i_anc,i_scl]
-                        #IFT.@infiltrate true
                         if !(all(isfinite.(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])) && all(isfinite.(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])))
                             println("non-finite pdf or ccdf")
                             display(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])
@@ -220,7 +212,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         mixcrits[dst][rsp]["pth"][i_leadtime,i_anc,i_scl] = pth
                         mixcrits[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = leadtimes[i_leadtime]
                         mixcrits[dst][rsp]["r2"][i_leadtime,i_anc,i_scl] = (rsp in ["1","1+u","1+g"] ? rsquared_linear : rsquared_quadratic)[i_leadtime,i_anc]
-                        mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = sum(max.(0, levels_mid .- thresh) .* pdf .* dlev)
+                        mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = sum(max.(0, levels_mid .- Rmaxanc) .* (levels[1:Nlev-1] .> Rmaxanc) .* pdf .* dlev)
                         # weight the entropy by the probability of exceeding the threshold 
                         mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
                         mixcrits[dst][rsp]["went"][i_leadtime,i_anc,i_scl] = ccdf[i_thresh_cquantile] * QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
@@ -230,9 +222,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                             slope = (ccdf[i_lev_hi] - ccdf[i_lev_lo])/(levels[i_lev_hi] - levels[i_lev_lo])
                             mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] = ccdf[i_lev_lo] + slope*(Rmaxanc - levels[i_lev_lo])
                             @assert ccdf[i_lev_lo] >= mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] >= ccdf[i_lev_hi]
-                            #if adjust_ccdf_per_ancestor && (adjustment_per_ancestor > 0)
-                            #    mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] /= adjustment_per_ancestor
-                            #end
+                            mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] += (mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] - ccdf[i_lev_hi]) * (levels[i_lev_hi] + Rmaxanc)/2 * (levels[i_lev_hi] - Rmaxanc)
 
                         end
                     end
@@ -266,9 +256,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                     end
 
                     # Other objectives to condition on R^2 
-                    for mc = ("ent",)
-                        # SUBJECT TO R^2 > some threshold
-                        ilt_r2 = iltmixs[dst][rsp]["r2"][1,i_anc,i_scl]
+                    for mc = ("ent","ei",)
                         iltmixs[dst][rsp][mc][1,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:ilt_r2,i_anc,i_scl])
                     end
                 end
@@ -276,7 +264,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 println("Starting to sum together pdfs and ccdfs")
                 #IFT.@infiltrate ((dst=="b")&(rsp=="2"))
                 anc_weights = zeros(Float64, Nanc)
-                for mc = ("pim","pth","ent","lt","r2",) #keys(mixobjs)
+                for mc = ("pim","pth","ent","ei","lt","r2",) #keys(mixobjs)
                     for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                         for i_boot = 1:Nboot+1
                             anc_weights .= 0
