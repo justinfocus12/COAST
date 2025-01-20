@@ -46,7 +46,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                              "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    1,
                              # Danger zone 
-                             "remove_pngs" =>                                    1,
+                             "remove_pngs" =>                                    0,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -1125,7 +1125,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 
 # TODO augment META with composites, lead times displays etc
 
