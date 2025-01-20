@@ -37,16 +37,16 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                              "update_paths" =>                                   0,
                              "plot_pertop" =>                                    0,
                              "compute_dns_objective" =>                          0,
-                             "plot_dns_objective_stats" =>                       0,
+                             "plot_dns_objective_stats" =>                       1,
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
                              "regress_lead_dependent_risk_polynomial" =>         0, 
-                             "plot_objective" =>                                 0, 
+                             "plot_objective" =>                                 1, 
                              "mix_COAST_distributions_polynomial" =>             1,
                              "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    1,
                              # Danger zone 
-                             "remove_pngs" =>                                    0,
+                             "remove_pngs" =>                                    1,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -629,9 +629,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 # ---------------- Single-ancestor plots ---------------
                 if todosub["rainbow_pdfs"]
                     @assert all(isfinite.(pdfs[dst][rsp]))
-                    mixcrits2plot = ["pim","pth","r2","ent","ei"]
-                    rspstr = ("1" == rsp ? "linear" : "quadratic")
-                    mixcrits_ylabels = ["𝑞(𝑅*)","𝑞(μ)","𝑅² ($(rspstr))","Entropy","𝔼[(𝑅-𝑅*)₊]"]
+                    mixcrits2plot = ["pim","pth","r2","ei"]
+                    mixcrits_ylabels = [mixcrit_labels[mc] for mc=mixcrits2plot]
                     Nleadtimes2plot = Nleadtime
                     #Threads.@threads for i_anc = idx_anc_strat
                     for i_anc = idx_anc_strat
@@ -642,7 +641,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                                        ) .* [-0.05, 1.05]
 
                         t0str = @sprintf("%d", coast.anc_tRmax[i_anc])
-                        fig = Figure(size=(100*Nleadtime,100*(3+length(mixcrits2plot))))
+                        fig = Figure(size=(70*Nleadtime,100*(3+length(mixcrits2plot))))
                         lout = fig[1,1] = GridLayout()
                         lout_pdfs = lout[1,1] = GridLayout()
                         lout_mixcrits = lout[2,1] = GridLayout()
@@ -657,16 +656,12 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                             lblargs = Dict(:ylabelvisible=>(i_col==1), :yticklabelsvisible=>(i_col==1), :xlabelvisible=>false, :xticklabelsvisible=>true, :ylabelsize=>15, :xlabelsize=>20, :title=>ltstr, :xgridvisible=>false, :ygridvisible=>false, :titlealign=>:right, :titlefont=>:regular)
                             ax = Axis(lout_pdfs[1,i_col]; xlabel="PDF", ylabel="Severity 𝑅*", lblargs...)
                             for (i_scl,scl) in enumerate(distn_scales[dst])
-                                scatterlines!(ax, pdf_adjustments[i_scl].*pdfs[dst][rsp][:,i_leadtime, i_anc, i_scl], levels_mid; color=i_scl,colorrange=(0,length(distn_scales[dst])), colormap=:managua, marker=:star6)
+                                scatterlines!(ax, pdf_adjustments[i_scl].*pdfs[dst][rsp][:,i_leadtime, i_anc, i_scl], levels_mid; color=i_scl,colorrange=(0,length(distn_scales[dst])), colormap=:RdYlBu_4, marker=:star6)
                             end
-                            #lines!(ax, thresh_cquantile.*pdf_valid_agglon[i_thresh_cquantile:end], levels_exc_mid; color=:black, linestyle=(:dash,:dense), linewidth=1.5)
                             scatterlines!(ax, pdf_pot_valid_agglon, levels_exc_mid; color=:black, linestyle=:solid, marker=:star6,)
-                            #scatterlines!(ax, ccdf_levels[i_thresh_cquantile:end], levels_exc; color=:black, linestyle=:solid, linewidth=1.5)
-                            #scatterlines!(ax, ccdf_levels[i_thresh_cquantile:end], levels_exc; color=:black, linestyle=:solid, marker=:star6,)
                             hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linewidth=1.0)
                             idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
                             scatterlines!(ax, sum([.2,.8].*xlims).*ones(Float64, length(idx_desc)), coast.desc_Rmax[i_anc][idx_desc]; color=:firebrick, markersize=10)
-                            #IFT.@infiltrate true
                             ylims!(ax, ylims...)
                             xlims!(ax, xlims...)
                         end
@@ -674,19 +669,20 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         for (i_mc,mc) in enumerate(mixcrits2plot)
                             ax = Axis(lout_mixcrits[i_mc,1]; ylabel=mixcrits_ylabels[i_mc], xlabel="−AST (𝑡*=$(t0str))", xlabelvisible=(i_mc==length(mixcrits2plot)), xticklabelsvisible=(i_mc==length(mixcrits2plot)), xlabelsize=20, ylabelsize=15, xgridvisible=false, ygridvisible=false)
                             for (i_scl,scl) in enumerate(distn_scales[dst])
-                                colargs = (mc == "r2" ? Dict(:color=>:black) : Dict(:color=>i_scl,:colormap=>:managua,:colorrange=>(0,length(distn_scales[dst]))))
-                                scatterlines!(ax, -leadtimes.*sdm.tu, mixcrits[dst][rsp][mc][:,i_anc,i_scl]; colargs...)
+                                if "r2" == mc
+                                    for (rsp_other,color) = (("1",:cyan),("2",:orange))
+                                        scatterlines!(ax, -leadtimes.*sdm.tu, mixcrits[dst][rsp_other][mc][:,i_anc,i_scl], color=color)
+                                    end
+                                else
+                                    colargs = Dict(:color=>i_scl,:colormap=>:RdYlBu_4,:colorrange=>(0,length(distn_scales[dst])))
+                                    scatterlines!(ax, -leadtimes.*sdm.tu, mixcrits[dst][rsp][mc][:,i_anc,i_scl]; colargs...)
+                                end
                                 if mc == "ent"
                                     vlines!(ax, -leadtimes[iltmixs[dst][rsp][mc][1,i_anc,i_scl]]*sdm.tu; colargs...)
-                                elseif mc == "r2"
-                                    hlines!(ax, r2thresh, color=:gray)
                                 end
                             end
                             xlims!(ax, -(cfg.lead_time_max+0.5*cfg.lead_time_inc)*sdm.tu, -(cfg.lead_time_min-0.5*cfg.lead_time_inc)*sdm.tu)
-                            if mc == "r2"
-                                ylims!(ax, -0.05, 1.05)
-                            end
-                            if mc in ["pth","pim"]
+                            if mc in ["pth","pim","r2"]
                                 ylims!(ax, -0.05, 1.05)
                             end
                         end
@@ -789,12 +785,12 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                                     scatterlines!(ax1, dnspot, levels_exc; linewidth=4, color=:black, marker=:star6, label="Long DNS, peaks")
                                     scatterlines!(ax2, clipccdfratio.(dnspot./dnspot), levels_exc; linewidth=6, color=:black, marker=:star6)
                                     # Ancestor run (non-peak, peak)
-                                    lines!(ax1, clipccdf.(ccdf_levels[i_thresh_cquantile:end]), Rccdf_ancgen_pt[i_thresh_cquantile:end]; linewidth=2, color=:orange, linestyle=(:dash,:dense), label=@sprintf("Short DNS"))
-                                    scatterlines!(ax1, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; linewidth=5, color=:orange, marker=:star6, label="Short DNS, peaks\n$(fdivlabel) = $(fdivstr_ancgen)")
-                                    scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; linewidth=5, color=:orange, marker=:star6)
+                                    lines!(ax1, clipccdf.(ccdf_levels[i_thresh_cquantile:end]), Rccdf_ancgen_pt[i_thresh_cquantile:end]; linewidth=2, color=:darkorange4, linestyle=(:dash,:dense), label=@sprintf("Short DNS"))
+                                    scatterlines!(ax1, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; linewidth=5, color=:darkorange4, marker=:star6, label="Short DNS, peaks\n$(fdivlabel) = $(fdivstr_ancgen)")
+                                    scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; linewidth=5, color=:darkorange4, marker=:star6)
                                     # Synced AST 
-                                    scatterlines!(ax1, ccdf_synclt_mid[i_thresh_cquantile:end], levels_exc; color=:cyan, linestyle=:solid, marker=:star6, label="AST = $(ltstr) [synchron] \n$(fdivlabel) = $(fdivstr_synclt)", linewidth=4)
-                                    scatterlines!(ax2, clipccdfratio.(ccdf_synclt_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:cyan, linestyle=:solid, marker=:star6, linewidth=4)
+                                    scatterlines!(ax1, ccdf_synclt_mid[i_thresh_cquantile:end], levels_exc; color=:red, linestyle=:solid, marker=:star6, label="AST = $(ltstr) [synchron] \n$(fdivlabel) = $(fdivstr_synclt)", linewidth=4)
+                                    scatterlines!(ax2, clipccdfratio.(ccdf_synclt_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:red, linestyle=:solid, marker=:star6, linewidth=4)
                                     # Probability-thresholded AST 
                                     scatterlines!(ax1, ccdf_syncpth_mid[i_thresh_cquantile:end], levels_exc; color=:mediumpurple, linestyle=:solid, marker=:star6, label="𝑞(μ) = $(pthstr) [synthrex] \n$(fdivlabel) = $(fdivstr_syncpth)", linewidth=3)
                                     scatterlines!(ax2, clipccdfratio.(ccdf_syncpth_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:mediumpurple, linestyle=:solid, marker=:star6, label="𝑞(μ) = $(pthstr) [synthrex] \n$(fdivlabel) = $(fdivstr_syncpth)", linewidth=3)
@@ -802,8 +798,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                                     scatterlines!(ax1, ccdf_syncpim_mid[i_thresh_cquantile:end], levels_exc; color=:olivedrab3, linestyle=:solid, marker=:star6, label="𝑞(𝑅*) = $(pimstr) [synimp] \n$(fdivlabel) = $(fdivstr_syncpim)", linewidth=2)
                                     scatterlines!(ax2, clipccdfratio.(ccdf_syncpim_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:olivedrab3, linestyle=:solid, marker=:star6, label="𝑞(𝑅*)", linewidth=2)
                                     # Conditionally optimal AST 
-                                    scatterlines!(ax1, ccdf_cond_mid[i_thresh_cquantile:end], levels_exc; linewidth=1, color=:red, linestyle=:solid, label="$(mixobj_labels[mc][i_mcobj])\n$(fdivlabel) = $(fdivstr_cond)", marker=:star6)
-                                    scatterlines!(ax2, clipccdfratio.(ccdf_cond_mid[i_thresh_cquantile:end]./dnspot), levels_exc; linewidth=1, color=:red, linestyle=:solid, marker=:star6)
+                                    scatterlines!(ax1, ccdf_cond_mid[i_thresh_cquantile:end], levels_exc; linewidth=1, color=:cyan, linestyle=:solid, label="$(mixobj_labels[mc][i_mcobj])\n$(fdivlabel) = $(fdivstr_cond)", marker=:star6)
+                                    scatterlines!(ax2, clipccdfratio.(ccdf_cond_mid[i_thresh_cquantile:end]./dnspot), levels_exc; linewidth=1, color=:cyan, linestyle=:solid, marker=:star6)
 
                                     lout[1,1] = Legend(fig, ax1; framevisible=true)
                                     colsize!(lout, 2, Relative(1/2))
@@ -971,18 +967,25 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                 end
                 # Plot the entropy as a 2D phase plot: both its mean and its variance (not just the proportion of time it's optimal)
                 if todosub["mcmean_heatmap"]
-                    lt_r2thresh_mean,lt_r2thresh_mean_lo,lt_r2thresh_mean_hi = let
-                        ost = leadtimes[iltmixs[dst][rsp]["r2"][i_r2thresh,:,1]]
+                    lt_r2thresh_mean_quadratic,lt_r2thresh_mean_lo_quadratic,lt_r2thresh_mean_hi_quadratic = let
+                        ost = leadtimes[iltmixs[dst]["2"]["r2"][i_r2thresh,:,1]]
+                        mid = sum(ost)/length(ost)
+                        hi = sum(ost .* (ost .> mid))/sum(ost .> mid)
+                        lo = sum(ost .* (ost .< mid))/sum(ost .< mid)
+                        (mid,lo,hi)
+                    end
+                    lt_r2thresh_mean_linear,lt_r2thresh_mean_lo_linear,lt_r2thresh_mean_hi_linear = let
+                        ost = leadtimes[iltmixs[dst]["1"]["r2"][i_r2thresh,:,1]]
                         mid = sum(ost)/length(ost)
                         hi = sum(ost .* (ost .> mid))/sum(ost .> mid)
                         lo = sum(ost .* (ost .< mid))/sum(ost .< mid)
                         (mid,lo,hi)
                     end
                     # Heatmap of various mixing criteria as a function of AST; below, reverse it
-                    for mc = ["ei","pim","pth","ent","r2"]
+                    for mc = ["ei","pim","pth"]
                         fig = Figure(size=(500,400))
                         loutmean = fig[1,1] = GridLayout()
-                        axmean = Axis(loutmean[1,1], xlabel="−AST", ylabel="Scale", title="Mean $(mixcrit_labels[mc]), $(label_target(cfg, sdm, rsp))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular)
+                        axmean = Axis(loutmean[1,1], xlabel="−AST", ylabel="Scale", title="Mean $(mixcrit_labels[mc]), $(label_target(cfg, sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular)
                         # account for NaNs 
                         nanmean(arr) = SB.mean(filter(!isnan, arr)) 
                         nanstd(arr) = SB.std(filter(!isnan, arr))
@@ -995,12 +998,9 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         display(mcmean)
                         println("mcstd = ")
                         display(mcstd)
-                        hmmean = heatmap!(axmean, -sdm.tu.*leadtimes, distn_scales[dst], mcmean; colormap=Reverse(:managua), colorscale=identity)
-                        for ax = (axmean,) #axstd)
-                            vlines!(ax, -sdm.tu*lt_r2thresh_mean; color=:black, linestyle=:solid, linewidth=2)
-                            vlines!(ax, -sdm.tu*lt_r2thresh_mean_lo; color=:black, linestyle=:dash, linewidth=2)
-                            vlines!(ax, -sdm.tu*lt_r2thresh_mean_hi; color=:black, linestyle=:dash, linewidth=2)
-                        end
+                        hmmean = heatmap!(axmean, -sdm.tu.*leadtimes, distn_scales[dst], mcmean; colormap=Reverse(:deep), colorscale=identity)
+                        scatterlines!(axmean, -sdm.tu*lt_r2thresh_mean_linear.*ones(length(distn_scales[dst])), distn_scales[dst]; color=:cyan, linestyle=:solid, linewidth=4)
+                        scatterlines!(axmean, -sdm.tu*lt_r2thresh_mean_quadratic.*ones(length(distn_scales[dst])), distn_scales[dst]; color=:orange, linestyle=:solid, linewidth=4)
                         cbarmean = Colorbar(loutmean[1,2], hmmean, vertical=true)
                         save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(mc)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                     end
@@ -1023,7 +1023,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                                 ltmean[i_pim,i_scl] = SB.mean(leadtimes[iltmixs[dst][rsp]["pim"][i_pim,:,i_scl]])
                             end
                         end
-                        hm = heatmap!(ax, reverse(mixobjs["pim"]; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["pim"][fdivname][i_boot,:,:]; dims=1); colormap=:managua, colorscale=log10)
+                        hm = heatmap!(ax, reverse(mixobjs["pim"]; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["pim"][fdivname][i_boot,:,:]; dims=1); colormap=:deep, colorscale=log10)
                         cbar = Colorbar(lout[1,2], hm, vertical=true)
                         co = contour!(ax, mixobjs["pim"], distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*leadtimes, color=:black, labels=true)
                         save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_synimp_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
@@ -1040,7 +1040,7 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                                 ltmean[i_pth,i_scl] = SB.mean(leadtimes[iltmixs[dst][rsp]["pth"][i_pth,:,i_scl]])
                             end
                         end
-                        hm = heatmap!(ax, reverse(mixobjs["pth"]; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["pth"][fdivname][i_boot,:,:]; dims=1); colormap=:managua, colorscale=log10)
+                        hm = heatmap!(ax, reverse(mixobjs["pth"]; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["pth"][fdivname][i_boot,:,:]; dims=1); colormap=:deep, colorscale=log10)
                         cbar = Colorbar(lout[1,2], hm, vertical=true)
                         co = contour!(ax, mixobjs["pth"], distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*leadtimes, color=:black, labels=true)
                         save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_synthrex_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
@@ -1048,12 +1048,12 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         fig = Figure(size=(500,400))
                         lout = fig[1,1] = GridLayout()
                         ax = Axis(lout[1,1], xlabel="−AST", ylabel="Scale", title="$(fdivlabels[i_fdivname]), $(label_target(cfg,sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular) 
-                        hm = heatmap!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["lt"][fdivname][i_boot,:,:]; dims=1); colormap=:managua, colorscale=log10)
+                        hm = heatmap!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["lt"][fdivname][i_boot,:,:]; dims=1); colormap=:deep, colorscale=log10)
                         cbar = Colorbar(lout[1,2], hm, vertical=true)
                         levels_pth = collect(range(mixobjs["pth"][[1,end]]..., length=12))
                         levels_pim = collect(range(mixobjs["pim"][[1,end]]..., length=12))
-                        co = contour!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(SB.mean(mixcrits[dst][rsp]["pth"]; dims=2)[:,1,:]; dims=1); levels=levels_pth, color=:gray, linewidth=2, alpha=0.25, labels=true)
-                        co = contour!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(SB.mean(mixcrits[dst][rsp]["pim"]; dims=2)[:,1,:]; dims=1); levels=levels_pim, color=:black, linestyle=(:dash,:dense), labels=true)
+                        #co = contour!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(SB.mean(mixcrits[dst][rsp]["pth"]; dims=2)[:,1,:]; dims=1); levels=levels_pth, color=:gray, linewidth=2, alpha=0.25, labels=true)
+                        #co = contour!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(SB.mean(mixcrits[dst][rsp]["pim"]; dims=2)[:,1,:]; dims=1); levels=levels_pim, color=:black, linestyle=(:dash,:dense), labels=true)
                         # Plot the optimal split time (according to fdiv) as a function of scale 
                         if false && dst in ["1","2"]
                             vlines!(ax, -sdm.tu.*lt_r2thresh_mean; color=:black, linestyle=(:dash,:dense), linewidth=2)
@@ -1072,27 +1072,26 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                         nanstd(arr) = SB.std(filter(!isnan, arr))
                         nanquantile(arr,q) = SB.quantile(filter(!isnan, arr), q)
                         for ax = (axlt,axpth,axpim)
-                            scatterlines!(ax, fdiv_max_ent, distn_scales[dst]; label="Max. Ent.", color=:red, linestyle=(:dash,:dense), linewidth=3)
-                            scatterlines!(ax, fdiv_max_ei, distn_scales[dst]; label="Max. EI", color=:purple, linestyle=(:dash,:dense), linewidth=3)
-                            vlines!(ax, nanmean(fdivs_ancgen_valid[fdivname]); color=:black, alpha=1.0, linewidth=4, label="Short DNS peaks\n(90% CI)")
-                            band!(ax, (Point2f.(nanquantile(fdivs_ancgen_valid[fdivname], 0.5+0.5*sgn*0.9).*ones(Float64, length(distn_scales[dst])), distn_scales[dst]) for sgn=[-1,1])..., color=:gray, alpha=0.25)
+                            scatterlines!(ax, fdiv_max_ei, distn_scales[dst]; label=mixobj_labels["ei"], color=:cyan, linestyle=(:dash,:dense), linewidth=3)
+                            vlines!(ax, nanmean(fdivs_ancgen_valid[fdivname]); color=:darkorange4, alpha=1.0, linewidth=4, label="Short DNS peaks\n(90% CI)")
+                            band!(ax, (Point2f.(nanquantile(fdivs_ancgen_valid[fdivname], 0.5+0.5*sgn*0.9).*ones(Float64, length(distn_scales[dst])), distn_scales[dst]) for sgn=[-1,1])..., color=:darkorange4, alpha=0.25)
                         end
                         # Synchron
                         ax = axlt
                         for ilt = 1:Nleadtime
-                            lines!(ax, fdivs[dst][rsp]["lt"][fdivname][i_boot,ilt,:], distn_scales[dst]; label="-$(leadtimes[ilt]*sdm.tu)", color=ilt, colorrange=(1,Nleadtime), colormap=:managua)
+                            lines!(ax, fdivs[dst][rsp]["lt"][fdivname][i_boot,ilt,:], distn_scales[dst]; label="-$(leadtimes[ilt]*sdm.tu)", color=ilt, colorrange=(1,Nleadtime), colormap=:RdYlBu_4)
                         end
                         # Synprob (threshold)
                         ax = axpth
                         Npth = length(mixobjs["pth"])
                         for i_pth = 1:Npth
-                            lines!(ax, fdivs[dst][rsp]["pth"][fdivname][i_boot,i_pth,:], distn_scales[dst]; label=@sprintf("%.2f",mixobjs["pth"][i_pth]), color=i_pth, colorrange=(1,Npth), colormap=:managua)
+                            lines!(ax, fdivs[dst][rsp]["pth"][fdivname][i_boot,i_pth,:], distn_scales[dst]; label=@sprintf("%.2f",mixobjs["pth"][i_pth]), color=i_pth, colorrange=(1,Npth), colormap=:RdYlBu_4)
                         end
                         # Synprob (improvement)
                         ax = axpim
                         Npim = length(mixobjs["pim"])
                         for i_pim = 1:Npim
-                            lines!(ax, fdivs[dst][rsp]["pim"][fdivname][i_boot,i_pim,:], distn_scales[dst]; label=@sprintf("%.2f",mixobjs["pim"][i_pim]), color=i_pim, colorrange=(1,Npim), colormap=:managua)
+                            lines!(ax, fdivs[dst][rsp]["pim"][fdivname][i_boot,i_pim,:], distn_scales[dst]; label=@sprintf("%.2f",mixobjs["pim"][i_pim]), color=i_pim, colorrange=(1,Npim), colormap=:RdYlBu_4)
                         end
                         lout[1,2] = Legend(fig, axlt, "AST [synchron]"; framevisible=true, labelsize=10, nbanks=3, rowgap=2, titlefont=:regular)
                         lout[2,2] = Legend(fig, axpth, "𝑞(μ) [synthrex]"; framevisible=true, labelsize=10, nbanks=3, rowgap=2, titlefont=:regular)
@@ -1140,7 +1139,7 @@ else
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
         #idx_expt = vec([3,6][2:2] .+ [0,1][1:1]'.*11) #Vector{Int64}([6,9])
-        idx_expt = [5,7]
+        idx_expt = vec([0,1].*11 .+ [5,7]')
     end
 end
 

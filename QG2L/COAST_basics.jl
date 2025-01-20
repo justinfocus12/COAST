@@ -700,18 +700,18 @@ function expt_config_COAST_analysis(cfg,pertop)
                          "r2"=>"𝑅²",
                          "pth"=>"𝑞(μ)",
                          "pim"=>"𝑞(𝑅*)",
-                         "ei"=>"Exp. Imp.",
+                         "ei"=>"𝔼[(Δ𝑅*)₊]",
                          "went"=>"WEntropy",
                          "ent"=>"Ent",
                         )
     mixobj_labels = Dict(
                          "lt"=>["AST = $(lt2str(lt))" for lt=leadtimes],
                          "r2"=>["𝑅² = $(lt2str(r2))" for r2=r2threshes],
-                         "ei"=>["Max. Exp. Imp."],
+                         "ei"=>["max 𝔼[(Δ𝑅*)₊]"],
                          "pth"=>[@sprintf("𝑞(μ)≈%.2f", pth) for pth=pths],
                          "pim"=>[@sprintf("𝑞(𝑅ₙ*)≈%.2f", pth) for pth=pths],
                          "went"=>["Max. WEnt."],
-                         "ent"=>["Max. Ent"],
+                         "ent"=>["max Ent"],
                          # TODO add expected exceedance over threshold (tee or eet or ete)
                         )
     i_mode_sf = 1
@@ -724,7 +724,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     fdivnames = ("qrmse","kl","chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    i_thresh_cquantile = 5
+    i_thresh_cquantile = 8
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000
