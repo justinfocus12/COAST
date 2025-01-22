@@ -665,7 +665,7 @@ end
 function obs_fun_conc_hist(f::JLD2.JLDFile, sdm::SpaceDomain, cop::ConstantOperators)
     return f["conc_hist_ox"]
 end
-    
+
 function obs_fun_heatflux_hist(f::JLD2.JLDFile, sdm::SpaceDomain, cop::ConstantOperators)
     return obs_fun_heatflux_hist(f["tgrid"],f["sf_hist_ok"],sdm,cop)
 end

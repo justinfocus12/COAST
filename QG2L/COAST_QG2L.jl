@@ -40,10 +40,11 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                              "plot_dns_objective_stats" =>                       0,
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
+                             "plot_composite_contours" =>                        1,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "plot_objective" =>                                 0, 
                              "mix_COAST_distributions_polynomial" =>             0,
-                             "plot_COAST_mixture" =>                             1,
+                             "plot_COAST_mixture" =>                             0,
                              "mixture_COAST_phase_diagram" =>                    0,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
@@ -816,6 +817,47 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                     end
                 end
             end
+        end
+    end
+
+    if todo["plot_composite_contours"]
+        dst = "b"
+        rsp = "e"
+        mc = "ei"
+        i_mcobj = 1
+        i_scl = 8
+        (
+         levels,levels_mid,
+         dsts,rsps,mixobjs,distn_scales,
+         ccdfs,pdfs,
+         fdivs,fdivs_ancgen_valid,
+         mixcrits,iltmixs,
+         ccdfmixs,pdfmixs,
+        ) = (JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"r") do f
+                 # coordinates for parameters of distributions 
+                 return (
+                    f["levels"],# levels
+                    f["levels_mid"],# levels_mid
+                    f["dstns"],# dsts
+                    f["rsps"],# rsps
+                    f["mixobjs"],# mixobjs
+                    f["distn_scales"],# distn_scales
+                    # output distributions 
+                    f["ccdfs"],# ccdfs
+                    f["pdfs"],# pdfs
+                    f["fdivs"],# fdivs
+                    f["fdivs_ancgen_valid"],
+                    f["mixcrits"],# mixcrits
+                    f["iltmixs"],# iltmixs
+                    f["ccdfmixs"],# ccdfmixs
+                    f["pdfmixs"],# pdfmixs 
+                   )
+             end
+            )
+        for i_anc = idx_anc_strat[1:1]
+            leadtime = leadtimes[iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl]]
+            figfile = joinpath(figdir,"compcont_$(dst)_$(rsp)_$(mc)_$(i_mcobj)_$(i_scl)_anc$(i_anc).png")
+            composite_field_1family(cfg, coast, ens, sdm, cop, i_anc, leadtime, figfile)
         end
     end
 

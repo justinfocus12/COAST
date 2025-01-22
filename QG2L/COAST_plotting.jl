@@ -276,3 +276,55 @@ function plot_fit_coefs() # HIBERNATING
     save(joinpath(figdir,"objective_responses_anc$(i_anc)_polycoefs.png"), fig)
     
 end
+
+function composite_field_1family(cfg::ConfigCOAST, coast::COASTState, ens::EM.Ensemble, sdm::QG2L.SpaceDomain, cop::QG2L.ConstantOperators, i_anc::Int64, leadtime::Int64, figfile::String)
+    # Two 2-panel plots
+    # 1a. Average slightly-evolved perturbation (would be near 0 if not evolved)
+    # 1b. Std. Dev. slightly-evolved perturbation
+    # 2a. Average perturbed peak (not necessarily at same time)
+    # 2b. Std. dev. perturbed peak
+    anc = coast.ancestors[i_anc]
+    idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
+    descs = Graphs.outneighbors(ens.famtree, anc)[idx_desc]
+    mems = vcat([anc], descs)
+    Ndesc = length(descs)
+    Nt = cfg.follow_time + cfg.lead_time_max
+    conc1fun!(conc1_onemem::Array{Float64,4},i_mem::Int64,mem::Int64) = begin
+        JLD2.jldopen(ens.trajs[mem].history, "r") do f
+            conc1_onemem[1:sdm.Nx,1:sdm.Ny,1:Nt,i_mem] .= f["conc_hist"][:,:,1,:]
+        end
+    end
+
+    conc1 = zeros(Float64, (sdm.Nx, sdm.Ny, Nt, Ndesc+1))
+
+    for (i_mem,mem) in enumerate(mems)
+        conc1fun!(conc1, i_mem, mem)
+    end
+
+
+    # Start with only the field at the timing of the original peak 
+    fig = Figure(size=(400,400))
+    lout = fig[1,1] = GridLayout()
+    ax = Axis(lout[1,1], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿", title="𝑐 contours")
+    tinit = floor(Int, ens.trajs[i_anc].tphinit/sdm.tu)
+    contour_levels = [cfg.target_yPerL] #collect(range(0,1;length=8))
+    locavg_rect = poly!(ax, [(cfg.target_xPerL + sgnx*cfg.target_rxPerL) for sgnx=[-1,1,1,-1]], [(cfg.target_yPerL + sgny*cfg.target_ryPerL) for sgny=[-1,-1,1,1]], color=:gray, alpha=0.5)
+    Rbounds = extrema(coast.desc_Rmax[i_anc][idx_desc])
+    cmap(Rmax) = begin
+        frac = (Rmax-Rbounds[1])/(Rbounds[2]-Rbounds[1])
+        return frac*RGBf(colorant"red") + (1-frac)*RGBf(colorant"blue")
+    end
+    itanc = coast.anc_tRmax[i_anc] - tinit
+    for i_desc = 1:Ndesc
+        it = coast.desc_tRmax[i_anc][idx_desc[i_desc]] - tinit
+        println("Starting to contour desc $(i_desc) with c range $(extrema(conc1[:,:,it,i_desc+1]))")
+        cargs = Dict(:color=>cmap(coast.desc_Rmax[i_anc][idx_desc[i_desc]]))
+        contour!(ax, sdm.xgrid./sdm.Lx, sdm.ygrid./sdm.Ly, conc1[:,:,it,i_desc+1]; cargs..., levels=contour_levels, linewidth=0.5)
+    end
+    cargs = Dict(:color=>cmap(coast.anc_Rmax[i_anc]))
+    it = coast.anc_tRmax[i_anc] - tinit
+    contour!(ax, sdm.xgrid./sdm.Lx, sdm.ygrid./sdm.Ly, conc1[:,:,it,1]; cargs..., levels=contour_levels, linestyle=(:dash,:dense), linewidth=3)
+    save(figfile, fig)
+end
+
+    
