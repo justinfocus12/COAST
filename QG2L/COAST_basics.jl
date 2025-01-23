@@ -231,6 +231,7 @@ end
 
 
 function adjust_scores!(coast::COASTState, ens::EM.Ensemble, cfg::ConfigCOAST, sdm::QG2L.SpaceDomain)
+    enforce_causality = false
     for (i_anc,anc) in enumerate(coast.ancestors)
         descendants = Graphs.outneighbors(ens.famtree, anc)
         Nt = length(coast.anc_Roft[i_anc])
@@ -238,23 +239,33 @@ function adjust_scores!(coast::COASTState, ens::EM.Ensemble, cfg::ConfigCOAST, s
         for (i_desc,desc) in enumerate(descendants) 
             Roft = coast.desc_Roft[i_anc][i_desc]
             it_pert = round(Int, coast.desc_tphpert[i_anc][i_desc]/sdm.tu)
-            it_peak_lolim = max(1, it_pert - tinit, coast.anc_tRmax[i_anc] - cfg.dtRmax_max - tinit)
+            it_peak_lolim = max(1, coast.anc_tRmax[i_anc] - cfg.dtRmax_max - tinit)
+            if enforce_causality
+                it_peak_lolim = max(it_peak_lolim, it_pert - tinit)
+            end
             it_peak_uplim = min(Nt, coast.anc_tRmax[i_anc] + cfg.dtRmax_max - tinit)
             # Make sure it's an actual peak 
             it_peak = it_peak_lolim-1 + argmax(Roft[it_peak_lolim:it_peak_uplim])
             if it_peak == it_peak_lolim
                 while (it_peak > 1) && (Roft[it_peak] < Roft[it_peak-1])
                     it_peak -= 1
+                    it_peak_lolim -= 1
                 end
             elseif it_peak == it_peak_uplim
                 while (it_peak < Nt) && (Roft[it_peak] < Roft[it_peak+1])
                     it_peak += 1
+                    it_peak_uplim += 1
                 end
             end
 
             coast.desc_Rmax[i_anc][i_desc] = Roft[it_peak]
             Nt = length(Roft)
             coast.desc_tRmax[i_anc][i_desc] = ens.trajs[desc].tfin - Nt + it_peak
+            if Roft[it_peak] != maximum(Roft[it_peak_lolim:it_peak_uplim])
+                @show Roft
+                @show it_peak_lolim,it_peak_uplim
+                error()
+            end
         end
     end
 end
@@ -867,4 +878,59 @@ function measure_dispersion(coast::COASTState, ens::EM.Ensemble, ens_dns::EM.Ens
     end
     return msqdist_sf,msqdist_conc
 end
+
+function compute_contour_dispersion(
+        coast::COASTState, 
+        ens::EM.Ensemble, 
+        cfg::ConfigCOAST, 
+        sdm::QG2L.SpaceDomain,
+        cop::QG2L.ConstantOperators, 
+        dns_stats_filename::String, 
+        dispersion_filename::String,
+    )
+    (
+     leadtimes,r2threshes,dsts,rsps,mixobjs,
+     mixcrit_labels,mixobj_labels,distn_scales,
+     fdivnames,Nboot,ccdf_levels,
+     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
+    ) = expt_config_COAST_analysis(cfg,pertop)
+    thresh_cquantile = ccdf_levels[i_thresh_cquantile]
+    Nleadtime = length(leadtimes)
+    Nanc = length(coast.ancestors)
+    Nt = cfg.follow_time + cfg.lead_time_max
+
+    conc1_mean = JLD2.jldopen(dns_stats_filename,"r") do f
+        iytgt = round(Int, cfg.target_yPerL*sdm.Ny)
+        iz = 1
+        ix = 1
+        return f["mssk_xall"][ix,iytgt,iz,1]
+    end
+
+    conc1fun!(conc1_onemem::Array{Float64,3},mem::Int64) = begin
+        JLD2.jldopen(ens.trajs[mem].history, "r") do f
+            conc1_onemem[1:sdm.Nx,1:sdm.Ny,1:Nt] .= f["conc_hist"][:,:,1,:]
+        end
+    end
+    (conc1_anc,conc1_desc) = (zeros(Float64, (sdm.Nx, sdm.Ny, Nt)) for _=1:2)
+    Ndesc_per_leadtime = div(cfg.num_perts_max, Nleadtime)
+    area_dist = zeros(Float64, (Nt, Ndesc_per_leadtime, Nleadtime))
+    for i_anc = 1:Nanc
+        anc = coast.ancestors[i_anc]
+        descs = Graphs.outneighbors(ens.famtree, anc)
+        area_dist_anc = zeros(Float64, (Nt, Ndesc_per_leadtime, Nleadtime, Nanc))
+        conc1fun!(conc1_anc,anc)
+        for i_leadtime = 1:Nleadtime
+            idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
+            for i_desc = 1:Ndesc_per_leadtime
+                conc1fun!(conc1_desc, idx_desc[i_desc])
+                area_dist[1:Nt,i_desc,i_leadtime] .= SB.mean(sign.(conc1_anc .- conc1_mean) .!= sign.(conc1_desc .- conc1_mean); dims=[1,2])[1,1,:]
+            end
+        end
+    end
+
+    JLD2.jldopen(dispersion_filename, "w") do f
+        f["area_dist"] = area_dist
+    end
+end
+            
 

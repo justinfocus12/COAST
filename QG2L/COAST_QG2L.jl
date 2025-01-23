@@ -31,7 +31,7 @@ include("./metaCOAST.jl")
 
 
 
-function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing, overwrite_expt_setup=false, overwrite_ensemble=false, old_path_part::String, new_path_part::String)
+function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir::String; i_expt=nothing, overwrite_expt_setup=false, overwrite_ensemble=false, old_path_part::String, new_path_part::String)
     todo = Dict{String,Bool}(
                              "upgrade_ensemble" =>                               0,
                              "update_paths" =>                                   0,
@@ -40,7 +40,8 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                              "plot_dns_objective_stats" =>                       0,
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
-                             "plot_composite_contours" =>                        1,
+                             "plot_composite_contours" =>                        0,
+                             "compute_contour_dispersion" =>                     1,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "plot_objective" =>                                 0, 
                              "mix_COAST_distributions_polynomial" =>             0,
@@ -854,10 +855,15 @@ function COAST_procedure(ensdir_dns::String, expt_supdir::String; i_expt=nothing
                    )
              end
             )
+        dns_stats_filename = joinpath(resultdir_dns, "moments_mssk_conc.jld2")
+        # compute weights on descendants
+        i_mode_sf = 1
+        support_radius = pertop.sf_pert_amplitudes_max[i_mode_sf]
+        desc_weights = QG2L.bump_density(coast.pert_seq_qmc[:,1:cfg.num_perts_max]', distn_scales[dst][i_scl], support_radius)
         for i_anc = idx_anc_strat[1:1]
             leadtime = leadtimes[iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl]]
             figfile = joinpath(figdir,"compcont_$(dst)_$(rsp)_$(mc)_$(i_mcobj)_$(i_scl)_anc$(i_anc).png")
-            composite_field_1family(cfg, coast, ens, sdm, cop, i_anc, leadtime, figfile)
+            composite_field_1family(coast, ens, i_anc, desc_weights, leadtime, cfg, sdm, cop, dns_stats_filename, figfile)
         end
     end
 
@@ -1205,7 +1211,7 @@ for i_expt = idx_expt
     if "metaCOAST" == all_procedures[i_proc] 
         metaCOAST_latdep_procedure(expt_supdir_COAST, resultdir_dns; i_expt=i_expt)
     elseif "COAST" == all_procedures[i_proc]
-        COAST_procedure(ensdir_dns, expt_supdir_COAST; i_expt=i_expt, overwrite_expt_setup=false, overwrite_ensemble=false, old_path_part="net/bstor002.ib",new_path_part="orcd/archive")
+        COAST_procedure(ensdir_dns, resultdir_dns, expt_supdir_COAST; i_expt=i_expt, overwrite_expt_setup=false, overwrite_ensemble=false, old_path_part="net/bstor002.ib",new_path_part="orcd/archive")
     end
     println()
 end

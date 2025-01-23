@@ -906,7 +906,7 @@ function regression2distn_quadratic_uniform(coefs::Vector{Float64}, resid_range:
     return ccdf,pdf
 end
 
-function bump_density(U::Matrix{Float64}, scale::Float64, support_radius::Float64)
+function bump_density(U::AbstractMatrix{Float64}, scale::Float64, support_radius::Float64)
     Nsamp = size(U,1) #1024 
     R2 = (support_radius^2) .* U[:,1]
     radius = sqrt.(R2)

@@ -277,7 +277,18 @@ function plot_fit_coefs() # HIBERNATING
     
 end
 
-function composite_field_1family(cfg::ConfigCOAST, coast::COASTState, ens::EM.Ensemble, sdm::QG2L.SpaceDomain, cop::QG2L.ConstantOperators, i_anc::Int64, leadtime::Int64, figfile::String)
+function composite_field_1family(
+        coast::COASTState, 
+        ens::EM.Ensemble, 
+        i_anc::Int64, 
+        desc_weights::Vector{Float64}, 
+        leadtime::Int64, 
+        cfg::ConfigCOAST, 
+        sdm::QG2L.SpaceDomain,
+        cop::QG2L.ConstantOperators, 
+        dns_stats_filename::String, 
+        figfile::String
+    )
     # Two 2-panel plots
     # 1a. Average slightly-evolved perturbation (would be near 0 if not evolved)
     # 1b. Std. Dev. slightly-evolved perturbation
@@ -302,12 +313,21 @@ function composite_field_1family(cfg::ConfigCOAST, coast::COASTState, ens::EM.En
     end
 
     # Measure a distance from the ancestor in terms of complementing areas 
-    area_dist = SB.mean(sign.(conc1 .- cfg.target_yPerL) .!= sign.(conc1[:,:,:,1:1] .- cfg.target_yPerL); dims=[1,2])[1,1,:,:] 
+    conc1_mean = JLD2.jldopen(dns_stats_filename,"r") do f
+        iytgt = round(Int, cfg.target_yPerL*sdm.Ny)
+        iz = 1
+        ix = 1
+        return f["mssk_xall"][ix,iytgt,iz,1]
+    end
+    @show conc1_mean
+
+
+    area_dist = SB.mean(sign.(conc1 .- conc1_mean) .!= sign.(conc1[:,:,:,1:1] .- conc1_mean); dims=[1,2])[1,1,:,:] 
     # Now take average with respect to perturbations 
     # TODO make this respect weights of distribution
-    mean_area_dist = SB.mean(area_dist; dims=2)[:,1]
 
-
+    mean_area_dist = (area_dist[1:Nt,2:(Ndesc+1)] * desc_weights[1:Ndesc]) / sum(desc_weights[1:Ndesc])
+    mean_area_dist_sat = SB.mean(mean_area_dist[(Nt-3):Nt])
 
     # Start with only the field at the timing of the original peak 
     # sub-select the y's 
@@ -316,54 +336,60 @@ function composite_field_1family(cfg::ConfigCOAST, coast::COASTState, ens::EM.En
     fig = Figure(size=(1200,600))
     lout = fig[1,1] = GridLayout()
     # First row: contour messes
-    axs = [Axis(lout[1,it], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿") for it=1:3]
+    axs = [Axis(lout[1,it], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿", titlesize=15, xlabelsize=15, ylabelsize=15, titlefont=:regular, xgridvisible=false, ygridvisible=false) for it=1:3]
     tinit = floor(Int, ens.trajs[i_anc].tphinit/sdm.tu)
-    contour_levels = [cfg.target_yPerL] #collect(range(0,1;length=8))
+    contour_levels = [conc1_mean] #collect(range(0,1;length=8))
     for ax = axs
-        locavg_rect = poly!(ax, [(cfg.target_xPerL + sgnx*cfg.target_rxPerL) for sgnx=[-1,1,1,-1]], [(cfg.target_yPerL + sgny*cfg.target_ryPerL) for sgny=[-1,-1,1,1]], color=:gray, alpha=0.5)
+        locavg_rect = poly!(ax, [(cfg.target_xPerL + sgnx*cfg.target_rxPerL) for sgnx=[-1,1,1,-1]], [(cfg.target_yPerL + sgny*cfg.target_ryPerL) for sgny=[-1,-1,1,1]], color=:gray, alpha=0.25)
     end
     Rmaxs = vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][idx_desc])
     Rmaxbounds = extrema(Rmaxs)
-    Rmaxcolors = cgrad(:RdYlBu_4, Ndesc+1; categorical=true).colors
+    Rmaxcolors = cgrad(:lipari, Ndesc+1; categorical=true).colors
     order = sortperm(Rmaxs)
+    Rmaxrank = sortperm(order)
     it_anc_tRmax = coast.anc_tRmax[i_anc] - tinit
     it_after_split = it_anc_tRmax - leadtime + 1
     for i_desc = 1:Ndesc
-        cargs = Dict(:color=>Rmaxcolors[order[i_desc+1]])
+        cargs = Dict(:color=>Rmaxcolors[Rmaxrank[i_desc+1]])
         # First column: right after the split
         it_desc_tRmax = coast.desc_tRmax[i_anc][idx_desc[i_desc]] - tinit
         for (i_ax,it) in enumerate((it_after_split,it_anc_tRmax,it_desc_tRmax))
             contour!(axs[i_ax], sdm.xgrid./sdm.Lx, sdm.ygrid[iymin:iymax]./sdm.Ly, conc1[:,iymin:iymax,it,i_desc+1]; cargs..., levels=contour_levels, linewidth=1.0)
         end
     end
-    cargs = Dict(:color=>Rmaxcolors[order[1]])
+    axs[1].title = "Post-split:  𝑡= 𝑡* - AST + 1 = 𝑡* − $(round(Int,sdm.tu*(leadtime-1)))"
+    axs[2].title = "Ancestor peak: 𝑡 = 𝑡* = $(round(Int,sdm.tu*coast.anc_tRmax[i_anc]))"
+    axs[3].title = "Descendant peaks"
+    cargs = Dict(:color=>Rmaxcolors[Rmaxrank[1]])
     for (i_ax,it) in enumerate((it_after_split,it_anc_tRmax,it_anc_tRmax))
         contour!(axs[i_ax], sdm.xgrid./sdm.Lx, sdm.ygrid[iymin:iymax]./sdm.Ly, conc1[:,iymin:iymax,it,1]; cargs..., levels=contour_levels, linestyle=(:dash,:dense), linewidth=3)
     end
     t0str = @sprintf("%.0f",coast.anc_tRmax[i_anc]/sdm.tu)
     # Second row: scores
-    ax = Axis(lout[2,1:3], xlabel="𝑡−𝑡* (𝑡*=$(t0str))",ylabel="Box mean 𝑐",ylabelsize=15,xlabelsize=15)
+    ax = Axis(lout[2,1:3], xlabel="𝑡−𝑡*",ylabel="Box mean 𝑐",ylabelsize=15,xlabelsize=15, xgridvisible=false, ygridvisible=false, xlabelvisible=false, xticklabelsvisible=false)
     for i_desc = 1:Ndesc
-        lines!(sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), coast.desc_Roft[i_anc][idx_desc[i_desc]]; color=Rmaxcolors[order[i_desc+1]])
+        lines!(sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), coast.desc_Roft[i_anc][idx_desc[i_desc]]; color=Rmaxcolors[Rmaxrank[i_desc+1]])
     end
     vlines!(ax, 0; color=:black, linestyle=(:dash,:dense))
     vlines!(ax, sdm.tu*(tinit+it_after_split-coast.anc_tRmax[i_anc]); color=:black, linestyle=(:dash,:dense))
-    scatter!(ax, sdm.tu*(coast.desc_tRmax[i_anc][idx_desc] .- coast.anc_tRmax[i_anc]), coast.desc_Rmax[i_anc][idx_desc]; color=Rmaxcolors[order[2:end]], marker=:star6)
+    scatter!(ax, sdm.tu*(coast.desc_tRmax[i_anc][idx_desc] .- coast.anc_tRmax[i_anc]), coast.desc_Rmax[i_anc][idx_desc]; color=Rmaxcolors[Rmaxrank[2:end]], marker=:star6, markersize=10)
     xlims!(ax, (sdm.tu.*(tinit - coast.anc_tRmax[i_anc] .+ [0,Nt]))...)
     # Third row: distance
-    ax = Axis(lout[3,1:3], xlabel="𝑡−𝑡* (𝑡*=$(t0str))))",ylabel="Area distance", ylabelsize=15, xlabelsize=15, yscale=log10)
+    ax = Axis(lout[3,1:3], xlabel="𝑡−𝑡*",ylabel="Area distance", ylabelsize=15, xlabelsize=15, yscale=log10, xgridvisible=false, ygridvisible=false)
     for i_desc = 1:Ndesc
         area_dist_normalized = area_dist[:,i_desc+1] ./ area_dist[it_after_split,i_desc+1]
-        lines!(sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), replace(area_dist[:,i_desc+1], 0=>NaN); color=Rmaxcolors[order[i_desc+1]])
+        lines!(sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), replace(area_dist[:,i_desc+1], 0=>NaN); color=Rmaxcolors[Rmaxrank[i_desc+1]])
     end
-    lines!(ax, sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), replace(mean_area_dist, 0=>NaN); color=:black, linestyle=(:dash,:dense), linewidth=2)
-    hlines!(ax, mean_area_dist[it_anc_tRmax]; color=:black, linestyle=(:dash,:dense), linewidth=2)
-    vlines!(ax, 0; color=:black, linestyle=(:dash,:dense))
-    vlines!(ax, sdm.tu*(tinit+it_after_split-coast.anc_tRmax[i_anc]); color=:gray)
+    lines!(ax, sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), replace(mean_area_dist, 0=>NaN); color=:green, linestyle=:solid, linewidth=2)
+    hlines!(ax, [mean_area_dist_sat, mean_area_dist[it_anc_tRmax]]; xmin=it_after_split/Nt, color=:green, linewidth=2, linestyle=(:dash,:dense), label=@sprintf("D ≈ %.2fDₛ, Dₛ ≈ %.2f", mean_area_dist[it_anc_tRmax]/mean_area_dist_sat, mean_area_dist_sat))
+    axislegend(ax, "Areal distance"; position=:lb, merge=true)
+    vlines!(ax, 0; color=:gray, linestyle=:solid, alpha=0.25)
+    vlines!(ax, sdm.tu*(tinit+it_after_split-coast.anc_tRmax[i_anc]); color=:black, linestyle=:solid, alpha=0.25)
     xlims!(ax, (sdm.tu.*(tinit - coast.anc_tRmax[i_anc] .+ [0,Nt]))...)
 
     rowsize!(lout, 1, Relative(1/2))
     rowsize!(lout, 2, Relative(1/4))
+    rowgap!(lout, 2, 0)
         
     save(figfile, fig)
 
