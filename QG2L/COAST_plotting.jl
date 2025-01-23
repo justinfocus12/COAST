@@ -303,28 +303,44 @@ function composite_field_1family(cfg::ConfigCOAST, coast::COASTState, ens::EM.En
 
 
     # Start with only the field at the timing of the original peak 
-    fig = Figure(size=(400,400))
+    # sub-select the y's 
+    ybounds = [0.0, 1.0] #cfg.target_yPerL .+ 2*cfg.target_ryPerL .* [-1,1]
+    iymin,iymax = findfirst(sdm.ygrid./sdm.Ly .>= ybounds[1]),findlast(sdm.ygrid./sdm.Ly .<= ybounds[2])
+    fig = Figure(size=(1200,600))
     lout = fig[1,1] = GridLayout()
-    ax = Axis(lout[1,1], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿", title="𝑐 contours")
+    # First row: contour messes
+    axs = [Axis(lout[1,it], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿") for it=1:3]
     tinit = floor(Int, ens.trajs[i_anc].tphinit/sdm.tu)
     contour_levels = [cfg.target_yPerL] #collect(range(0,1;length=8))
-    locavg_rect = poly!(ax, [(cfg.target_xPerL + sgnx*cfg.target_rxPerL) for sgnx=[-1,1,1,-1]], [(cfg.target_yPerL + sgny*cfg.target_ryPerL) for sgny=[-1,-1,1,1]], color=:gray, alpha=0.5)
-    Rbounds = extrema(coast.desc_Rmax[i_anc][idx_desc])
-    cmap(Rmax) = begin
-        frac = (Rmax-Rbounds[1])/(Rbounds[2]-Rbounds[1])
-        return frac*RGBf(colorant"red") + (1-frac)*RGBf(colorant"blue")
+    for ax = axs
+        locavg_rect = poly!(ax, [(cfg.target_xPerL + sgnx*cfg.target_rxPerL) for sgnx=[-1,1,1,-1]], [(cfg.target_yPerL + sgny*cfg.target_ryPerL) for sgny=[-1,-1,1,1]], color=:gray, alpha=0.5)
     end
-    itanc = coast.anc_tRmax[i_anc] - tinit
+    Rmaxs = vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][idx_desc])
+    Rmaxbounds = extrema(Rmaxs)
+    Rmaxcolors = cgrad(:RdYlBu_4, Ndesc+1; categorical=true).colors
+    order = sortperm(Rmaxs)
+    it_anc_tRmax = coast.anc_tRmax[i_anc] - tinit
+    it_after_split = it_anc_tRmax - leadtime + 1
     for i_desc = 1:Ndesc
-        it = coast.desc_tRmax[i_anc][idx_desc[i_desc]] - tinit
-        println("Starting to contour desc $(i_desc) with c range $(extrema(conc1[:,:,it,i_desc+1]))")
-        cargs = Dict(:color=>cmap(coast.desc_Rmax[i_anc][idx_desc[i_desc]]))
-        contour!(ax, sdm.xgrid./sdm.Lx, sdm.ygrid./sdm.Ly, conc1[:,:,it,i_desc+1]; cargs..., levels=contour_levels, linewidth=0.5)
+        cargs = Dict(:color=>Rmaxcolors[order[i_desc+1]])
+        # First column: right after the split
+        it_desc_tRmax = coast.desc_tRmax[i_anc][idx_desc[i_desc]] - tinit
+        for (i_ax,it) in enumerate((it_after_split,it_anc_tRmax,it_desc_tRmax))
+            contour!(axs[i_ax], sdm.xgrid./sdm.Lx, sdm.ygrid[iymin:iymax]./sdm.Ly, conc1[:,iymin:iymax,it,i_desc+1]; cargs..., levels=contour_levels, linewidth=1.0)
+        end
     end
-    cargs = Dict(:color=>cmap(coast.anc_Rmax[i_anc]))
-    it = coast.anc_tRmax[i_anc] - tinit
-    contour!(ax, sdm.xgrid./sdm.Lx, sdm.ygrid./sdm.Ly, conc1[:,:,it,1]; cargs..., levels=contour_levels, linestyle=(:dash,:dense), linewidth=3)
+    cargs = Dict(:color=>Rmaxcolors[order[1]])
+    for (i_ax,it) in enumerate((it_after_split,it_anc_tRmax,it_anc_tRmax))
+        contour!(axs[i_ax], sdm.xgrid./sdm.Lx, sdm.ygrid[iymin:iymax]./sdm.Ly, conc1[:,iymin:iymax,it,1]; cargs..., levels=contour_levels, linestyle=(:dash,:dense), linewidth=3)
+    end
+    # Second row: tiemseries
+    t0str = @sprintf("%.0f",anc_tRmax/sdm.tu)
+    ax = Axis(lout[2,1:3], xlabel="−AST (𝑡*=$(t0str))",ylabel="Box mean 𝑐")
+    for i_desc = 1:Ndesc
+        # TODO
+    end
+        
     save(figfile, fig)
-end
 
-    
+
+end
