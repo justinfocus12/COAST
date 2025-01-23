@@ -301,6 +301,13 @@ function composite_field_1family(cfg::ConfigCOAST, coast::COASTState, ens::EM.En
         conc1fun!(conc1, i_mem, mem)
     end
 
+    # Measure a distance from the ancestor in terms of complementing areas 
+    area_dist = SB.mean(sign.(conc1 .- cfg.target_yPerL) .!= sign.(conc1[:,:,:,1:1] .- cfg.target_yPerL); dims=[1,2])[1,1,:,:] 
+    # Now take average with respect to perturbations 
+    # TODO make this respect weights of distribution
+    mean_area_dist = SB.mean(area_dist; dims=2)[:,1]
+
+
 
     # Start with only the field at the timing of the original peak 
     # sub-select the y's 
@@ -333,12 +340,30 @@ function composite_field_1family(cfg::ConfigCOAST, coast::COASTState, ens::EM.En
     for (i_ax,it) in enumerate((it_after_split,it_anc_tRmax,it_anc_tRmax))
         contour!(axs[i_ax], sdm.xgrid./sdm.Lx, sdm.ygrid[iymin:iymax]./sdm.Ly, conc1[:,iymin:iymax,it,1]; cargs..., levels=contour_levels, linestyle=(:dash,:dense), linewidth=3)
     end
-    # Second row: tiemseries
-    t0str = @sprintf("%.0f",anc_tRmax/sdm.tu)
-    ax = Axis(lout[2,1:3], xlabel="−AST (𝑡*=$(t0str))",ylabel="Box mean 𝑐")
+    t0str = @sprintf("%.0f",coast.anc_tRmax[i_anc]/sdm.tu)
+    # Second row: scores
+    ax = Axis(lout[2,1:3], xlabel="𝑡−𝑡* (𝑡*=$(t0str))",ylabel="Box mean 𝑐",ylabelsize=15,xlabelsize=15)
     for i_desc = 1:Ndesc
-        # TODO
+        lines!(sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), coast.desc_Roft[i_anc][idx_desc[i_desc]]; color=Rmaxcolors[order[i_desc+1]])
     end
+    vlines!(ax, 0; color=:black, linestyle=(:dash,:dense))
+    vlines!(ax, sdm.tu*(tinit+it_after_split-coast.anc_tRmax[i_anc]); color=:black, linestyle=(:dash,:dense))
+    scatter!(ax, sdm.tu*(coast.desc_tRmax[i_anc][idx_desc] .- coast.anc_tRmax[i_anc]), coast.desc_Rmax[i_anc][idx_desc]; color=Rmaxcolors[order[2:end]], marker=:star6)
+    xlims!(ax, (sdm.tu.*(tinit - coast.anc_tRmax[i_anc] .+ [0,Nt]))...)
+    # Third row: distance
+    ax = Axis(lout[3,1:3], xlabel="𝑡−𝑡* (𝑡*=$(t0str))))",ylabel="Area distance", ylabelsize=15, xlabelsize=15, yscale=log10)
+    for i_desc = 1:Ndesc
+        area_dist_normalized = area_dist[:,i_desc+1] ./ area_dist[it_after_split,i_desc+1]
+        lines!(sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), replace(area_dist[:,i_desc+1], 0=>NaN); color=Rmaxcolors[order[i_desc+1]])
+    end
+    lines!(ax, sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), replace(mean_area_dist, 0=>NaN); color=:black, linestyle=(:dash,:dense), linewidth=2)
+    hlines!(ax, mean_area_dist[it_anc_tRmax]; color=:black, linestyle=(:dash,:dense), linewidth=2)
+    vlines!(ax, 0; color=:black, linestyle=(:dash,:dense))
+    vlines!(ax, sdm.tu*(tinit+it_after_split-coast.anc_tRmax[i_anc]); color=:gray)
+    xlims!(ax, (sdm.tu.*(tinit - coast.anc_tRmax[i_anc] .+ [0,Nt]))...)
+
+    rowsize!(lout, 1, Relative(1/2))
+    rowsize!(lout, 2, Relative(1/4))
         
     save(figfile, fig)
 

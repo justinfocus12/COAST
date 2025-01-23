@@ -906,6 +906,17 @@ function regression2distn_quadratic_uniform(coefs::Vector{Float64}, resid_range:
     return ccdf,pdf
 end
 
+function bump_density(U::Matrix{Float64}, scale::Float64, support_radius::Float64)
+    Nsamp = size(U,1) #1024 
+    R2 = (support_radius^2) .* U[:,1]
+    radius = sqrt.(R2)
+    angle = 2pi.*U[:,2]
+    X = radius .* cos.(angle)
+    Y = radius .* sin.(angle)
+    W = exp.(-0.5*(R2./scale^2) ./ (1 .- R2./(support_radius^2)))
+    return W
+end
+
 function regression2distn_empirical_bump(scores::Vector{Float64}, scale::Float64, support_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
     Nsamp = size(U,1) #1024 
     R2 = (support_radius^2) .* U[:,1]
