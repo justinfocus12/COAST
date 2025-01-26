@@ -879,14 +879,64 @@ function measure_dispersion(coast::COASTState, ens::EM.Ensemble, ens_dns::EM.Ens
     return msqdist_sf,msqdist_conc
 end
 
+function plot_contour_dispersion_distribution(
+        coast::COASTState, 
+        ens::EM.Ensemble, 
+        cfg::ConfigCOAST, 
+        sdm::QG2L.SpaceDomain,
+        cop::QG2L.ConstantOperators, 
+        pertop::QG2L.PerturbationOperator,
+        contour_dispersion_filename::String,
+        idx_anc_2plot::Vector{Int64},
+        figdir::String,
+    )
+    (
+     leadtimes,r2threshes,dsts,rsps,mixobjs,
+     mixcrit_labels,mixobj_labels,distn_scales,
+     fdivnames,Nboot,ccdf_levels,
+     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
+    ) = expt_config_COAST_analysis(cfg,pertop)
+    globcorr,contcorr,contsymdiff = JLD2.jldopen(contour_dispersion_filename, "r") do f
+        return f["globcorr"],f["contcorr"],f["contsymdiff"]
+    end
+    Nt,Nleadtime,Ndsc,Nanc = size(globcorr) # Ndesc here is per-leadtime
+    for i_anc = idx_anc_2plot
+        fig = Figure(size=(600,400))
+        ylabels = ["log(1 − ρ[𝑐])", "log(1 − ρ[𝕀{𝑐>𝑐₀}])"]
+        lout = fig[1,1] = GridLayout()
+        ax_globcorr,ax_contcorr, = [Axis(lout[i,1]; xlabel="𝑡 − 𝑡* (𝑡* = $(@sprintf("%.0f", coast.anc_tRmax[i_anc]/sdm.tu)))", ylabel=ylabels[i], yscale=identity, xgridvisible=false, ygridvisible=false) for i=1:2]
+        tgrid_ph = (collect(1:1:Nt) .- cfg.lead_time_max) .* sdm.tu
+        for i_leadtime = collect(2:8:Nleadtime)
+            leadtime = leadtimes[i_leadtime]
+            tidx = (cfg.lead_time_max-leadtime+2):1:Nt
+            for i_dsc = 1:Ndsc
+                lines!(ax_globcorr,tgrid_ph[tidx],log1p.(-globcorr[tidx,i_leadtime,i_dsc,i_anc]); color=:tomato)
+                lines!(ax_contcorr,tgrid_ph[tidx],log1p.(-contcorr[tidx,i_leadtime,i_dsc,i_anc]); color=:tomato)
+            end
+        end
+        for (i_leadtime,leadtime) in enumerate(leadtimes)
+            tidx = (cfg.lead_time_max-leadtime+2):1:Nt
+            lines!(ax_globcorr, tgrid_ph[tidx], log1p.(-SB.mean(globcorr[:,i_leadtime,:,i_anc]; dims=2)[tidx,1]); color=:black)
+            lines!(ax_contcorr, tgrid_ph[tidx], log1p.(-SB.mean(contcorr[:,i_leadtime,:,i_anc]; dims=2)[tidx,1]); color=:black)
+            hlines!(ax_globcorr, 0.0; color=:gray, alpha=0.5)
+            hlines!(ax_globcorr, 0.0; color=:gray, alpha=0.5)
+            hlines!(ax_globcorr, -1.0; color=:gray, alpha=0.5)
+            hlines!(ax_globcorr, -1.0; color=:gray, alpha=0.5)
+        end
+        save(joinpath(figdir,"corrs_anc$(i_anc).png"), fig)
+    end
+end
+
+
 function compute_contour_dispersion(
         coast::COASTState, 
         ens::EM.Ensemble, 
         cfg::ConfigCOAST, 
         sdm::QG2L.SpaceDomain,
         cop::QG2L.ConstantOperators, 
+        pertop::QG2L.PerturbationOperator,
         dns_stats_filename::String, 
-        dispersion_filename::String,
+        contour_dispersion_filename::String,
     )
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
@@ -899,38 +949,89 @@ function compute_contour_dispersion(
     Nanc = length(coast.ancestors)
     Nt = cfg.follow_time + cfg.lead_time_max
 
-    conc1_mean = JLD2.jldopen(dns_stats_filename,"r") do f
-        iytgt = round(Int, cfg.target_yPerL*sdm.Ny)
+    conc1_zonal_mean = JLD2.jldopen(dns_stats_filename,"r") do f
         iz = 1
         ix = 1
-        return f["mssk_xall"][ix,iytgt,iz,1]
+        return f["mssk_xall"][ix:ix,:,iz:iz,1:1]
     end
+    contour_level = conc1_zonal_mean[1,round(Int, cfg.target_yPerL*sdm.Ny),1,1]
 
-    conc1fun!(conc1_onemem::Array{Float64,3},mem::Int64) = begin
+
+    # Fast method for reading in concentrations (third dimension for layer is kinda silly)
+    dst_inds = CartesianIndices((1:sdm.Nx,1:sdm.Ny,1:1,1:Nt))
+    src_inds = CartesianIndices((1:sdm.Nx,1:sdm.Ny,1:1,1:Nt))
+    conc1fun!(conc1_onemem::Array{Float64,4},mem::Int64) = begin
         JLD2.jldopen(ens.trajs[mem].history, "r") do f
-            conc1_onemem[1:sdm.Nx,1:sdm.Ny,1:Nt] .= f["conc_hist"][:,:,1,:]
+            copyto!(conc1_onemem, dst_inds, f["conc_hist"], src_inds)
+            #conc1_onemem[1:sdm.Nx,1:sdm.Ny,1:Nt] .= f["conc_hist"][:,:,1,:]
         end
+        conc1_onemem .-= conc1_zonal_mean
     end
-    (conc1_anc,conc1_desc) = (zeros(Float64, (sdm.Nx, sdm.Ny, Nt)) for _=1:2)
-    Ndesc_per_leadtime = div(cfg.num_perts_max, Nleadtime)
-    area_dist = zeros(Float64, (Nt, Ndesc_per_leadtime, Nleadtime))
+    Ndsc_per_leadtime = div(cfg.num_perts_max, Nleadtime)
+    # Various notions of similarity based on contours
+    globcorr,contsymdiff,contcorr,= (zeros(Float64, (Nt, Nleadtime, Ndsc_per_leadtime, Nanc)) for _=1:3)
+
+    
+    # pre-allocate arrays for fast in-place correlation calculations 
+    # spatially resolved fields
+    # (c,i) --> concentration, indicator that concentration is over threshold
+    # (x,m,v) --> (dependent on x,y, mean over x,y, variance over x,y)
+    # (a,d) --> (ancestor,descendant)
+    (cxa,cxd) = (zeros(Float64,(sdm.Nx,sdm.Ny,1,Nt)) for _=1:2)
+    (cma,cmd,cma2,cmd2,cmaa,cva,cmdd,cmad) = (zeros(Float64,(1,1,1,Nt)) for _=1:8)
+    (ixa,ixd) = (zeros(Bool,(sdm.Nx,sdm.Ny,1,Nt)) for _=1:2)
+    (ima,imd,ima2,imd2,imad,iva) = (zeros(Float64,(1,1,1,Nt)) for _=1:6)
+    # For notational convenience, define aliases for 1^2 and 1 
+    imdd = imd
+    imaa = ima
+    #Threads.@threads for i_anc = 1:Nanc
     for i_anc = 1:Nanc
+
         anc = coast.ancestors[i_anc]
-        descs = Graphs.outneighbors(ens.famtree, anc)
-        area_dist_anc = zeros(Float64, (Nt, Ndesc_per_leadtime, Nleadtime, Nanc))
-        conc1fun!(conc1_anc,anc)
-        for i_leadtime = 1:Nleadtime
-            idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
-            for i_desc = 1:Ndesc_per_leadtime
-                conc1fun!(conc1_desc, idx_desc[i_desc])
-                area_dist[1:Nt,i_desc,i_leadtime] .= SB.mean(sign.(conc1_anc .- conc1_mean) .!= sign.(conc1_desc .- conc1_mean); dims=[1,2])[1,1,:]
+        dscs = Graphs.outneighbors(ens.famtree, anc)
+
+        # Compute the intermediates for the ancestor
+        # continuous-valued concentrations
+        conc1fun!(cxa,anc)
+        SB.mean!(cma, cxa)
+        SB.mean!(cmaa, cxa.^2)
+        cma2 .= cma.^2
+        cva .= cmaa .- cma2
+        # Indicators
+        ixa .= (cxa .> 0) #contour_level)
+        SB.mean!(ima, ixa)
+        ima2 .= ima.^2
+        iva .= imaa .- ima2
+
+        println("Beginning to compute correlations for ancestor $(i_anc), who has $(length(dscs)) total descendants")
+        for (i_leadtime,leadtime) in enumerate(leadtimes)
+            idx_dsc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
+            for i_dsc = 1:Ndsc_per_leadtime
+                # Compute the intermediates for the descendant
+                conc1fun!(cxd, dscs[idx_dsc[i_dsc]])
+                SB.mean!(cmd, cxd)
+                SB.mean!(cmdd, cxd.^2)
+                cmd2 .= cmd.^2
+                SB.mean!(cmad, cxd.*cxa)
+                ixd .= (cxd .> 0) #contour_level)
+                SB.mean!(imd, ixd)
+                imd2 .= imd.^2
+                SB.mean!(imad, ixd.*ixa)
+
+                # Fill in the relevant slice of the array
+                globcorr[:,i_leadtime,i_dsc,i_anc] .= ((cmad .- cma.*cmd) ./ sqrt.(cva .* (cmdd .- cmd2)))[1,1,1,:]
+                contcorr[:,i_leadtime,i_dsc,i_anc] .= ((imad .- ima.*imd) ./ sqrt.(iva .* (imdd .- imd2)))[1,1,1,:]
+                contsymdiff[:,i_leadtime,i_dsc,i_anc] .= SB.mean(ixa .!= ixd; dims=[1,2])[1,1,1,:]
             end
         end
     end
 
-    JLD2.jldopen(dispersion_filename, "w") do f
-        f["area_dist"] = area_dist
+    JLD2.jldopen(contour_dispersion_filename, "w") do f
+        f["globcorr"] = globcorr
+        f["contcorr"] = contcorr
+        f["contsymdiff"] = contsymdiff
     end
+    #@infiltrate
 end
             
 

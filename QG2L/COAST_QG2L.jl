@@ -40,11 +40,12 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_dns_objective_stats" =>                       0,
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
-                             "plot_composite_contours" =>                        0,
-                             "compute_contour_dispersion" =>                     1,
+                             "compute_contour_dispersion" =>                     0,
+                             "plot_contour_dispersion_distribution" =>           1,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "plot_objective" =>                                 0, 
                              "mix_COAST_distributions_polynomial" =>             0,
+                             "plot_composite_contours" =>                        0,
                              "plot_COAST_mixture" =>                             0,
                              "mixture_COAST_phase_diagram" =>                    0,
                              # Danger zone 
@@ -179,6 +180,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     @show coast.pert_seq_qmc[:,1:6]
     rng = Serialization.deserialize(rngfile_COAST)
 
+    dns_objective_filename = joinpath(resultdir,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2")
 
     if todo["compute_dns_objective"]
         Nmem = EM.get_Nmem(ens_dns)
@@ -214,7 +216,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
         
 
-        JLD2.jldopen(joinpath(resultdir,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "w") do f
+        JLD2.jldopen(dns_objective_filename, "w") do f
             f["tgrid_ancgen"] = tgrid_ancgen
             f["Roft_ancgen_seplon"] = Roft_ancgen_seplon
             f["Rccdf_ancgen_seplon"] = Rccdf_ancgen_seplon
@@ -247,7 +249,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
          gpdpar_valid_agglon,
          std_valid_agglon,
         ) = (
-             JLD2.jldopen(joinpath(resultdir,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
+             JLD2.jldopen(dns_objective_filename, "r") do f
                  return (
                          f["tgrid_ancgen"], # tgrid_ancgen
                          f["Roft_ancgen_seplon"], # Roft_ancgen_seplon
@@ -445,6 +447,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     leadtimes = collect(range(cfg.lead_time_min,cfg.lead_time_max; step=cfg.lead_time_inc))
     Nleadtime = length(leadtimes)
     min_score,max_score = extrema(vcat(coast.anc_Rmax, (coast.desc_Rmax[i_anc] for i_anc=1:Nanc)...))
+    #
     # --------------------- Decide on a subset of ancestors to display ---------------
     #
     ancorder = sortperm(coast.anc_Rmax; rev=true)
@@ -452,6 +455,19 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     idx_anc_strat = intersect(1:Nanc, idx_anc_strat)
     # ---------------------------------------------------------------------------------
     #
+
+    contour_dispersion_filename = joinpath(resultdir,"contour_dispersion.jld2")
+    if todo["compute_contour_dispersion"]
+        dns_stats_filename = joinpath(resultdir_dns, "moments_mssk_conc.jld2")
+        compute_contour_dispersion(coast, ens, cfg, sdm, cop, pertop, dns_stats_filename, contour_dispersion_filename)
+    end
+    if todo["plot_contour_dispersion_distribution"]
+        plot_contour_dispersion_distribution(coast, ens, cfg, sdm, cop, pertop, contour_dispersion_filename, idx_anc_strat, figdir)
+    end
+
+
+
+
     if todo["regress_lead_dependent_risk_polynomial"]
         (
          coefs_linear,residmse_linear,rsquared_linear,resid_range_linear,
@@ -1187,7 +1203,7 @@ else
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
         #idx_expt = vec([3,6][2:2] .+ [0,1][1:1]'.*11) #Vector{Int64}([6,9])
-        idx_expt = vec([0,1].*11 .+ [5,7]')
+        idx_expt = (vec([0,1][1:1].*11 .+ [5,7][1:1]'))
     end
 end
 
