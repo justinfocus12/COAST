@@ -65,6 +65,10 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
     dlev = diff(levels)
     Nlev = length(levels)
     Nanc = length(coast.ancestors)
+    # Load the various notions of field correlation
+    globcorr,contcorr = JLD2.jldopen(joinpath(resultdir,"contour_dispersion.jld2"), "r") do f
+        return f["globcorr"], f["contcorr"]
+    end
 
 
     color_lin = :cyan
@@ -150,6 +154,8 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
             end
         end
     end
+    Ndsc_per_leadtime = div(cfg.num_perts_max, Nleadtime)
+    dsc_weights = ones(Float64, Ndsc_per_leadtime) # For computing averages for regression skills or correlations 
     for dst = dsts
         for rsp = rsps
             coefs_at_anc_and_leadtime(i_leadtime,i_anc) = begin
@@ -173,6 +179,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
             for i_scl = 1:length(distn_scales[dst])
                 println("Starting scale $(i_scl)")
                 scl = distn_scales[dst][i_scl]
+                dsc_weights .= QG2L.bump_density(U_reg2dist[1:Ndsc_per_leadtime,:], scl, support_radius)
                 #Threads.@threads for i_anc = 1:Nanc
                 for i_anc = 1:Nanc
                     Rmaxanc = coast.anc_Rmax[i_anc]
@@ -216,6 +223,9 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         # weight the entropy by the probability of exceeding the threshold 
                         mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
                         mixcrits[dst][rsp]["went"][i_leadtime,i_anc,i_scl] = ccdf[i_thresh_cquantile] * QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
+                        # For correlations, the averaging weight depends on the scale, so these two aren't totally independent
+                        mixcrits[dst][rsp]["globcorr"][i_leadtime,i_anc,i_scl] = SB.mean(globcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(dsc_weights))
+                        mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(dsc_weights))
                         if levels[end] >= Rmaxanc
                             i_lev_lo = findlast(levels .< Rmaxanc)
                             i_lev_hi = findfirst(levels .>= Rmaxanc)
@@ -255,6 +265,14 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         iltmixs[dst][rsp]["pim"][i_pim,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
                     end
 
+                    for corrkey = ["globcorr","contcorr"]
+                        for (i_corr,corr) in enumerate(mixobjs[corrkey])
+                            first_inceedance = findfirst(mixcrits[dst][rsp][corrkey][1:ilt_r2,i_anc,i_scl] .< corr)
+                            last_exceedance = findlast(mixcrits[dst][rsp][corrkey][1:ilt_r2,i_anc,i_scl] .>= corr)
+                            iltmixs[dst][rsp][corrkey][i_corr,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
+                        end
+                    end
+
                     # Other objectives to condition on R^2 
                     for mc = ("ent","ei",)
                         iltmixs[dst][rsp][mc][1,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:ilt_r2,i_anc,i_scl])
@@ -264,7 +282,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 println("Starting to sum together pdfs and ccdfs")
                 #IFT.@infiltrate ((dst=="b")&(rsp=="2"))
                 anc_weights = zeros(Float64, Nanc)
-                for mc = ("pim","pth","ent","ei","lt","r2",) #keys(mixobjs)
+                for mc = ("globcorr","contcorr","pim","pth","ent","ei","lt","r2",) #keys(mixobjs)
                     for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                         for i_boot = 1:Nboot+1
                             anc_weights .= 0
@@ -334,5 +352,4 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
         f["ccdfmixs"] = ccdfmixs
         f["pdfmixs"] = pdfmixs 
     end
-
 end

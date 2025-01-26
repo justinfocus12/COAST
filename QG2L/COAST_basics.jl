@@ -687,8 +687,9 @@ function expt_config_COAST_analysis(cfg,pertop)
     
 
     r2threshes = [0.7] #[0.8,0.7,0.6,0.5]
-    pths = collect(range(1.0, 0.0; length=26)) 
     Nr2th = length(r2threshes)
+    pths = collect(range(1.0, 0.0; length=11)) 
+    corrs = -expm1.(collect(range(-5, 0; length=11)))
 
     # TODO implement mean absolute error as a more-outlier-sensitive alternative to R^2 
 
@@ -704,6 +705,8 @@ function expt_config_COAST_analysis(cfg,pertop)
                    "went"=>["max"],
                    "ent"=>["max"],
                    "max"=>["max"],
+                   "globcorr"=>corrs,
+                   "contcorr"=>corrs,
                   ) # mixing-related objectives to maximize when choosing a leadtime. Each entry of each list represents a different objective 
     lt2str(lt) = @sprintf("%.2f", lt)
     mixcrit_labels = Dict(
@@ -712,6 +715,8 @@ function expt_config_COAST_analysis(cfg,pertop)
                          "pth"=>"𝑞(μ)",
                          "pim"=>"𝑞(𝑅*)",
                          "ei"=>"𝔼[(Δ𝑅*)₊]",
+                         "globcorr"=>"ρ[𝑐]",
+                         "contcorr"=>"ρ[𝕀{𝑐>𝑐̄(𝑦)}]",
                          "went"=>"WEntropy",
                          "ent"=>"Ent",
                         )
@@ -723,6 +728,8 @@ function expt_config_COAST_analysis(cfg,pertop)
                          "pim"=>[@sprintf("𝑞(𝑅ₙ*)≈%.2f", pth) for pth=pths],
                          "went"=>["Max. WEnt."],
                          "ent"=>["max Ent"],
+                         "globcorr"=>[@sprintf("%s ≈ %.2f", mixcrit_labels["globcorr"], corr) for corr=corrs],
+                         "contcorr"=>[@sprintf("%s ≈ %.2f", mixcrit_labels["globcorr"], corr) for corr=corrs],
                          # TODO add expected exceedance over threshold (tee or eet or ete)
                         )
     i_mode_sf = 1
@@ -937,6 +944,7 @@ function compute_contour_dispersion(
         pertop::QG2L.PerturbationOperator,
         dns_stats_filename::String, 
         contour_dispersion_filename::String,
+        thresh::Float64,
     )
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
@@ -954,7 +962,8 @@ function compute_contour_dispersion(
         ix = 1
         return f["mssk_xall"][ix:ix,:,iz:iz,1:1]
     end
-    contour_level = conc1_zonal_mean[1,round(Int, cfg.target_yPerL*sdm.Ny),1,1]
+    iytgt = round(Int, cfg.target_yPerL*sdm.Ny)
+    contour_level = thresh #conc1_zonal_mean[1,iytgt,1,1]
 
 
     # Fast method for reading in concentrations (third dimension for layer is kinda silly)
@@ -998,7 +1007,8 @@ function compute_contour_dispersion(
         cma2 .= cma.^2
         cva .= cmaa .- cma2
         # Indicators
-        ixa .= (cxa .> 0) #contour_level)
+        ixa .= (cxa .+ conc1_zonal_mean .> contour_level) #contour_level)
+        @infiltrate
         SB.mean!(ima, ixa)
         ima2 .= ima.^2
         iva .= imaa .- ima2
@@ -1013,7 +1023,7 @@ function compute_contour_dispersion(
                 SB.mean!(cmdd, cxd.^2)
                 cmd2 .= cmd.^2
                 SB.mean!(cmad, cxd.*cxa)
-                ixd .= (cxd .> 0) #contour_level)
+                ixd .= (cxd .+ conc1_zonal_mean .> contour_level) #contour_level)
                 SB.mean!(imd, ixd)
                 imd2 .= imd.^2
                 SB.mean!(imad, ixd.*ixa)
