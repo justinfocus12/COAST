@@ -716,7 +716,7 @@ function expt_config_COAST_analysis(cfg,pertop)
                          "pim"=>"𝑞(𝑅*)",
                          "ei"=>"𝔼[(Δ𝑅*)₊]",
                          "globcorr"=>"ρ[𝑐]",
-                         "contcorr"=>"ρ[𝕀{𝑐>𝑐̄(𝑦)}]",
+                         "contcorr"=>"ρ[𝕀{𝑐(𝑦)>𝑐̄(𝑦)}]",
                          "went"=>"WEntropy",
                          "ent"=>"Ent",
                         )
@@ -963,7 +963,7 @@ function compute_contour_dispersion(
         return f["mssk_xall"][ix:ix,:,iz:iz,1:1]
     end
     iytgt = round(Int, cfg.target_yPerL*sdm.Ny)
-    contour_level = thresh #conc1_zonal_mean[1,iytgt,1,1]
+    contour_level = conc1_zonal_mean[1,iytgt,1,1]
 
 
     # Fast method for reading in concentrations (third dimension for layer is kinda silly)
@@ -989,10 +989,7 @@ function compute_contour_dispersion(
     (cxa,cxd) = (zeros(Float64,(sdm.Nx,sdm.Ny,1,Nt)) for _=1:2)
     (cma,cmd,cma2,cmd2,cmaa,cva,cmdd,cmad) = (zeros(Float64,(1,1,1,Nt)) for _=1:8)
     (ixa,ixd) = (zeros(Bool,(sdm.Nx,sdm.Ny,1,Nt)) for _=1:2)
-    (ima,imd,ima2,imd2,imad,iva) = (zeros(Float64,(1,1,1,Nt)) for _=1:6)
-    # For notational convenience, define aliases for 1^2 and 1 
-    imdd = imd
-    imaa = ima
+    (ima,imd,ima2,imd2,imaa,iva,imdd,imad) = (zeros(Float64,(1,1,1,Nt)) for _=1:8)
     #Threads.@threads for i_anc = 1:Nanc
     for i_anc = 1:Nanc
 
@@ -1008,23 +1005,27 @@ function compute_contour_dispersion(
         cva .= cmaa .- cma2
         # Indicators
         ixa .= (cxa .+ conc1_zonal_mean .> contour_level) #contour_level)
-        @infiltrate
+        #@infiltrate
         SB.mean!(ima, ixa)
+        SB.mean!(imaa, ixa.^2)
         ima2 .= ima.^2
         iva .= imaa .- ima2
 
         println("Beginning to compute correlations for ancestor $(i_anc), who has $(length(dscs)) total descendants")
         for (i_leadtime,leadtime) in enumerate(leadtimes)
+            print("$(i_leadtime), ")
             idx_dsc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
             for i_dsc = 1:Ndsc_per_leadtime
                 # Compute the intermediates for the descendant
-                conc1fun!(cxd, dscs[idx_dsc[i_dsc]])
+                dsc = dscs[idx_dsc[i_dsc]]
+                conc1fun!(cxd,dsc)
                 SB.mean!(cmd, cxd)
                 SB.mean!(cmdd, cxd.^2)
                 cmd2 .= cmd.^2
                 SB.mean!(cmad, cxd.*cxa)
                 ixd .= (cxd .+ conc1_zonal_mean .> contour_level) #contour_level)
                 SB.mean!(imd, ixd)
+                SB.mean!(imdd, ixd.^2)
                 imd2 .= imd.^2
                 SB.mean!(imad, ixd.*ixa)
 
@@ -1033,6 +1034,7 @@ function compute_contour_dispersion(
                 contcorr[:,i_leadtime,i_dsc,i_anc] .= ((imad .- ima.*imd) ./ sqrt.(iva .* (imdd .- imd2)))[1,1,1,:]
                 contsymdiff[:,i_leadtime,i_dsc,i_anc] .= SB.mean(ixa .!= ixd; dims=[1,2])[1,1,1,:]
             end
+            println()
         end
     end
 

@@ -207,7 +207,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             fdivs[dst] = Dict()
             for rsp = rsps
                 fdivs[dst][rsp] = Dict()
-                for mc = ["ei","pim","pth","ent","lt","r2"]
+                for mc = ["globcorr","ei","pim","pth","ent","lt","r2"]
                     fdivs[dst][rsp][mc] = Dict()
                     for fdivname = fdivnames
                         fdivs[dst][rsp][mc][fdivname] = zeros(Float64, (Nytgt,Nboot+1,Nmcs[mc],Nscales[dst]))
