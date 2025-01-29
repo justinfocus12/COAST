@@ -1,3 +1,37 @@
+
+function sigmoid(x)
+    return 1/(1+exp(-x))
+end
+
+function logit(x)
+    return log(x) - log1p(-x)
+end
+
+function transcorr(x::Float64, fwd::Bool,; c0=0.1)
+    # c denotes correlation (0 <= c <= 1)
+    # z denotes transformed correlation (-infty < z < infty)
+    z0 = logit((1+c0)/(1+2*c0))
+    if fwd # 
+        c = abs(x)
+        z = z0 + logit(1/2*((c-1/2)/(c0+1/2) + 1))
+        return z*sign(x)
+    else
+        z = abs(x)
+        c = 1/2 + (1+2*c0)*(sigmoid(z-z0)-1/2)
+        return c*sign(x)
+    end
+end
+
+transcorr(x::Float64, c0::Float64) = transcorr(x, true; c0=c0)
+invtranscorr(x::Float64, c0::Float64) = transcorr(x, false; c0=c0)
+
+
+
+
+            
+
+
+
 mutable struct ConfigCOAST
     lead_time_min::Int64
     lead_time_max::Int64 
@@ -689,7 +723,8 @@ function expt_config_COAST_analysis(cfg,pertop)
     r2threshes = [0.7] #[0.8,0.7,0.6,0.5]
     Nr2th = length(r2threshes)
     pths = collect(range(1.0, 0.0; length=11)) 
-    corrs = -expm1.(collect(range(-5, 0; length=11)))
+    # for correlation thresholds, focus on the near-zero range too, and disregard negatives 
+    corrs = transcorr.(collect(range(invtranscorr(0.01),invtranscorr(0.99);length=17)))
 
     # TODO implement mean absolute error as a more-outlier-sensitive alternative to R^2 
 
@@ -709,6 +744,7 @@ function expt_config_COAST_analysis(cfg,pertop)
                    "contcorr"=>corrs,
                   ) # mixing-related objectives to maximize when choosing a leadtime. Each entry of each list represents a different objective 
     lt2str(lt) = @sprintf("%.2f", lt)
+
     mixcrit_labels = Dict(
                          "lt"=>"AST", 
                          "r2"=>"𝑅²",
@@ -716,7 +752,7 @@ function expt_config_COAST_analysis(cfg,pertop)
                          "pim"=>"𝑞(𝑅*)",
                          "ei"=>"𝔼[(Δ𝑅*)₊]",
                          "globcorr"=>"ρ[𝑐]",
-                         "contcorr"=>"ρ[𝕀{𝑐(𝑦)>𝑐̄(𝑦)}]",
+                         "contcorr"=>"ρ[𝑐(⋅,y₀)]",
                          "went"=>"WEntropy",
                          "ent"=>"Ent",
                         )
@@ -728,8 +764,8 @@ function expt_config_COAST_analysis(cfg,pertop)
                          "pim"=>[@sprintf("𝑞(𝑅ₙ*)≈%.2f", pth) for pth=pths],
                          "went"=>["Max. WEnt."],
                          "ent"=>["max Ent"],
-                         "globcorr"=>[@sprintf("%s ≈ %.2f", mixcrit_labels["globcorr"], corr) for corr=corrs],
-                         "contcorr"=>[@sprintf("%s ≈ %.2f", mixcrit_labels["globcorr"], corr) for corr=corrs],
+                         "globcorr"=>[@sprintf("%s ≈ σ(%.2f)", mixcrit_labels["globcorr"], transcorr(corr)) for corr=corrs],
+                         "contcorr"=>[@sprintf("%s ≈ σ(%.2f)", mixcrit_labels["contcorr"], transcorr(corr)) for corr=corrs],
                          # TODO add expected exceedance over threshold (tee or eet or ete)
                         )
     i_mode_sf = 1
@@ -909,7 +945,7 @@ function plot_contour_dispersion_distribution(
     Nt,Nleadtime,Ndsc,Nanc = size(globcorr) # Ndesc here is per-leadtime
     for i_anc = idx_anc_2plot
         fig = Figure(size=(600,400))
-        ylabels = ["log(1 − ρ[𝑐])", "log(1 − ρ[𝕀{𝑐>𝑐₀}])"]
+        ylabels = [@sprintf("σ⁻¹(%s)", mixcrit_labels["globcorr"]), @sprintf("σ⁻¹(%s)", mixcrit_labels["contcorr"])]
         lout = fig[1,1] = GridLayout()
         ax_globcorr,ax_contcorr, = [Axis(lout[i,1]; xlabel="𝑡 − 𝑡* (𝑡* = $(@sprintf("%.0f", coast.anc_tRmax[i_anc]/sdm.tu)))", ylabel=ylabels[i], yscale=identity, xgridvisible=false, ygridvisible=false) for i=1:2]
         tgrid_ph = (collect(1:1:Nt) .- cfg.lead_time_max) .* sdm.tu
@@ -917,18 +953,16 @@ function plot_contour_dispersion_distribution(
             leadtime = leadtimes[i_leadtime]
             tidx = (cfg.lead_time_max-leadtime+2):1:Nt
             for i_dsc = 1:Ndsc
-                lines!(ax_globcorr,tgrid_ph[tidx],log1p.(-globcorr[tidx,i_leadtime,i_dsc,i_anc]); color=:tomato)
-                lines!(ax_contcorr,tgrid_ph[tidx],log1p.(-contcorr[tidx,i_leadtime,i_dsc,i_anc]); color=:tomato)
+                lines!(ax_globcorr,tgrid_ph[tidx],transcorr.((globcorr[tidx,i_leadtime,i_dsc,i_anc])); color=:tomato)
+                lines!(ax_contcorr,tgrid_ph[tidx],transcorr.((contcorr[tidx,i_leadtime,i_dsc,i_anc])); color=:tomato)
             end
         end
         for (i_leadtime,leadtime) in enumerate(leadtimes)
             tidx = (cfg.lead_time_max-leadtime+2):1:Nt
-            lines!(ax_globcorr, tgrid_ph[tidx], log1p.(-SB.mean(globcorr[:,i_leadtime,:,i_anc]; dims=2)[tidx,1]); color=:black)
-            lines!(ax_contcorr, tgrid_ph[tidx], log1p.(-SB.mean(contcorr[:,i_leadtime,:,i_anc]; dims=2)[tidx,1]); color=:black)
-            hlines!(ax_globcorr, 0.0; color=:gray, alpha=0.5)
-            hlines!(ax_globcorr, 0.0; color=:gray, alpha=0.5)
-            hlines!(ax_globcorr, -1.0; color=:gray, alpha=0.5)
-            hlines!(ax_globcorr, -1.0; color=:gray, alpha=0.5)
+            lines!(ax_globcorr, tgrid_ph[tidx], transcorr.((SB.mean(globcorr[:,i_leadtime,:,i_anc]; dims=2)[tidx,1])); color=:black)
+            lines!(ax_contcorr, tgrid_ph[tidx], transcorr.((SB.mean(contcorr[:,i_leadtime,:,i_anc]; dims=2)[tidx,1])); color=:black)
+            hlines!(ax_globcorr, 0.0; color=:gray, alpha=0.25, linestyle=(:dash,:dense))
+            hlines!(ax_contcorr, 0.0; color=:gray, alpha=0.25, linestyle=(:dash,:dense))
         end
         save(joinpath(figdir,"corrs_anc$(i_anc).png"), fig)
     end
@@ -980,7 +1014,6 @@ function compute_contour_dispersion(
     # Various notions of similarity based on contours
     globcorr,contsymdiff,contcorr,= (zeros(Float64, (Nt, Nleadtime, Ndsc_per_leadtime, Nanc)) for _=1:3)
 
-    
     # pre-allocate arrays for fast in-place correlation calculations 
     # spatially resolved fields
     # (c,i) --> concentration, indicator that concentration is over threshold
@@ -988,7 +1021,7 @@ function compute_contour_dispersion(
     # (a,d) --> (ancestor,descendant)
     (cxa,cxd) = (zeros(Float64,(sdm.Nx,sdm.Ny,1,Nt)) for _=1:2)
     (cma,cmd,cma2,cmd2,cmaa,cva,cmdd,cmad) = (zeros(Float64,(1,1,1,Nt)) for _=1:8)
-    (ixa,ixd) = (zeros(Bool,(sdm.Nx,sdm.Ny,1,Nt)) for _=1:2)
+    (ixa,ixd) = (zeros(Float64,(sdm.Nx,1,1,Nt)) for _=1:2)
     (ima,imd,ima2,imd2,imaa,iva,imdd,imad) = (zeros(Float64,(1,1,1,Nt)) for _=1:8)
     #Threads.@threads for i_anc = 1:Nanc
     for i_anc = 1:Nanc
@@ -1004,7 +1037,7 @@ function compute_contour_dispersion(
         cma2 .= cma.^2
         cva .= cmaa .- cma2
         # Indicators
-        ixa .= (cxa .+ conc1_zonal_mean .> contour_level) #contour_level)
+        ixa .= cxa[1:sdm.Nx,iytgt:iytgt,1:1,:] #contour_level)
         #@infiltrate
         SB.mean!(ima, ixa)
         SB.mean!(imaa, ixa.^2)
@@ -1015,6 +1048,7 @@ function compute_contour_dispersion(
         for (i_leadtime,leadtime) in enumerate(leadtimes)
             print("$(i_leadtime), ")
             idx_dsc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
+            it1 = cfg.lead_time_max - leadtime
             for i_dsc = 1:Ndsc_per_leadtime
                 # Compute the intermediates for the descendant
                 dsc = dscs[idx_dsc[i_dsc]]
@@ -1023,7 +1057,7 @@ function compute_contour_dispersion(
                 SB.mean!(cmdd, cxd.^2)
                 cmd2 .= cmd.^2
                 SB.mean!(cmad, cxd.*cxa)
-                ixd .= (cxd .+ conc1_zonal_mean .> contour_level) #contour_level)
+                ixd .= cxd[1:sdm.Nx,iytgt:iytgt,1:1,1:Nt] #contour_level)
                 SB.mean!(imd, ixd)
                 SB.mean!(imdd, ixd.^2)
                 imd2 .= imd.^2
@@ -1032,10 +1066,17 @@ function compute_contour_dispersion(
                 # Fill in the relevant slice of the array
                 globcorr[:,i_leadtime,i_dsc,i_anc] .= ((cmad .- cma.*cmd) ./ sqrt.(cva .* (cmdd .- cmd2)))[1,1,1,:]
                 contcorr[:,i_leadtime,i_dsc,i_anc] .= ((imad .- ima.*imd) ./ sqrt.(iva .* (imdd .- imd2)))[1,1,1,:]
+                @infiltrate false
+                
+                #globcorr[:,i_leadtime,i_dsc,i_anc] .= SB.mean(cxd .* cxa; dims=[1,2])[1,1,1,:] .- baseline_globcorr
+                #contcorr[:,i_leadtime,i_dsc,i_anc] .= SB.mean(ixd .* ixa; dims=[1,2])[1,1,1,:] .- baseline_contcor
+                
+                @assert all(-1 .<= globcorr[:,i_leadtime,i_dsc,i_anc] .<= 1)
+                @assert all(-1 .<= contcorr[:,i_leadtime,i_dsc,i_anc] .<= 1)
                 contsymdiff[:,i_leadtime,i_dsc,i_anc] .= SB.mean(ixa .!= ixd; dims=[1,2])[1,1,1,:]
             end
-            println()
         end
+        println()
     end
 
     JLD2.jldopen(contour_dispersion_filename, "w") do f
