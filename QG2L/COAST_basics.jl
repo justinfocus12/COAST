@@ -22,8 +22,8 @@ function transcorr(x::Float64, fwd::Bool,; c0=0.1)
     end
 end
 
-transcorr(x::Float64, c0::Float64) = transcorr(x, true; c0=c0)
-invtranscorr(x::Float64, c0::Float64) = transcorr(x, false; c0=c0)
+transcorr(x::Float64, c0::Float64=0.1) = transcorr(x, true; c0=c0)
+invtranscorr(x::Float64, c0::Float64=0.1) = transcorr(x, false; c0=c0)
 
 
 
@@ -724,7 +724,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     Nr2th = length(r2threshes)
     pths = collect(range(1.0, 0.0; length=11)) 
     # for correlation thresholds, focus on the near-zero range too, and disregard negatives 
-    corrs = transcorr.(collect(range(invtranscorr(0.01),invtranscorr(0.99);length=17)))
+    corrs = invtranscorr.(collect(range(transcorr(0.01),transcorr(0.99);length=17)))
 
     # TODO implement mean absolute error as a more-outlier-sensitive alternative to R^2 
 
@@ -752,7 +752,7 @@ function expt_config_COAST_analysis(cfg,pertop)
                          "pim"=>"𝑞(𝑅*)",
                          "ei"=>"𝔼[(Δ𝑅*)₊]",
                          "globcorr"=>"ρ[𝑐]",
-                         "contcorr"=>"ρ[𝑐(⋅,y₀)]",
+                         "contcorr"=>"ρ[𝑐(⋅,𝑦₀)]",
                          "went"=>"WEntropy",
                          "ent"=>"Ent",
                         )
@@ -778,7 +778,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     fdivnames = ("qrmse","kl","chi2","tv")
     Nboot = 0 #1000
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
-    i_thresh_cquantile = 5
+    i_thresh_cquantile = 8
     time_ancgen_dns_ph = 4000
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000
@@ -787,7 +787,8 @@ function expt_config_COAST_analysis(cfg,pertop)
     return (leadtimes, r2threshes, distns, rsps, mixobjs, mixcrit_labels, mixobj_labels, distn_scales, fdivnames,Nboot,ccdf_levels,time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor)
 end
 
-function expt_config_metaCOAST_analysis(; i_expt=nothing)
+
+function expt_config_metaCOAST_latdep_analysis(; i_expt=nothing)
     target_yPerLs,target_rs = paramsets()
     vbl_param_arrs = [target_rs]
     cartinds = CartesianIndices(tuple((length(arr) for arr in vbl_param_arrs)...))

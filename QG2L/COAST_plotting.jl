@@ -29,7 +29,7 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
     fig = Figure(size=(400,300))
     lout = fig[1:2,1] = GridLayout()
     lblargs = Dict(:xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :titlesize=>14)
-    ax1 = Axis(lout[1,1]; xlabel="𝑡 − $(t0str)", ylabel="Intensity 𝑅(t)", title=label_target(cfg,sdm), xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, titlefont=:regular, lblargs...)
+    ax1 = Axis(lout[1,1]; xlabel="𝑡 − $(t0str)", ylabel="Intensity 𝑅(𝑡)", title=label_target(cfg,sdm), xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, titlefont=:regular, lblargs...)
     ax2 = Axis(lout[2,1]; xlabel="𝑡 − $(t0str)", ylabel="Severity 𝑅*", xgridvisible=false, ygridvisible=false, yticks=[minimum(coast.desc_Rmax[i_anc]), coast.anc_Rmax[i_anc]], ytickformat="{:.2f}", lblargs...)
     for ax = (ax1,ax2)
         hlines!(ax, thresh; color=:gray, alpha=0.25)
@@ -105,7 +105,7 @@ function plot_objective_response_linquad(
     Rmin = minimum([minimum(coast.anc_Roft[i_anc]) for i_anc=1:Nanc])
     obj_label,short_obj_label = label_objective(cfg)
 
-    fig = Figure(size=(125*Nleadtimes2plot,150*(2+0.5)))
+    fig = Figure(size=(150*Nleadtimes2plot,150*(2+0.5)))
     i_mode_sf = 1
     @show leadtimes
     lout = fig[1:3,1] = GridLayout()
@@ -126,7 +126,7 @@ function plot_objective_response_linquad(
         tpstr = @sprintf("%.2f", leadtime*sdm.tu)
         r2_lin_str = @sprintf("%.2f", rsquared_linear[i_leadtime,i_anc])
         r2_quad_str = @sprintf("%.2f", rsquared_quadratic[i_leadtime,i_anc])
-        lblargs = Dict(:xticklabelsize=>7,:xlabelsize=>8,:yticklabelsize=>7,:ylabelsize=>8,:titlesize=>10,:xlabelvisible=>false,:ylabelvisible=>(i_col==1),:xticklabelsvisible=>true, :xticklabelrotation=>pi/2, :yticklabelsvisible=>(i_col==1), :xgridvisible=>false, :ygridvisible=>false, :titlefont=>:regular, :xticksize=>2.0, :yticksize=>2.0, :xlabelpadding=>1.5, :ylabelpadding=>1.5)
+        lblargs = Dict(:xticklabelsize=>7,:xlabelsize=>8,:yticklabelsize=>7,:ylabelsize=>8,:titlesize=>10,:xlabelvisible=>false,:ylabelvisible=>(i_col==1),:xticklabelsvisible=>true, :xticklabelrotation=>pi/2, :yticklabelsvisible=>true, :xgridvisible=>false, :ygridvisible=>false, :titlefont=>:regular, :xticksize=>2.0, :yticksize=>2.0, :xlabelpadding=>1.5, :ylabelpadding=>1.5)
         title_2d = "−$(tpstr)"
         title_1d = "($(r2_lin_str),$(r2_quad_str))"
         if i_col == 1
@@ -210,8 +210,8 @@ function plot_objective_response_linquad(
         arc!(ax2d, Point2f(0,0), Amax, 0, 2pi; color=:gray, alpha=0.5)
     end
     for i_col = 1:ncols(lout_2d)-1
-        colgap!(lout_2d, i_col, 0.0)
-        colgap!(lout_1d, i_col, 0.0)
+        colgap!(lout_2d, i_col, 10.0)
+        colgap!(lout_1d, i_col, 10.0)
     end
     ax_r2 = Axis(lout_r2[1,1], xlabel="−AST (𝑡* = $(t0str))", ylabel="𝑅²", ylabelsize=8, xlabelsize=8, yticklabelsize=7, xticklabelsize=7, xgridvisible=false, ygridvisible=false, yticks=[0.0,0.5,1.0], xticksize=2, yticksize=2, titlefont=:regular)
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_linear[:,i_anc]; color=color_lin, label="Lin")
