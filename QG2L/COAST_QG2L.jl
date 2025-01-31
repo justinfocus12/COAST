@@ -40,16 +40,16 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_dns_objective_stats" =>                       0,
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
-                             "compute_contour_dispersion" =>                     1,
-                             "plot_contour_dispersion_distribution" =>           1,
-                             "regress_lead_dependent_risk_polynomial" =>         1, 
-                             "plot_objective" =>                                 1, 
-                             "mix_COAST_distributions_polynomial" =>             1,
-                             "plot_composite_contours" =>                        0,
-                             "plot_COAST_mixture" =>                             1,
-                             "mixture_COAST_phase_diagram" =>                    1,
+                             "compute_contour_dispersion" =>                     0,
+                             "plot_contour_dispersion_distribution" =>           0,
+                             "regress_lead_dependent_risk_polynomial" =>         0, 
+                             "plot_objective" =>                                 0, 
+                             "mix_COAST_distributions_polynomial" =>             0,
+                             "plot_composite_contours" =>                        1,
+                             "plot_COAST_mixture" =>                             0,
+                             "mixture_COAST_phase_diagram" =>                    0,
                              # Danger zone 
-                             "remove_pngs" =>                                    1,
+                             "remove_pngs" =>                                    0,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -647,6 +647,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
                 # ---------------- Single-ancestor plots ---------------
                 mixcrits2plot = ["globcorr","contcorr","pim","pth","r2","ei"] # TODO group them 
+                Nmc = length(mixcrits2plot)
                 if todosub["rainbow_pdfs"]
                     @assert all(isfinite.(pdfs[dst][rsp]))
                     Nleadtimes2plot = Nleadtime
@@ -723,9 +724,12 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                 end
                 # ----------------- Mixing criteria overlay --------------
                 if todosub["mixcrits_overlay"]
-                    fig = Figure(size=(300,150*length(mixcrits2plot)+50))
+                    fig = Figure(size=(450,150*Nmc+150))
                     lout = fig[1,1] = GridLayout()
-                    axs = [Axis(lout[i_mc,1]; xlabel="−AST", ylabel=mixcrit_labels[mixcrits2plot[i_mc]], titlefont=:regular, xlabelvisible=(i_mc==length(mixcrits2plot)), xticklabelsvisible=(i_mc==length(mixcrits2plot)), xlabelsize=15, ylabelsize=15, xticklabelsize=12, yticklabelsize=12) for i_mc=1:length(mixcrits2plot)]
+                    axs = [
+                           Axis(lout[i_mc,1]; xlabel="−AST", ylabel=mixcrit_labels[mixcrits2plot[i_mc]], titlefont=:regular, xlabelvisible=(i_mc==Nmc), xticklabelsvisible=(i_mc==Nmc), xlabelsize=15, ylabelsize=15, xticklabelsize=12, yticklabelsize=12, xgridvisible=false, ygridvisible=false) 
+                           for i_mc=1:Nmc
+                          ]
                     mcmean,mclo,mchi = (zeros(Float64, (Nleadtime,1,Nscales)) for _=1:3)
                     scales2plot = [4,12]
                     for (i_mc,mc) in enumerate(mixcrits2plot)
@@ -741,21 +745,33 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             end
                             ax.ylabel = "σ⁻¹($(mixcrit_labels[mc]))"
                         end
+                        if mc in ["globcorr","contcorr"]
+                            ylims!(ax, transcorr(-0.05), transcorr(1.0))
+                            hlines!(ax, transcorr(0.0); color=:gray, alpha=0.5)
+                        end
+                        if mc in ["pth","pim","r2"]
+                            ylims!(ax, 0.0, 1.0)
+                        end
+                        if mc in ["ei"]
+                            ylims!(0.0, maximum(mixcrits[dst][rsp][mc]))
+                        end
                         for i_scl = scales2plot
                             band!(ax, -leadtimes.*sdm.tu, mclo[:,1,i_scl], mchi[:,1,i_scl]; color=:gray, alpha=0.25)
                         end
                         for i_scl = scales2plot
                             colargs = Dict(:color=>i_scl, :colorrange=>(0,Nscales), :colormap=>:RdYlBu_4)
-                            scatterlines!(ax, -leadtimes.*sdm.tu, mcmean[:,1,i_scl]; colargs..., linewidth=2)
+                            scatterlines!(ax, -leadtimes.*sdm.tu, mcmean[:,1,i_scl]; colargs..., linewidth=2, label="scale $(@sprintf("%.1f",distn_scales[dst][i_scl]))")
                             lines!(ax, -leadtimes.*sdm.tu, mclo[:,1,i_scl]; colargs..., linewidth=2, linestyle=(:dash,:dense))
                             lines!(ax, -leadtimes.*sdm.tu, mchi[:,1,i_scl]; colargs..., linewidth=2, linestyle=(:dash,:dense))
                         end
-                        @infiltrate
-                        if i_mc < length(mixcrits2plot)
+                        if i_mc < Nmc
                             rowgap!(lout, i_mc, 0)
                         end
-
                     end
+                    axs[1].title = "$(label_target(cfg, sdm))\nThresh. exc. prob. $(powerofhalfstring(i_thresh_cquantile))"
+                    #lout[Nmc+1,1] = Legend(fig, axs[Nmc]; framevisible=false, labelsize=15)
+                    #rowsize!(lout, Nmc+1, Relative(1/(3*Nmc)))
+
                     save(joinpath(figdir, "mixcrits_overlay.png"), fig)
                 end
 
@@ -936,10 +952,10 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         i_mode_sf = 1
         support_radius = pertop.sf_pert_amplitudes_max[i_mode_sf]
         desc_weights = QG2L.bump_density(coast.pert_seq_qmc[:,1:cfg.num_perts_max]', distn_scales[dst][i_scl], support_radius)
-        for i_anc = idx_anc_strat[1:1]
-            leadtime = leadtimes[iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl]]
+        for i_anc = idx_anc_strat
+            i_leadtime = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl]
             figfile = joinpath(figdir,"compcont_$(dst)_$(rsp)_$(mc)_$(i_mcobj)_$(i_scl)_anc$(i_anc).png")
-            composite_field_1family(coast, ens, i_anc, desc_weights, leadtime, cfg, sdm, cop, dns_stats_filename, figfile)
+            composite_field_1family(coast, ens, i_anc, desc_weights, i_leadtime, cfg, thresh, sdm, cop, pertop, contour_dispersion_filename, figfile)
         end
     end
 
