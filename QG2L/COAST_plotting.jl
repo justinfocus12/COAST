@@ -40,9 +40,8 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
     #
     kwargs = Dict(:colormap=>:RdYlBu_4, :colorrange=>(cfg.lead_time_min,cfg.lead_time_max), :color=>1)
     leadtimes = collect(range(cfg.lead_time_min, cfg.lead_time_max; step=cfg.lead_time_inc))
-    idx_leadtimes2plot = unique(max.(1, min.(length(leadtimes), round.(Int, length(leadtimes).*[1/9, 2/3]))))
+    idx_leadtimes2plot = reverse(unique(clamp.(round.(Int, length(leadtimes).*[1/20, 2/5]), 1, length(leadtimes))))
     spaghetti_leadtimes = leadtimes[reverse(idx_leadtimes2plot)]
-    idx_leadtimes2plot = max.(1, min.(length(leadtimes), round.(Int, length(leadtimes).*[1/9, 2/3])))
     for (i_desc,desc) in enumerate(descendants)
         desc = descendants[i_desc]
         traj = ens.trajs[desc]
@@ -91,7 +90,6 @@ function plot_objective_response_linquad(
     color_lin = :cyan
     color_quad = :sienna1
     Nleadtime = length(leadtimes)
-    Nleadtimes2plot = 2
     Nanc = length(coast.ancestors)
     println("Gonna show phases and responses now")
     anc = coast.ancestors[i_anc]
@@ -105,6 +103,8 @@ function plot_objective_response_linquad(
     Rmin = minimum([minimum(coast.anc_Roft[i_anc]) for i_anc=1:Nanc])
     obj_label,short_obj_label = label_objective(cfg)
 
+    idx_leadtimes2plot = reverse(unique(clamp.(round.(Int, length(leadtimes).*[1/20, 1/5, 2/5, 3/5]), 1, length(leadtimes))))
+    Nleadtimes2plot = length(idx_leadtimes2plot)
     fig = Figure(size=(150*Nleadtimes2plot,150*(2+0.5)))
     i_mode_sf = 1
     @show leadtimes
@@ -118,7 +118,6 @@ function plot_objective_response_linquad(
     
     i_col = 0
     Rbounds = [minimum(scores),maximum(scores)]
-    idx_leadtimes2plot = reverse(unique(max.(1, min.(length(leadtimes), round.(Int, length(leadtimes).*[1/9, 2/3])))))
     for i_leadtime = idx_leadtimes2plot
         i_col += 1
         leadtime = leadtimes[i_leadtime]
@@ -337,8 +336,8 @@ function composite_field_1family(
     fig = Figure(size=(1200,800))
     lout = fig[1,1] = GridLayout()
     # First row: contour messes
-    axs_contour = [Axis(lout[1,it], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿", titlesize=15, xlabelsize=15, ylabelsize=15, titlefont=:regular, xgridvisible=false, ygridvisible=false) for it=1:3]
-    axs_concaty = [Axis(lout[2,it], xlabel="𝑥/𝐿", ylabel="𝑐(⋅,𝑦₀)", titlesize=15, xlabelsize=15, ylabelsize=15, titlefont=:regular, xgridvisible=false, ygridvisible=false) for it=1:3]
+    axs_contour = [Axis(lout[1,it], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿", titlesize=18, xlabelsize=18, ylabelsize=18, ylabelvisible=(it==1), yticklabelsvisible=(it==1), titlefont=:regular, xgridvisible=false, ygridvisible=false, xlabelvisible=false, xticklabelsvisible=false) for it=1:3]
+    axs_concaty = [Axis(lout[2,it], xlabel="𝑥/𝐿", ylabel="𝑐(⋅,𝑦₀)", titlesize=18, xlabelsize=18, ylabelsize=18, ylabelvisible=(it==1), yticklabelsvisible=(it==1), titlefont=:regular, xgridvisible=false, ygridvisible=false) for it=1:3]
     tinit = floor(Int, ens.trajs[i_anc].tphinit/sdm.tu)
     contour_levels = [thresh]  #collect(range(0,1;length=8))
     for ax = axs_contour
@@ -370,7 +369,7 @@ function composite_field_1family(
     end
     t0str = @sprintf("%.0f",coast.anc_tRmax[i_anc]/sdm.tu)
     # Third row: scores
-    ax = Axis(lout[3,1:3], xlabel="𝑡−𝑡*",ylabel="Box mean 𝑐",ylabelsize=15,xlabelsize=15, xgridvisible=false, ygridvisible=false, xlabelvisible=false, xticklabelsvisible=false)
+    ax = Axis(lout[3,1:3], xlabel="𝑡−𝑡*",ylabel="Box mean 𝑐",ylabelsize=18, yticklabelsize=15, xlabelsize=18, xticklabelsize=15, xgridvisible=false, ygridvisible=false, xlabelvisible=false, xticklabelsvisible=false)
     for (i_dsc2plot,i_dsc) in enumerate(idx_dsc2plot)
         lines!(sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), coast.desc_Roft[i_anc][idx_dsc[i_dsc]]; color=Rmaxcolors[i_dsc2plot], linewidth=2) #Rmaxrank[i_dsc+1]])
     end
@@ -381,7 +380,7 @@ function composite_field_1family(
     scatter!(ax, sdm.tu*(coast.desc_tRmax[i_anc][idx_dsc[idx_dsc2plot]] .- coast.anc_tRmax[i_anc]), coast.desc_Rmax[i_anc][idx_dsc[idx_dsc2plot]]; color=Rmaxcolors#=[Rmaxrank[2:end]]=#, marker=:star6, markersize=10)
     xlims!(ax, (sdm.tu.*(tinit - coast.anc_tRmax[i_anc] .+ [0,Nt]))...)
     # fourth row: correlations 
-    ax = Axis(lout[4,1:3], xlabel="𝑡−𝑡*",ylabel="σ⁻¹($(mixcrit_labels["contcorr"]))", ylabelsize=15, xlabelsize=15, xgridvisible=false, ygridvisible=false)
+    ax = Axis(lout[4,1:3], xlabel="𝑡−𝑡*",ylabel="σ⁻¹($(mixcrit_labels["contcorr"]))", ylabelsize=18, xlabelsize=18, xticklabelsize=15, yticklabelsize=15, xgridvisible=false, ygridvisible=false)
     for (i_dsc2plot,i_dsc) in enumerate(idx_dsc2plot)
         lines!(sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), transcorr.(contcorrs[:,i_dsc]); color=Rmaxcolors[i_dsc2plot]#=[Rmaxrank[i_dsc+1]]=#, linewidth=2)
     end
@@ -394,13 +393,16 @@ function composite_field_1family(
     for ax = (axs_contour..., axs_concaty...)
         xlims!(ax, (0,1))
     end
+
     
 
     rowsize!(lout, 1, Relative(0.4))
     rowsize!(lout, 2, Relative(0.2))
     rowsize!(lout, 3, Relative(0.2))
-    rowgap!(lout, 1, 0)
-    rowgap!(lout, 3, 0)
+    rowgap!(lout, 1, 15)
+    rowgap!(lout, 3, 15)
+    colgap!(lout, 1, 15)
+    colgap!(lout, 2, 15)
         
     save(figfile, fig)
 

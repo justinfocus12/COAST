@@ -45,8 +45,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "plot_objective" =>                                 0, 
                              "mix_COAST_distributions_polynomial" =>             0,
-                             "plot_composite_contours" =>                        1,
-                             "plot_COAST_mixture" =>                             0,
+                             "plot_composite_contours" =>                        0,
+                             "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    0,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
@@ -451,7 +451,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     #
     ancorder = sortperm(coast.anc_Rmax; rev=true)
     idx_anc_strat = sort(unique(ancorder[range(1,min(12,Nanc); step=1)]))
-    idx_anc_strat = intersect(1:Nanc, idx_anc_strat)
+    idx_anc_strat = intersect(1:Nanc, idx_anc_strat)[1:4]
     # ---------------------------------------------------------------------------------
     #
 
@@ -646,7 +646,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
 
                 # ---------------- Single-ancestor plots ---------------
-                mixcrits2plot = ["globcorr","contcorr","pim","pth","r2","ei"] # TODO group them 
+                mixcrits2plot = ["globcorr","contcorr","pth","pim","ei"] # TODO group them 
                 Nmc = length(mixcrits2plot)
                 if todosub["rainbow_pdfs"]
                     @assert all(isfinite.(pdfs[dst][rsp]))
@@ -724,7 +724,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                 end
                 # ----------------- Mixing criteria overlay --------------
                 if todosub["mixcrits_overlay"]
-                    fig = Figure(size=(450,150*Nmc+150))
+                    fig = Figure(size=(450,150*(Nmc+1)))
                     lout = fig[1,1] = GridLayout()
                     axs = [
                            Axis(lout[i_mc,1]; xlabel="−AST", ylabel=mixcrit_labels[mixcrits2plot[i_mc]], titlefont=:regular, xlabelvisible=(i_mc==Nmc), xticklabelsvisible=(i_mc==Nmc), xlabelsize=15, ylabelsize=15, xticklabelsize=12, yticklabelsize=12, xgridvisible=false, ygridvisible=false) 
@@ -953,7 +953,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         support_radius = pertop.sf_pert_amplitudes_max[i_mode_sf]
         desc_weights = QG2L.bump_density(coast.pert_seq_qmc[:,1:cfg.num_perts_max]', distn_scales[dst][i_scl], support_radius)
         for i_anc = idx_anc_strat
-            i_leadtime = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl]
+            i_leadtime = round(Int, Nleadtime*2/5) #iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl]
             figfile = joinpath(figdir,"compcont_$(dst)_$(rsp)_$(mc)_$(i_mcobj)_$(i_scl)_anc$(i_anc).png")
             composite_field_1family(coast, ens, i_anc, desc_weights, i_leadtime, cfg, thresh, sdm, cop, pertop, contour_dispersion_filename, figfile)
         end
@@ -1296,7 +1296,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 
 # TODO augment META with composites, lead times displays etc
 
