@@ -71,6 +71,7 @@ function perturb!(flow::FlowState, perts::Vector{Float64}, pertop::PerturbationO
         i_pert_dim += 2
     end
     synchronize_FlowField_k2x!(flow.sf)
+    @infiltrate maximum(abs.(flow.sf.ox)) > 0.6
     for p = 1:Nmodes_conc # TODO use boundary values to set bounds 
         flow.conc .+= ((perts[i_pert_dim] .- 0.5) * pertop.conc_pert_amplitudes_max[p]) .* pertop.conc_pert_modes[p]
         i_pert_dim += 1

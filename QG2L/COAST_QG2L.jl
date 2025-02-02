@@ -35,7 +35,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     todo = Dict{String,Bool}(
                              "upgrade_ensemble" =>                               0,
                              "update_paths" =>                                   0,
-                             "plot_pertop" =>                                    0,
+                             "plot_pertop" =>                                    1,
+                             "plot_bumps" =>                                     1,
                              "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
                              "anchor" =>                                         0,
@@ -46,7 +47,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_objective" =>                                 0, 
                              "mix_COAST_distributions_polynomial" =>             0,
                              "plot_composite_contours" =>                        0,
-                             "plot_COAST_mixture" =>                             1,
+                             "plot_COAST_mixture" =>                             0,
                              "mixture_COAST_phase_diagram" =>                    0,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
@@ -101,6 +102,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
      i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
+    Nleadtime = length(leadtimes)
+    num_perts_max_per_leadtime = div(cfg.num_perts_max, Nleadtime)
     println("i_thresh_cquantile = $(i_thresh_cquantile)")
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
     threshstr = @sprintf("thrt%d", round(Int, 1/thresh_cquantile))
@@ -135,9 +138,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         end
     end
 
-    if todo["plot_pertop"]
-        QG2L.plot_PerturbationOperator(pertop, sdm, figdir)
-    end
 
     if (!isfile(ensfile_COAST)) || overwrite_ensemble
         println("Starting afresh")
@@ -166,6 +166,16 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     @show ens_dns.trajs[end].tfin
     ens = EM.load_Ensemble(ensfile_COAST)
     coast = load_COASTState(coastfile_COAST)
+
+
+    if todo["plot_pertop"]
+        QG2L.plot_PerturbationOperator(pertop, sdm, coast.pert_seq_qmc[:,1:min(3,num_perts_max_per_leadtime)], figdir)
+    end
+    if todo["plot_bumps"]
+        i_mode_sf = 1
+        support_radius = pertop.sf_pert_amplitudes_max[i_mode_sf]
+        QG2L.plot_bump_densities_2d(distn_scales["b"], support_radius, coast.pert_seq_qmc[:,1:num_perts_max_per_leadtime], figdir)
+    end
     #@infiltrate
     #error()
     if (1==todo["update_paths"]) && (!isnothing(old_path_part)) && (!isnothing(new_path_part))
@@ -443,8 +453,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     adjust_scores!(coast, ens, cfg, sdm)
     Nmem = EM.get_Nmem(ens)
     Nanc = length(coast.ancestors)
-    leadtimes = collect(range(cfg.lead_time_min,cfg.lead_time_max; step=cfg.lead_time_inc))
-    Nleadtime = length(leadtimes)
     min_score,max_score = extrema(vcat(coast.anc_Rmax, (coast.desc_Rmax[i_anc] for i_anc=1:Nanc)...))
     #
     # --------------------- Decide on a subset of ancestors to display ---------------
@@ -1296,7 +1304,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 
 # TODO augment META with composites, lead times displays etc
 

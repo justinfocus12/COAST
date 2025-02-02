@@ -489,7 +489,7 @@ function PerturbationOperator_sfphase_onlytop(sdm::SpaceDomain,kxs::Vector{Int64
     return PerturbationOperator(sf_pert_modes,sf_pert_amplitudes_min,sf_pert_amplitudes_max,conc_pert_modes,conc_pert_amplitudes_min,conc_pert_amplitudes_max,pert_dim_sf+pert_dim_conc)
 end
 
-function plot_PerturbationOperator(pertop::PerturbationOperator, sdm::SpaceDomain, savedir::String)
+function plot_PerturbationOperator(pertop::PerturbationOperator, sdm::SpaceDomain, pert_seq::Matrix{Float64}, savedir::String)
     num_pert_modes_sf,num_pert_modes_conc = length.((pertop.sf_pert_modes,pertop.conc_pert_modes))
     lblargs = Dict(:xticklabelsize=>10,:xlabelsize=>12,:yticklabelsize=>10,:ylabelsize=>12,)
     for i_mode = 1:num_pert_modes_sf
@@ -499,11 +499,35 @@ function plot_PerturbationOperator(pertop::PerturbationOperator, sdm::SpaceDomai
         for iz=1:2
             ax = Axis(lout[iz,1]; xlabel=L"$x$", ylabel=L"$y$", title=L"$\delta\Psi_{%$(iz)}$", lblargs...)
             img = image!(ax, (0,sdm.Lx), (0,sdm.Ly), mode[:,:,iz]; colormap=:BrBg)
-            cbar = Colorbar(lout[1,2], img, vertical=true)
+            cbar = Colorbar(lout[iz,2], img, vertical=true)
         end
         colsize!(lout, 1, Relative(8/9))
         save(joinpath(savedir,"pert_sf_mode$(i_mode).png"), fig)
     end
+    # Plot only the zonal part for both layers 
+    flow = FlowState(0.0, sdm.Nx, sdm.Ny)
+    Npert = size(pert_seq, 2)
+    fig = Figure(size=(480,80*(Npert)))
+    lout = fig[1,1] = GridLayout()
+    axs = [Axis(lout[i_pert,1]; xlabel="𝑥/𝐿", title="δΨ(ω⁽ᵏ⁾)", ylabel="𝑘 = $(i_pert)", ylabelrotation=0, xlabelsize=12, xticklabelsize=9, ylabelsize=12, yticklabelsize=9, xticklabelsvisible=(i_pert==Npert), xlabelvisible=(i_pert==Npert), titlevisible=(1==i_pert), titlefont=:regular, xgridvisible=false, ygridvisible=false) for i_pert=1:Npert]
+    for i_pert = 1:Npert
+        flow.sf.ok .= 0
+        flow.sf.ox .= 0
+        flow.conc .= 0
+        perturb!(flow, pert_seq[:,i_pert], pertop)
+        ax = axs[i_pert]
+        lines!(ax, sdm.xgrid./sdm.Lx, flow.sf.ox[:,1,1]; color=:deepskyblue, label="𝑧 = 1")
+        lines!(ax, sdm.xgrid./sdm.Lx, flow.sf.ox[:,1,2]; color=:sienna, label="𝑧 = 2")
+        if i_pert < Npert
+            rowgap!(lout, i_pert, 0)
+        end
+        xlims!(ax, 0, 1)
+        ylims!(ax, (2*pertop.sf_pert_amplitudes_max[1]*1.01 .* [-1,1])...)
+    end
+    leg = Legend(lout[1,2], axs[Npert]; framevisible=true, labelsize=8)
+    colsize!(lout, 1, Relative(4/5))
+    save(joinpath(savedir,"pert_sf_samples.png"), fig)
+        
 end
 
 

@@ -917,6 +917,56 @@ function bump_density(U::AbstractMatrix{Float64}, scale::Float64, support_radius
     return W
 end
 
+function plot_bump_densities_2d(scales::Vector{Float64}, support_radius::Float64, pert_seq::Matrix{Float64}, figdir::String)
+    Nx = 50
+    xs = collect(range(0, 1; length=Nx))
+    X = xs * ones(Nx)'
+    U = hcat(vec(X), vec(X'))
+    Nscale = length(scales)
+    W = zeros(Float64, (Nx^2,Nscale))
+    for (i_scl,scl) in enumerate(scales)
+        W[:,i_scl] .= bump_density(U, scl, support_radius)
+    end
+    Zs = SB.mean(W; dims=1)[1,:]
+    loglevels2plot = log.(collect(range(exp(-4), exp(-0.01); length=20))) #collect(range(-4.0, 0.0; length=20)[1:end-1])
+    fig = Figure(size=(500,400))
+    lout = fig[1,1] = GridLayout()
+    axcont = Axis(lout[1,1], xlabel="Re{ω}", ylabel="Im{ω}", xgridvisible=false, ygridvisible=false, title=@sprintf("𝑝(ω,𝑠) for scales 𝑠 ∈ {%.2f,%.2f,...,%.2f}", scales[1], scales[2], scales[end]), titlefont=:regular)
+    axslice = Axis(lout[1,2]; xlabel="𝑝(ω) transect", ylabel="Im{ω}", ylabelvisible=false, yticklabelsvisible=false, xscale=identity)
+    pslice = zeros(Float64, Nx)
+    imomegas = collect(range(-support_radius, support_radius; length=50))
+    for (i_scl,scl) in enumerate(scales)
+        # Draw an arc in a small sector of the circle
+        thetas = collect(range((i_scl-1)/Nscale, i_scl/Nscale; length=10)).*2pi
+        rs = 1 ./ sqrt.(1/support_radius^2 .- 1 ./ (2*scl^2 .* loglevels2plot))
+        colargs = Dict(:color=>scl, :colormap=>:RdYlBu_4, :colorrange=>(scales[1],scales[end]))
+        for r = rs
+            lines!(axcont, r.*cos.(thetas), r.*sin.(thetas); colargs...)
+        end
+        lines!(axcont, [0, support_radius*cos(thetas[1])], [0, support_radius*sin(thetas[1])]; color=:gray, alpha=0.25)
+        pslice .= exp.(-0.5 .* (imomegas./scl).^2 ./ (1 .- (imomegas./support_radius).^2)) ./ Zs[i_scl]
+        lines!(axslice, pslice, imomegas; colargs..., )
+    end
+    thetas = collect(range(0, 2pi; length=100))
+    lines!(axcont, support_radius.*cos.(thetas), support_radius.*sin.(thetas); color=:gray, alpha=0.25)
+    Npert = size(pert_seq, 2)
+    # Convert given perturbations into the plane
+    R2 = support_radius^2 .* pert_seq[1,:]
+    R = sqrt.(R2)
+    thetas = 2pi.*pert_seq[2,:]
+    xperts,yperts = R.*cos.(thetas), R.*sin.(thetas)
+    scatter!(axcont, xperts, yperts; color=:black)
+    for i_pert = 1:Npert
+        text!(axcont, string(i_pert), position=(xperts[i_pert]+support_radius/30,yperts[i_pert]+support_radius*0), align=(:left,:center), color=:black, fontsize=10, font=:bold)
+    end
+    # TODO label each of them with a number and plot
+    colsize!(lout, 1, Relative(4/5))
+    for ax = (axcont,axslice)
+        ylims!(ax, -support_radius*1.01, support_radius*1.01)
+    end
+    save(joinpath(figdir,"bumps.png"), fig)
+end
+
 function regression2distn_empirical_bump(scores::Vector{Float64}, scale::Float64, support_radius::Float64, levels::Vector{Float64}, U::Matrix{Float64})
     Nsamp = size(U,1) #1024 
     R2 = (support_radius^2) .* U[:,1]
