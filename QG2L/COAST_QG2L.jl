@@ -35,8 +35,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     todo = Dict{String,Bool}(
                              "upgrade_ensemble" =>                               0,
                              "update_paths" =>                                   0,
-                             "plot_pertop" =>                                    1,
-                             "plot_bumps" =>                                     1,
+                             "plot_transcorr" =>                                 1,
+                             "plot_pertop" =>                                    0,
+                             "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
                              "anchor" =>                                         0,
@@ -168,6 +169,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     coast = load_COASTState(coastfile_COAST)
 
 
+    if todo["plot_transcorr"]
+        plot_transcorr(figdir)
+    end
     if todo["plot_pertop"]
         QG2L.plot_PerturbationOperator(pertop, sdm, coast.pert_seq_qmc[:,1:min(3,num_perts_max_per_leadtime)], figdir)
     end
@@ -459,7 +463,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     #
     ancorder = sortperm(coast.anc_Rmax; rev=true)
     idx_anc_strat = sort(unique(ancorder[range(1,min(12,Nanc); step=1)]))
-    idx_anc_strat = intersect(1:Nanc, idx_anc_strat)[1:4]
+    idx_anc_strat = intersect(1:Nanc, idx_anc_strat)[1:min(4,length(idx_anc_strat))]
     # ---------------------------------------------------------------------------------
     #
 
@@ -1304,7 +1308,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 
 # TODO augment META with composites, lead times displays etc
 

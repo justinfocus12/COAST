@@ -64,7 +64,7 @@ end
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
                              "plot_mixcrits_ydep" =>             1,
-                             "compile_fdivs" =>                  1,
+                             "compile_fdivs" =>                  0,
                              "plot_fdivs" =>                     1,
                              "plot_ccdfs_latdep" =>              1,
                              # danger zone
@@ -182,8 +182,8 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         lines!(ax, 0 .- Rccdf_rough, ytgts; color=:gray, alpha=0.5, linewidth=2)
         for i_cl = reverse(1:length(ccdf_levels))
             cl = ccdf_levels[i_cl]
-            lines!(ax, Rccdfs_valid[i_cl,:].-Rccdf_rough, ytgts; linewidth=2, linestyle=(:dash,:dense), color=i_cl, colargs..., label="Short DNS")
-            lines!(ax, Rccdfs_ancgen[i_cl,:].-Rccdf_rough, ytgts; linewidth=1, linestyle=:solid, color=i_cl, colargs..., label="Long DNS")
+            lines!(ax, Rccdfs_valid[i_cl,:].-Rccdf_rough, ytgts; linewidth=2, linestyle=(:dash,:dense), color=i_cl, colargs..., label="Long DNS")
+            lines!(ax, Rccdfs_ancgen[i_cl,:].-Rccdf_rough, ytgts; linewidth=1, linestyle=:solid, color=i_cl, colargs..., label="Short DNS")
         end
         xmin = minimum(Rccdfs_valid.-Rccdf_rough') - 0.02
         xmax = maximum(Rccdfs_valid.-Rccdf_rough') + 0.02
@@ -334,36 +334,25 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     for i_scl = scales2plot
                         scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
                         syncmcs = ["lt","contcorr"] #,"pim"]
-                        fig = Figure(size=(500,500))
+                        fig = Figure(size=(500,400))
                         lout = fig[1,1] = GridLayout()
-                        axs = [Axis(lout[i_syncmc,1], xlabel=fdivlabels[fdivname], ylabel="(Target 𝑦)/L", title="$(label_target(target_r,sdm)), $(scalestr)\nthreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", xlabelvisible=false, xticklabelsvisible=false, titlevisible=false, titlefont=:regular, xscale=log10) for i_syncmc=1:2]
-                        legtitles = ["$(mixcrit_labels[syncmc])" for syncmc=syncmcs] 
+                        ax = Axis(lout[1,1], xlabel=fdivlabels[fdivname], ylabel="(Target 𝑦)/𝐿", title="$(label_target(target_r,sdm)), $(scalestr)\nthreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlevisible=true, titlefont=:regular, xscale=identity)
+                        # Short simulation
+                        band!(ax, Point2f.(fdivs_ancgen_valid_lo,ytgts), Point2f.(fdivs_ancgen_valid_hi,ytgts); color=:gray, alpha=0.25)
+                        lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=4, label="Short DNS\n(90% CI)")
+                        colors_by_syncmc = Dict("contcorr"=>:orange, "lt"=>:red)
+                        # All desired mixing criteria
                         for (i_syncmc,syncmc) in enumerate(syncmcs)
-                            ax = axs[i_syncmc]
-                            for i_mcobj = unique(round.(Int, range(1, length(mixobjs[syncmc]); length=3)))
-                                mcobj = mixobjs[syncmc][i_mcobj]
-                                lines!(ax, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,i_mcobj,i_scl], ytgts; color=i_mcobj, colorrange=(0,Nmcs[syncmc]), colormap=:RdYlBu_4, label=@sprintf("%.2f", mcobj))
-                                # pick out the best mcobjs
-                            end
                             idx_mcobj_best = mapslices(argmin, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1]
-                            scatterlines!(ax, [fdivs[dst][rsp][syncmc][fdivname][i_ytgt,i_boot,idx_mcobj_best[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=idx_mcobj_best, colorrange=(0,Nmcs[syncmc]), colormap=:RdYlBu_4, linestyle=(:dot,:dense))
+                            scatterlines!(ax, [fdivs[dst][rsp][syncmc][fdivname][i_ytgt,i_boot,idx_mcobj_best[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=colors_by_syncmc[syncmc], linestyle=:solid, label="Optimal $(mixcrit_labels[syncmc])")
                             # Max-entropy
                             #lines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=:red, linewidth=3, label=mixobj_labels["ent"][1], alpha=0.5)
                             # Max-EI 
-                            lines!(ax, fdivs[dst][rsp]["ei"][fdivname][:,i_boot,1,i_scl], ytgts; color=:cyan, linewidth=3, linestyle=(:dash,:dense), label=mixobj_labels["ei"][1], alpha=1.0)
-
-                            # Short simulation
-                            band!(ax, Point2f.(fdivs_ancgen_valid_lo,ytgts), Point2f.(fdivs_ancgen_valid_hi,ytgts); color=:gray, alpha=0.25)
-                            lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=4, label="Short DNS\n(90% CI)")
-                            lout[i_syncmc,2] = Legend(fig, ax, legtitles[i_syncmc]; titlefont=:regular, titlesize=12, labelsize=8, nbanks=2, rowgap=1, framevisible=false)
-
                         end
-                        linkxaxes!(axs...)
-                        axs[1].titlevisible = true
-                        axs[end].xlabelvisible = axs[end].xticklabelsvisible = true
-                        for i = 1:length(axs)-1
-                            rowgap!(lout, i, 10)
-                        end
+                        scatterlines!(ax, fdivs[dst][rsp]["ei"][fdivname][:,i_boot,1,i_scl], ytgts; color=:cyan, linewidth=1, linestyle=:solid, label=mixobj_labels["ei"][1], alpha=1.0)
+                        lout[1,2] = Legend(fig, ax; labelsize=8, framevisible=false)
+                        colsize!(lout, 1, Relative(4/5))
+
                         save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                         # TODO Do a parallel figure bit with leadtime and committor as the independent variables, fdiv as the dependent variable 9just a slice of the phdgms from the one-latitude cases)
                     end
@@ -464,12 +453,12 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             lout = fig[1,1] = GridLayout()
             axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6)
             cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :valign=>:bottom, :size=>6)
+            threshcquantstr = @sprintf("%.2E",thresh_cquantile)
             toplabel = "$(label_target(target_r, sdm)), scale $(distn_scales[dst][i_scl]), threshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))=$(threshcquantstr)"
             lab = Label(lout[1,1:2], toplabel, padding=(0.0,0.0,0.0,0.0), valign=:center, halign=:center, fontsize=8, font=:regular)
             ax1 = Axis(lout[3,1]; xlabel="−AST", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
             axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
             ax2 = Axis(lout[3,2]; xlabel=@sprintf("σ⁻¹(%s)", mixcrit_labels["contcorr"]), ylabel="(Target 𝑦)/𝐿", title="", axargs...)
-            threshcquantstr = @sprintf("%.2E",thresh_cquantile)
             leadtime_bounds = tuple((-sdm.tu .* [1.5*leadtimes[end]-0.5*leadtimes[end-1], 1.5*leadtimes[1]-0.5*leadtimes[2]])...)
             # First heatmap: AST as independent variable
             hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(fdiv_of_ast; dims=1); colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
@@ -506,7 +495,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             Label(lout[1,1:2], toplabel, padding=(0.0,0.0,0.0,0.0), valign=:center, halign=:center, fontsize=8, font=:regular)
             ax1 = Axis(lout[3,1]; xlabel="−AST", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
             axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
-            ax2 = Axis(lout[3,2]; xlabel=mixcrit_labels["contcorr"], ylabel="(Target 𝑦)/𝐿", title="", axargs...)
+            ax2 = Axis(lout[3,2]; xlabel=@sprintf("σ⁻¹(%s)", mixcrit_labels["contcorr"]), ylabel="(Target 𝑦)/𝐿", title="", axargs...)
             threshcquantstr = @sprintf("%.2E",thresh_cquantile)
             leadtime_bounds = tuple((-sdm.tu .* [1.5*leadtimes[end]-0.5*leadtimes[end-1], 1.5*leadtimes[1]-0.5*leadtimes[2]])...)
             # First heatmap: AST as independent variable

@@ -509,7 +509,7 @@ function plot_PerturbationOperator(pertop::PerturbationOperator, sdm::SpaceDomai
     Npert = size(pert_seq, 2)
     fig = Figure(size=(480,80*(Npert)))
     lout = fig[1,1] = GridLayout()
-    axs = [Axis(lout[i_pert,1]; xlabel="𝑥/𝐿", title="δΨ(ω⁽ᵏ⁾)", ylabel="𝑘 = $(i_pert)", ylabelrotation=0, xlabelsize=12, xticklabelsize=9, ylabelsize=12, yticklabelsize=9, xticklabelsvisible=(i_pert==Npert), xlabelvisible=(i_pert==Npert), titlevisible=(1==i_pert), titlefont=:regular, xgridvisible=false, ygridvisible=false) for i_pert=1:Npert]
+    axs = [Axis(lout[i_pert,1]; xlabel="𝑥/𝐿", title="Streamfunction perturbation δψ(ω⁽ᵏ⁾)", ylabel="𝑘 = $(i_pert)", ylabelrotation=0, xlabelsize=12, xticklabelsize=9, ylabelsize=12, yticklabelsize=9, xticklabelsvisible=(i_pert==Npert), xlabelvisible=(i_pert==Npert), titlevisible=(1==i_pert), titlefont=:regular, xgridvisible=false, ygridvisible=false) for i_pert=1:Npert]
     for i_pert = 1:Npert
         flow.sf.ok .= 0
         flow.sf.ox .= 0
@@ -524,7 +524,7 @@ function plot_PerturbationOperator(pertop::PerturbationOperator, sdm::SpaceDomai
         xlims!(ax, 0, 1)
         ylims!(ax, (2*pertop.sf_pert_amplitudes_max[1]*1.01 .* [-1,1])...)
     end
-    leg = Legend(lout[1,2], axs[Npert]; framevisible=true, labelsize=8)
+    leg = Legend(lout[1,2], axs[Npert]; framevisible=true, labelsize=12)
     colsize!(lout, 1, Relative(4/5))
     save(joinpath(savedir,"pert_sf_samples.png"), fig)
         

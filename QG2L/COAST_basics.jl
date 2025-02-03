@@ -7,17 +7,28 @@ function logit(x)
     return log(x) - log1p(-x)
 end
 
+function logit_shifted_scaled(c::Float64, c0::Float64)
+    z0 = logit((1+c0)/(1+2*c0))
+    z = z0 + logit(1/2*((c-1/2)/(c0+1/2) + 1))
+    return z
+end
+
+function sigmoid_shifted_scaled(z::Float64, c0::Float64)
+    z0 = logit((1+c0)/(1+2*c0))
+    c = 1/2 + (1+2*c0)*(sigmoid(z-z0)-1/2)
+    return c
+end
+
 function transcorr(x::Float64, fwd::Bool,; c0=0.1)
     # c denotes correlation (0 <= c <= 1)
     # z denotes transformed correlation (-infty < z < infty)
-    z0 = logit((1+c0)/(1+2*c0))
     if fwd # 
         c = abs(x)
-        z = z0 + logit(1/2*((c-1/2)/(c0+1/2) + 1))
+        z = logit_shifted_scaled.(c, c0)
         return z*sign(x)
     else
         z = abs(x)
-        c = 1/2 + (1+2*c0)*(sigmoid(z-z0)-1/2)
+        c = sigmoid_shifted_scaled.(z, c0)
         return c*sign(x)
     end
 end
@@ -25,6 +36,30 @@ end
 transcorr(x::Float64, c0::Float64=0.1) = transcorr(x, true; c0=c0)
 invtranscorr(x::Float64, c0::Float64=0.1) = transcorr(x, false; c0=c0)
 
+
+function plot_transcorr(figdir)
+    c = collect(range(-1,1,length=200))
+    fig = Figure(size=(800,200))
+    lout = fig[1,1] = GridLayout()
+    ax = Axis(lout[1,1], xlabel="σ⁻¹(ρ; 𝑐₀)", ylabel="Correlation ρ", xgridvisible=false, ygridvisible=false)
+    hlines!(ax, [0, 1]; color=:grey79)
+    vlines!(ax, 0; color=:grey79)
+    c0s = [0.05,0.1,0.2]
+    tofcs = hcat((transcorr.(c, c0) for c0=c0s)...)
+    z = collect(range(extrema(tofcs)...; length=200))
+    sofzs = hcat((sigmoid_shifted_scaled.(z, c0) for c0=c0s)...)
+    colors = [:green, :black, :purple]
+    for (i_c0,c0) in enumerate(c0s)
+        colargs = Dict(:color=>colors[i_c0])
+        lines!(ax, tofcs[:,i_c0], c; colargs..., label=@sprintf("𝑐₀ = %.2f", c0))
+        lines!(ax, z, sofzs[:,i_c0]; linestyle=(:dash,:dense), colargs...)
+
+    end
+    ylims!(ax, ([0,1] .+ [-1,1].*maximum(c0s))...) #+maximum(c0s))
+    xlims!(ax, z[1], z[end])
+    axislegend(ax; position=:lc, framevisible=false, labelsize=10)
+    save(joinpath(figdir,"transcorr.png"), fig)
+end
 
 
 
