@@ -35,21 +35,21 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     todo = Dict{String,Bool}(
                              "upgrade_ensemble" =>                               0,
                              "update_paths" =>                                   0,
-                             "plot_transcorr" =>                                 1,
+                             "plot_transcorr" =>                                 0,
                              "plot_pertop" =>                                    0,
                              "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
-                             "plot_dns_objective_stats" =>                       0,
+                             "plot_dns_objective_stats" =>                       1,
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
                              "compute_contour_dispersion" =>                     0,
                              "plot_contour_dispersion_distribution" =>           0,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "plot_objective" =>                                 0, 
-                             "mix_COAST_distributions_polynomial" =>             0,
+                             "mix_COAST_distributions_polynomial" =>             1,
                              "plot_composite_contours" =>                        0,
-                             "plot_COAST_mixture" =>                             0,
-                             "mixture_COAST_phase_diagram" =>                    0,
+                             "plot_COAST_mixture" =>                             1,
+                             "mixture_COAST_phase_diagram" =>                    1,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
                              # vestigial or hibernating
@@ -1308,7 +1308,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 
 # TODO augment META with composites, lead times displays etc
 

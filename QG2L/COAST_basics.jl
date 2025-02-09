@@ -690,7 +690,7 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain)
     xN = round(Int, cfg.target_xPerL*N)
     ryN = round(Int, cfg.target_ryPerL*N)
     rxN = round(Int, cfg.target_ryPerL*N)
-    label = "Target 𝑦 ($yN/$N)𝐿, box radius ($ryN/$N)𝐿"
+    label = "𝑦₀ = ($yN/$N)𝐿, box radius ($ryN/$N)𝐿"
     return label
 end
 
@@ -706,6 +706,11 @@ function powerofhalfstring(k::Int64)
         return symbols[k]
     end
     return "(½)^$(k)"
+end
+
+function sss(k::Int64)
+    subscriptstrings = ["₁","₂","₃","₄","₅","₆","₇","₈","₉","₀"]
+    return subscriptstrings[mod(k,10)]
 end
 
 
@@ -818,7 +823,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     time_ancgen_dns_ph_max = 8000
     time_valid_dns_ph = 16000
     xstride_valid_dns = 1
-    adjust_ccdf_per_ancestor = Bool(1)
+    adjust_ccdf_per_ancestor = Bool(0)
     return (leadtimes, r2threshes, distns, rsps, mixobjs, mixcrit_labels, mixobj_labels, distn_scales, fdivnames,Nboot,ccdf_levels,time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor)
 end
 

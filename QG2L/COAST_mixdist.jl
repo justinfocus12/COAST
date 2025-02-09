@@ -207,7 +207,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         pth = ccdf[i_thresh_cquantile]
                         ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= ccdf #.* adjustment
                         pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= pdf #.* adjustment
-                        ccdfs[dst][rsp][1:i_thresh_cquantile-1,i_leadtime,i_anc,i_scl] .= thresh_cquantile
+                        #ccdfs[dst][rsp][1:i_thresh_cquantile-1,i_leadtime,i_anc,i_scl] .= thresh_cquantile
                         if !(all(isfinite.(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])) && all(isfinite.(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])))
                             println("non-finite pdf or ccdf")
                             display(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])
@@ -286,26 +286,45 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                     for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                         for i_boot = 1:Nboot+1
                             anc_weights .= 0
-                            for i_anc = 1:Nanc
-                                ilt = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl] 
-                                pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
-                                if adjust_ccdf_per_ancestor
+                            if adjust_ccdf_per_ancestor
+                                for i_anc = 1:Nanc
+                                    ilt = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl] 
+                                    pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
+                                    @assert pth > 0
                                     anc_weights[i_anc] = (0 == pth ? 0.0 : anc_boot_mults[i_anc]/pth)
-                                else
-                                    anc_weights[i_anc] = 1.0
+                                    ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*ccdfs[dst][rsp][:,ilt,i_anc,i_scl]
+                                    pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*pdfs[dst][rsp][:,ilt,i_anc,i_scl] 
+                                    #@infiltrate
+                                    if !all(isfinite.(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl]))
+                                        println("non-finite PDF for i_boot=$(i_boot)")
+                                        display(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl])
+                                        error()
+                                    end
                                 end
-                                ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*ccdfs[dst][rsp][:,ilt,i_anc,i_scl]
-                                pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*pdfs[dst][rsp][:,ilt,i_anc,i_scl] 
-                                #@infiltrate
-                                if !all(isfinite.(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl]))
-                                    println("non-finite PDF for i_boot=$(i_boot)")
-                                    display(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl])
-                                    error()
+                                adjustment = thresh_cquantile / ccdfmixs[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]
+                                ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
+                                pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
+                            else
+                                for i_anc = 1:Nanc
+                                    ilt = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl] 
+                                    pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
+                                    @assert pth > 0
+                                    anc_weights[i_anc] = anc_boot_mults[i_anc]
+                                    i_lev_anc = findfirst(coast.anc_Rmax[i_anc] .> levels)
+                                    ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*(ccdfs[dst][rsp][:,ilt,i_anc,i_scl] .+ (1-pth).*(i_lev_anc .> (1:Nlev)))
+
+                                    pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*pdfs[dst][rsp][:,ilt,i_anc,i_scl] .* (1 .+ (1-pth).*(1:(Nlev-1) .== i_lev_anc))
+                                    end
+                                    #@infiltrate
+                                    if !all(isfinite.(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl]))
+                                        println("non-finite PDF for i_boot=$(i_boot)")
+                                        display(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl])
+                                        error()
+                                    end
                                 end
-                            end
-                            adjustment = thresh_cquantile / ccdfmixs[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]
-                            ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
-                            pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
+                                adjustment = thresh_cquantile / ccdfmixs[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]
+                                ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
+                                pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
                             #@infiltrate
                         end
                         #IFT.@infiltrate ((dst=="b")&(rsp=="2")&(i_scl==2))

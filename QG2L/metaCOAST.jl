@@ -63,9 +63,9 @@ end
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
-                             "plot_mixcrits_ydep" =>             1,
+                             "plot_mixcrits_ydep" =>             0,
                              "compile_fdivs" =>                  0,
-                             "plot_fdivs" =>                     1,
+                             "plot_fdivs" =>                     0,
                              "plot_ccdfs_latdep" =>              1,
                              # danger zone
                              "remove_pngs" =>                    0,
@@ -160,6 +160,8 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             JLD2.jldopen(joinpath(resultdir_COAST, "objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
                 Rccdfs_ancgen[:,i_ytgt] .= f["Rccdf_ancgen_seplon"][:,1]
                 Rccdfs_valid[:,i_ytgt] .= f["Rccdf_valid_agglon"]
+                Rmean_valid[i_ytgt] = SB.mean(f["Roft_valid_seplon"])
+                Rmean_ancgen[i_ytgt] = SB.mean(f["Roft_ancgen_seplon"])
                 gpd_scale_valid[i_ytgt] = f["gpdpar_valid_agglon"][1]
                 gpd_shape_valid[i_ytgt] = f["gpdpar_valid_agglon"][2]
                 std_valid[i_ytgt] = f["std_valid_agglon"]
@@ -168,63 +170,76 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         end
         # ----------------- Latitude dependent quantiles -------------------
         colargs = Dict(:colormap=>Reverse(:roma), :colorrange=>(1,length(ccdf_levels)))
-        fig = Figure()
+        fig = Figure(size=(600,400))
         lout = fig[1,1] = GridLayout()
         Rccdf_rough_intercept = 0
         Rccdf_rough_slope = 1.0
         Rccdf_rough = Rccdf_rough_intercept .+ Rccdf_rough_slope .* ytgts #0.5 .+ 0.5 .* ytgts
-        ax = Axis(lout[1,1],xlabel="𝑐 − 𝑦/𝐿",ylabel="(Target 𝑦)/𝐿", xgridvisible=false, ygridvisible=false)
-        toplabel = label_target(target_r,sdm)
-        Label(lout[1,1:1,Top()], toplabel, padding=(5.0,5.0,15.0,5.0), valign=:bottom, halign=:center, fontsize=15, font=:regular)
-        #scatterlines!(ax, Rmean_valid .- Rccdf_rough, ytgts; color=:black, linestyle=(:dash,:dense))
-        #scatterlines!(ax, Rmean_ancgen .- Rccdf_rough, ytgts; color=:black, linestyle=:solid, label="Mean")
-        lines!(ax, 1 .- Rccdf_rough, ytgts; color=:gray, alpha=0.5, linewidth=2)
-        lines!(ax, 0 .- Rccdf_rough, ytgts; color=:gray, alpha=0.5, linewidth=2)
+        ylims = (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1])
+        topo_zonal_mean = vec(SB.mean(cop.topography[:,:,2], dims=1))
+        axtopo = Axis(lout[1,1],xlabel="ℎ(𝑦₀)",ylabel="𝑦₀/𝐿", xgridvisible=false, ygridvisible=false, xticklabelrotation=pi/2, title="Topography", titlefont=:regular, limits=(extrema(topo_zonal_mean)..., ylims...))
+        axmean = Axis(lout[1,2],xlabel="⟨𝑅⟩ − 𝑦₀/𝐿",ylabel="𝑦₀/𝐿", xgridvisible=false, ygridvisible=false, ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=pi/2, title="Mean", titlefont=:regular, limits=(-0.035,0.035,ylims...))
+        axquants = Axis(lout[1,3],xlabel="μ[(½)ᵏ] − ⟨𝑅⟩",ylabel="𝑦₀/𝐿", xgridvisible=false, ygridvisible=false, ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=pi/2, title="(½)ᵏ-complementary quantiles, 𝑘∈{1,...,15}", titlefont=:regular, limits=(-0.02,0.3,ylims...))
+        #axquantyders = Axis(lout[1,4], xlabel="Δ(𝑅-⟨𝑅⟩)/Δ⟨𝑅⟩", ylabel="𝑦₀/𝐿", xgridvisible=false, ygridvisible=false, ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=pi/2, title="Relative 𝑦-gradients", titlefont=:regular, limits=(0,2,ylims...))
+        toplabel = "Intensities 𝑅, $(label_target(target_r,sdm))"
+        Label(lout[1,2:3,Top()], toplabel, padding=(5.0,5.0,25.0,5.0), valign=:center, halign=:left, fontsize=15, font=:regular)
+        lines!(axtopo, topo_zonal_mean, sdm.ygrid./sdm.Ly; color=:black)
+        lines!(axmean, Rmean_valid .- Rccdf_rough, ytgts; color=:black, linestyle=(:dash,:dense), label="Long DNS")
+        lines!(axmean, Rmean_ancgen .- Rccdf_rough, ytgts; color=:black, linestyle=:solid, label="Short DNS")
+        ytgts_mid = (ytgts[2:end] .+ ytgts[1:end-1])./2
         for i_cl = reverse(1:length(ccdf_levels))
             cl = ccdf_levels[i_cl]
-            lines!(ax, Rccdfs_valid[i_cl,:].-Rccdf_rough, ytgts; linewidth=2, linestyle=(:dash,:dense), color=i_cl, colargs..., label="Long DNS")
-            lines!(ax, Rccdfs_ancgen[i_cl,:].-Rccdf_rough, ytgts; linewidth=1, linestyle=:solid, color=i_cl, colargs..., label="Short DNS")
+            lines!(axquants, Rccdfs_valid[i_cl,:].-Rmean_valid, ytgts; linewidth=2, linestyle=(:dash,:dense), color=i_cl, colargs..., label="Long DNS")
+            lines!(axquants, Rccdfs_ancgen[i_cl,:].-Rmean_ancgen, ytgts; linewidth=1, linestyle=:solid, color=i_cl, colargs..., label="Short DNS")
+            #lines!(axquantyders, diff(Rccdfs_valid[i_cl,:])./diff(Rmean_valid), ytgts_mid; linewidth=2, linestyle=(:dash,:dense), color=i_cl, colargs..., label="Long DNS")
+            #lines!(axquantyders, diff(Rccdfs_ancgen[i_cl,:] .- Rmean_valid)./diff(Rmean_valid), ytgts_mid; linewidth=1, linestyle=:solid, color=i_cl, colargs..., label="Short DNS")
         end
-        xmin = minimum(Rccdfs_valid.-Rccdf_rough') - 0.02
-        xmax = maximum(Rccdfs_valid.-Rccdf_rough') + 0.02
-        xlims!(ax, xmin, xmax)
-        ylims!(ax, 0.0, 1.0)
-        lout[1,2] = Legend(fig, ax, "Exceedance probabilities\n(½)ᵏ, k ∈ {1,...,15}"; framevisible=false, titlefont=:regular, titlehalign=:left, merge=true, linecolor=:black)
+        lines!(axquants, 1 .- Rmean_valid, ytgts; color=:grey60, linewidth=2, linestyle=(:dash,:dense))
+        lines!(axquants, 0 .- Rmean_valid, ytgts; color=:grey60, linewidth=2, linestyle=(:dash,:dense))
+        #vlines!(axquantyders, -1; color=:grey79, linewidth=3)
+        #lout[2,:] = Legend(fig, axquants, "Exceedance probabilities (½)ᵏ, k ∈ {1,...,15}"; framevisible=true, titlefont=:regular, titlehalign=:left, merge=true, linecolor=:black, nbanks=2, labelsize=10, titlesize=10)
+        axislegend(axmean, ; merge=true, linecolor=:black, position=:rt, framevisible=false, titlefont=:regular, labelsize=8)
+        colsize!(lout, 1, Relative(1/12))
+        colsize!(lout, 2, Relative(3/12))
+        #colsize!(lout, 3, Relative(8/12))
+        colgap!(lout, 1, 10)
+        colgap!(lout, 2, 10)
+        #colgap!(lout, 3, 10)
         save(joinpath(resultdir,"ccdfs_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph))_accpa$(Int(adjust_ccdf_per_ancestor)).png"),fig)
 
         # ---------- Plot GPD parameters along with moments ---------
         mssk = JLD2.jldopen(joinpath(resultdir_dns,"moments_mssk_$(cfgs[1].target_field[1:end-1]).jld2"),"r") do f
             return f["mssk_xall"][1,:,parse(Int,cfgs[1].target_field[end]),:]
         end
-        fig = Figure()
+        fig = Figure(size=(600,400))
         lout = fig[1,1] = GridLayout()
-        axargs = Dict(:ylabel=>"(Target 𝑦)/𝐿", :xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>pi/2)
-        axstd = Axis(lout[1,1]; xlabel="Std. Dev.", axargs...)
+        axargs = Dict(:ylabel=>"𝑦₀/𝐿", :xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>pi/2, :titlefont=>:regular)
+        axtopo = Axis(lout[1,1],xlabel="ℎ(𝑦₀)"; axargs..., title="Topography", limits=(extrema(topo_zonal_mean)..., ylims...))
         axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
-        axscale = Axis(lout[1,2]; xlabel="GPD scale σ", axargs...)
-        axshape = Axis(lout[1,3]; xlabel="GPD shape ξ", axargs...)
+        axstd = Axis(lout[1,2]; xlabel="Std. Dev.", axargs..., limits=(0, maximum(mssk[:,2])*1.01, ylims...))
+        axscale = Axis(lout[1,3]; xlabel="GPD scale σ", axargs..., limits=(0,0.035,ylims...))
+        axshape = Axis(lout[1,4]; xlabel="GPD shape ξ", axargs..., limits=(-0.5,0.05,ylims...))
         threshcquantstr = @sprintf("%.2E",thresh_cquantile)
-        toplabel = "Threshold exceedance probability $(powerofhalfstring(i_thresh_cquantile))=$(threshcquantstr)"
-        Label(lout[1,2:3,Top()], toplabel, padding=(5.0,5.0,15.0,5.0), valign=:bottom, halign=:left, fontsize=15, font=:regular)
+        toplabel = @sprintf("Threshold μ[%s], exceedance probability %s = %.2E", powerofhalfstring(i_thresh_cquantile), powerofhalfstring(i_thresh_cquantile), thresh_cquantile)
+        Label(lout[1,2:4,Top()], toplabel, padding=(5.0,5.0,5.0,5.0), valign=:bottom, halign=:right, fontsize=15, font=:regular)
+        # Topography
+        lines!(axtopo, topo_zonal_mean, sdm.ygrid./sdm.Ly; color=:black)
         # Std. Dev.
-        lines!(axstd, mssk[:,2], sdm.ygrid./sdm.Ly; color=:black, linestyle=(:dash,:dense), label="(1/$(sdm.Ny))𝐿")
+        lines!(axstd, mssk[:,2], sdm.ygrid./sdm.Ly; color=:black, linestyle=(:dash,:dense), label="(1/$(2*sdm.Ny))𝐿")
         scatterlines!(axstd, std_valid, ytgts; color=:black, label="($(round(Int, target_r*sdm.Ny))/$(sdm.Ny))/𝐿")
-        axislegend(axstd, "Box radius"; position=:lt, fontsize=8, titlefont=:regular, framevisible=false)
-        vlines!(axstd, 0.0; color=:gray, alpha=0.5, linewidth=3)
+        axislegend(axstd, "Box radius"; position=:lc, labelsize=10, titlesize=12, titlefont=:regular, framevisible=false)
         # scale
         scatterlines!(axscale, gpd_scale_valid, ytgts; color=:black)
-        vlines!(axscale, 0.0; color=:gray, alpha=0.5, linewidth=3)
-        xlims!(axscale, -0.005, 0.035)
         # shape
-        vlines!(axshape, 0.0; color=:gray, alpha=0.5, linewidth=3)
+        vlines!(axshape, 0.0; color=:grey60, linewidth=2, linestyle=(:dash,:dense))
         scatterlines!(axshape, gpd_shape_valid, ytgts; color=:black)
-        xlims!(axshape, -1, 0.25)
 
-        colgap!(lout, 1, 0.0)
-        colgap!(lout, 2, 0.0)
-        for ax = (axstd,axscale,axshape)
-            ylims!(ax, 0.0, 1.0)
-        end
+        colsize!(lout, 2, Relative(6/16))
+        colsize!(lout, 3, Relative(4/16))
+        colsize!(lout, 4, Relative(4/16))
+        colgap!(lout, 1, 10.0)
+        colgap!(lout, 2, 10.0)
+        colgap!(lout, 3, 10.0)
         save(joinpath(resultdir,"gpdpars_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
     end
 
@@ -333,14 +348,14 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 for rsp = rsps
                     for i_scl = scales2plot
                         scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
-                        syncmcs = ["lt","contcorr"] #,"pim"]
+                        syncmcs = ["lt","contcorr","globcorr","pim","pth"]
                         fig = Figure(size=(500,400))
                         lout = fig[1,1] = GridLayout()
-                        ax = Axis(lout[1,1], xlabel=fdivlabels[fdivname], ylabel="(Target 𝑦)/𝐿", title="$(label_target(target_r,sdm)), $(scalestr)\nthreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlevisible=true, titlefont=:regular, xscale=identity)
+                        ax = Axis(lout[1,2], xlabel=fdivlabels[fdivname], ylabel="𝑦₀/𝐿", title="$(label_target(target_r,sdm)), $(scalestr)\nthreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlevisible=true, titlefont=:regular, xscale=log10)
                         # Short simulation
                         band!(ax, Point2f.(fdivs_ancgen_valid_lo,ytgts), Point2f.(fdivs_ancgen_valid_hi,ytgts); color=:gray, alpha=0.25)
                         lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=4, label="Short DNS\n(90% CI)")
-                        colors_by_syncmc = Dict("contcorr"=>:orange, "lt"=>:red)
+                        colors_by_syncmc = Dict("contcorr"=>:orange, "globcorr"=>:dodgerblue, "lt"=>:red, "pth"=>:mediumpurple, "pim"=>:olivedrab3)
                         # All desired mixing criteria
                         for (i_syncmc,syncmc) in enumerate(syncmcs)
                             idx_mcobj_best = mapslices(argmin, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1]
@@ -350,8 +365,8 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                             # Max-EI 
                         end
                         scatterlines!(ax, fdivs[dst][rsp]["ei"][fdivname][:,i_boot,1,i_scl], ytgts; color=:cyan, linewidth=1, linestyle=:solid, label=mixobj_labels["ei"][1], alpha=1.0)
-                        lout[1,2] = Legend(fig, ax; labelsize=8, framevisible=false)
-                        colsize!(lout, 1, Relative(4/5))
+                        lout[1,1] = Legend(fig, ax; labelsize=8, framevisible=false)
+                        colsize!(lout, 2, Relative(4/5))
 
                         save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                         # TODO Do a parallel figure bit with leadtime and committor as the independent variables, fdiv as the dependent variable 9just a slice of the phdgms from the one-latitude cases)
@@ -456,9 +471,9 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             threshcquantstr = @sprintf("%.2E",thresh_cquantile)
             toplabel = "$(label_target(target_r, sdm)), scale $(distn_scales[dst][i_scl]), threshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))=$(threshcquantstr)"
             lab = Label(lout[1,1:2], toplabel, padding=(0.0,0.0,0.0,0.0), valign=:center, halign=:center, fontsize=8, font=:regular)
-            ax1 = Axis(lout[3,1]; xlabel="−AST", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
+            ax1 = Axis(lout[3,1]; xlabel="−AST", ylabel="𝑦₀/𝐿", title="", axargs...)
             axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
-            ax2 = Axis(lout[3,2]; xlabel=@sprintf("σ⁻¹(%s)", mixcrit_labels["contcorr"]), ylabel="(Target 𝑦)/𝐿", title="", axargs...)
+            ax2 = Axis(lout[3,2]; xlabel=@sprintf("σ⁻¹(%s)", mixcrit_labels["contcorr"]), ylabel="𝑦₀/𝐿", title="", axargs...)
             leadtime_bounds = tuple((-sdm.tu .* [1.5*leadtimes[end]-0.5*leadtimes[end-1], 1.5*leadtimes[1]-0.5*leadtimes[2]])...)
             # First heatmap: AST as independent variable
             hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(fdiv_of_ast; dims=1); colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
@@ -493,9 +508,9 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :valign=>:bottom)
             toplabel = "$(label_target(target_r, sdm)), scale $(distn_scales[dst][i_scl]), threshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))=$(threshcquantstr)"
             Label(lout[1,1:2], toplabel, padding=(0.0,0.0,0.0,0.0), valign=:center, halign=:center, fontsize=8, font=:regular)
-            ax1 = Axis(lout[3,1]; xlabel="−AST", ylabel="(Target 𝑦)/𝐿", title="", axargs...)
+            ax1 = Axis(lout[3,1]; xlabel="−AST", ylabel="𝑦₀/𝐿", title="", axargs...)
             axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
-            ax2 = Axis(lout[3,2]; xlabel=@sprintf("σ⁻¹(%s)", mixcrit_labels["contcorr"]), ylabel="(Target 𝑦)/𝐿", title="", axargs...)
+            ax2 = Axis(lout[3,2]; xlabel=@sprintf("σ⁻¹(%s)", mixcrit_labels["contcorr"]), ylabel="𝑦₀/𝐿", title="", axargs...)
             threshcquantstr = @sprintf("%.2E",thresh_cquantile)
             leadtime_bounds = tuple((-sdm.tu .* [1.5*leadtimes[end]-0.5*leadtimes[end-1], 1.5*leadtimes[1]-0.5*leadtimes[2]])...)
             # First heatmap: AST as independent variable
@@ -567,7 +582,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                             title_suffixes = ["Short DNS","best $(mc_labels[mc])"]
                             axag,axcoast = [
                                             Axis(lout[i,1], 
-                                                 xlabel="Peak-adjusted log₂(exceedance probability)", ylabel="(Target 𝑦)/𝐿", title="$(label_target(target_r,sdm)), $(scalestr), $(title_suffixes[i])", 
+                                                 xlabel="Peak-adjusted log₂(exceedance probability)", ylabel="𝑦₀/𝐿", title="$(label_target(target_r,sdm)), $(scalestr), $(title_suffixes[i])", 
                                                  titlefont=:regular, xgridvisible=false, ygridvisible=false,
                                                  xscale=log2, xticks=(ccdf_levels[i_thresh_cquantile:end], string.(-i_thresh_cquantile:-1:-Nlev))
                                                 )

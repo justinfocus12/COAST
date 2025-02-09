@@ -19,7 +19,8 @@ include("./QG2L_typedefs.jl")
 include("./QG2L_dynamics.jl")
 include("./QG2L_utils.jl")
 include("./QG2L_plots.jl")
-include("./QG2L_stats.jl")
+include("./QG2L_stats_1.jl")
+include("./QG2L_stats_2.jl")
 
 function expt_config(; i_expt=nothing)
     # Domain parameters
