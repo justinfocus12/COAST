@@ -559,13 +559,16 @@ function pdf2pmfnorm(pdf, edges)
 end
 
 function check_ccdf_validity(ccdf::Vector{Float64})
-    return (minimum(ccdf) >= 0) & (maximum(diff(ccdf)) .<= 0)
+    return (minimum(ccdf) >= 0) & (maximum(diff(ccdf)) <= 0)
 end
 
 
-function ccdf2pmf(ccdf)
+function ccdf2pmf(ccdf; normalize::Bool=true)
     @assert check_ccdf_validity(ccdf)
-    pmf = vcat(-diff(ccdf), [ccdf[end]]) ./ ccdf[1]
+    pmf = vcat(-diff(ccdf), [ccdf[end]])
+    if normalize
+        pmf ./= ccdf[1] 
+    end
     return pmf
 end
 
@@ -639,8 +642,10 @@ function kldiv_fun(pmf1, pmf2)
     return kl
 end
 
-function entropy_fun_ccdf(ccdf)
-    pmf = ccdf2pmf(ccdf)
+
+
+function entropy_fun_ccdf(ccdf; normalize::Bool=true)
+    pmf = ccdf2pmf(ccdf; normalize=normalize)
     return -sum(xlogx.(pmf))
 end
 

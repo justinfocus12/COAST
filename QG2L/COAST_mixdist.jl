@@ -1,7 +1,7 @@
 function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
-     mixcrit_labels,mixobj_labels,distn_scales,
+     mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
      fdivnames,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
@@ -220,8 +220,11 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         mixcrits[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = leadtimes[i_leadtime]
                         mixcrits[dst][rsp]["r2"][i_leadtime,i_anc,i_scl] = (rsp in ["1","1+u","1+g"] ? rsquared_linear : rsquared_quadratic)[i_leadtime,i_anc]
                         mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = sum(max.(0, levels_mid .- Rmaxanc) .* (levels[1:Nlev-1] .> Rmaxanc) .* pdf .* dlev)
+                        mixcrits[dst][rsp]["eot"][i_leadtime,i_anc,i_scl] = sum(0.5 .* (ccdf[i_thresh_cquantile:Nlev-1] .+ ccdf[i_thresh_cquantile+1:Nlev]) .* dlev[i_thresh_cquantile:Nlev-1]) 
+                        #mixcrits[dst][rsp]["eot"][i_leadtime,i_anc,i_scl] += ccdf[Nlev]/(2*dlev[Nlev-1])
+
                         # weight the entropy by the probability of exceeding the threshold 
-                        mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
+                        mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end]; normalize=false) #pth*QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
                         mixcrits[dst][rsp]["went"][i_leadtime,i_anc,i_scl] = ccdf[i_thresh_cquantile] * QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
                         # For correlations, the averaging weight depends on the scale, so these two aren't totally independent
                         mixcrits[dst][rsp]["globcorr"][i_leadtime,i_anc,i_scl] = SB.mean(globcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(dsc_weights))
@@ -274,7 +277,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                     end
 
                     # Other objectives to condition on R^2 
-                    for mc = ("ent","ei",)
+                    for mc = ("ent","ei","eot")
                         iltmixs[dst][rsp][mc][1,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:ilt_r2,i_anc,i_scl])
                     end
                 end
@@ -282,7 +285,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                 println("Starting to sum together pdfs and ccdfs")
                 #IFT.@infiltrate ((dst=="b")&(rsp=="2"))
                 anc_weights = zeros(Float64, Nanc)
-                for mc = ("globcorr","contcorr","pim","pth","ent","ei","lt","r2",) #keys(mixobjs)
+                for mc = ("globcorr","contcorr","pim","pth","ent","ei","eot","lt","r2",) #keys(mixobjs)
                     for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                         for i_boot = 1:Nboot+1
                             anc_weights .= 0

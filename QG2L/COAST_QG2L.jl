@@ -39,7 +39,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_pertop" =>                                    0,
                              "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
-                             "plot_dns_objective_stats" =>                       1,
+                             "plot_dns_objective_stats" =>                       0,
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
                              "compute_contour_dispersion" =>                     0,
@@ -98,7 +98,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     cfgstr = strrep_ConfigCOAST(cfg)
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
-     mixcrit_labels,mixobj_labels,distn_scales,
+     mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
      fdivnames,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
      i_thresh_cquantile,adjust_ccdf_per_ancestor
@@ -658,7 +658,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
 
                 # ---------------- Single-ancestor plots ---------------
-                mixcrits2plot = ["globcorr","contcorr","pth","pim","ei"] # TODO group them 
+                mixcrits2plot = ["globcorr","contcorr","ei","ent"] # TODO group them 
                 Nmc = length(mixcrits2plot)
                 if todosub["rainbow_pdfs"]
                     @assert all(isfinite.(pdfs[dst][rsp]))
@@ -684,7 +684,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             if i_col == 1
                                 ltstr = "−AST = $(ltstr)"
                             end
-                            lblargs = Dict(:ylabelvisible=>(i_col==1), :yticklabelsvisible=>(i_col==1), :xlabelvisible=>false, :xticklabelsvisible=>true, :ylabelsize=>15, :xlabelsize=>20, :title=>ltstr, :xgridvisible=>false, :ygridvisible=>false, :titlealign=>:right, :titlefont=>:regular)
+                            lblargs = Dict(:ylabelvisible=>(i_col==1), :yticklabelsvisible=>(i_col==1), :xlabelvisible=>false, :xticklabelsvisible=>true, :ylabelsize=>15, :xlabelsize=>20, :title=>ltstr, :xgridvisible=>false, :ygridvisible=>false, :titlealign=>:right, :titlefont=>:regular, :xticklabelrotation=>-pi/2)
                             ax = Axis(lout_pdfs[1,i_col]; xlabel="PDF", ylabel="Severity 𝑅*", lblargs...)
                             for (i_scl,scl) in enumerate(distn_scales[dst])
                                 scatterlines!(ax, pdf_adjustments[i_scl].*pdfs[dst][rsp][:,i_leadtime, i_anc, i_scl], levels_mid; color=i_scl,colorrange=(0,length(distn_scales[dst])), colormap=:RdYlBu_4, marker=:star6)
@@ -698,7 +698,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         end
                         Label(lout_pdfs[1,:,Bottom()], "PDF", padding=(0,10,0,25), valign=:bottom, fontsize=16)
                         for (i_mc,mc) in enumerate(mixcrits2plot)
-                            ax = Axis(lout_mixcrits[i_mc,1]; title=mixcrit_labels[mc], titlefont=:regular, xlabel="−AST (𝑡*=$(t0str))", xlabelvisible=(i_mc==length(mixcrits2plot)), xticklabelsvisible=(i_mc==length(mixcrits2plot)), xlabelsize=20, ylabelsize=15, xgridvisible=false, ygridvisible=false)
+                            ax = Axis(lout_mixcrits[i_mc,1]; ylabel=mixcrit_labels[mc], ylabelvisible=true, ylabelrotation=0, titlefont=:regular, xlabel="−AST (𝑡*=$(t0str))", xlabelvisible=(i_mc==length(mixcrits2plot)), xticklabelsvisible=(i_mc==length(mixcrits2plot)), xlabelsize=20, ylabelsize=15, xgridvisible=false, ygridvisible=false)
                             for (i_scl,scl) in enumerate(distn_scales[dst])
                                 if "r2" == mc
                                     for (rsp_other,color) = (("1",:cyan),("2",:orange))
@@ -708,13 +708,13 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                     colargs = Dict(:color=>i_scl,:colormap=>:RdYlBu_4,:colorrange=>(0,length(distn_scales[dst])))
                                     scatterlines!(ax, -leadtimes.*sdm.tu, transcorr.(mixcrits[dst][rsp][mc][:,i_anc,i_scl]); colargs...)
                                     hlines!(ax, transcorr(1-(3/8)^2); color=:gray, alpha=0.25, linewidth=2, linestyle=(:dash,:dense))
-                                    ax.title = @sprintf("σ⁻¹(%s)", mixcrit_labels[mc])
+                                    ax.ylabel = @sprintf("σ⁻¹(%s)", mixcrit_labels[mc])
 
                                 else
                                     colargs = Dict(:color=>i_scl,:colormap=>:RdYlBu_4,:colorrange=>(0,length(distn_scales[dst])))
                                     scatterlines!(ax, -leadtimes.*sdm.tu, mixcrits[dst][rsp][mc][:,i_anc,i_scl]; colargs...)
                                 end
-                                if mc == "ent"
+                                if mc in ["ent","ei"]
                                     vlines!(ax, -leadtimes[iltmixs[dst][rsp][mc][1,i_anc,i_scl]]*sdm.tu; colargs...)
                                 end
                             end
@@ -724,13 +724,13 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             end
                         end
                         for i_row = 1:nrows(lout_mixcrits)-1
-                            rowgap!(lout_mixcrits, i_row, 10.0)
+                            rowgap!(lout_mixcrits, i_row, 2.0)
                         end
                         for i_col = 1:ncols(lout_pdfs)-1
                             colgap!(lout_pdfs, i_col, 0.0)
                         end
                         Label(lout_pdfs[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,20.0,5.0), valign=:bottom, fontsize=20)
-                        rowsize!(lout, 1, Relative(2/(2+length(mixcrits2plot))))
+                        rowsize!(lout, 1, Relative(1.5/(1.5+length(mixcrits2plot))))
                         save(joinpath(figdir,"reg2dist_$(dst)_$(rsp)_anc$(i_anc).png"), fig)
                     end
                 end
@@ -743,7 +743,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                            for i_mc=1:Nmc
                           ]
                     mcmean,mclo,mchi = (zeros(Float64, (Nleadtime,1,Nscales)) for _=1:3)
-                    scales2plot = [4,12]
+                    scales2plot = [1,12]
                     for (i_mc,mc) in enumerate(mixcrits2plot)
                         let mcofast = mixcrits[dst][rsp][mc][1:Nleadtime,1:Nanc,1:Nscales] 
                             mcmean .= SB.mean(mcofast; dims=2)
@@ -764,7 +764,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         if mc in ["pth","pim","r2"]
                             ylims!(ax, 0.0, 1.0)
                         end
-                        if mc in ["ei"]
+                        if mc in ["ei","eot","ent"]
                             ylims!(0.0, maximum(mixcrits[dst][rsp][mc]))
                         end
                         for i_scl = scales2plot
@@ -826,98 +826,71 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     pdf_gpd = thresh_cquantile.*clippdf.(Dists.pdf.(GPD, levels_exc_mid))
                     ccdf_gpd = thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc))
 
+                    mcs2mix = ["lt","contcorr"]
+
                     for i_scl = scales2plot
-                        for (fdivname,fdivlabel) = (("qrmse","𝐿²"),) #("kl","KL"),("chi2","χ²"),("tv","TV"))
+                        for (fdivname,fdivlabel) = (("qrmse","𝐿²"),("kl","KL"),("chi2","χ²")) #("kl","KL"),("chi2","χ²"),("tv","TV"))
                             scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
 
                             i_boot = 1
-                            fdiv_synclt,ilt_fdiv_synclt = findmin(fdivs[dst][rsp]["lt"][fdivname][i_boot,:,i_scl]) # index for best synchronized advance split time 
-                            fdiv_synpth,ilt_fdiv_synpth = findmin(fdivs[dst][rsp]["pth"][fdivname][i_boot,:,i_scl]) # index for best synchronized threshold exceedance probability
-                            fdiv_synpim,ilt_fdiv_synpim = findmin(fdivs[dst][rsp]["pim"][fdivname][i_boot,:,i_scl]) # index for best synchronized threshold exceedance probability
-                            fdiv_synglobcorr,ilt_fdiv_synglobcorr = findmin(fdivs[dst][rsp]["globcorr"][fdivname][i_boot,:,i_scl])
-                            fdiv_syncontcorr,ilt_fdiv_syncontcorr = findmin(fdivs[dst][rsp]["contcorr"][fdivname][i_boot,:,i_scl])
+                            ccdfs_syn,fdivs_syn,imcs_syn,strs_syn,fdivstrs_syn = Dict(),Dict(),Dict(),Dict(),Dict()
+                            for mc = mcs2mix
+                                fdivs_syn[mc],imcs_syn[mc] = findmin(fdivs[dst][rsp][mc][fdivname][i_boot,:,i_scl])
+                                if mc in ["globcorr","contcorr"]
+                                    strs_syn[mc] = @sprintf("σ(%.1f)",invtranscorr(mixobjs[mc][imcs_syn[mc]]))
+                                else
+                                    strs_syn[mc] = @sprintf("%.1f",mixobjs[mc][imcs_syn[mc]])
+                                end
+                                fdivstrs_syn[mc] = @sprintf("%.1E",fdivs_syn[mc])
+                                ccdfs_syn[mc] = ccdfmixs[dst][rsp][mc][:,i_boot,imcs_syn[mc],i_scl]
+                                
+                            end
                             fdiv_ancgen_valid_pt,fdiv_ancgen_valid_lo,fdiv_ancgen_valid_hi = let
                                 fdav = filter(!isnan, fdivs_ancgen_valid[fdivname]) 
                                 (SB.mean(fdav), SB.quantile(fdav, 0.05), SB.quantile(fdav, 0.95))
                             end
+                            fdivstr_ancgen = @sprintf("%.1E\n(%.2E, %.2E)",fdiv_ancgen_valid_pt, fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi)
+                            dnspot = thresh_cquantile.*ccdf_pot_valid_pt
+                            # -------------- Plot --------------
+                            fig = Figure(size=(1200,500))
+                            lout = fig[1,1] = GridLayout()
+                            ax1 = Axis(lout[1,2]; xscale=log10, xlabel="CCDF", ylabel="Box mean 𝑐", title="$(label_target(cfg,sdm,distn_scales[dst][i_scl]))\nThreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlefont=:regular, xgridvisible=false, ygridvisible=false)
+                            ax2 = Axis(lout[1,3]; xscale=log10, xlabel="CCDF/CCDF(DNS)", ylabel="Box mean 𝑐", titlefont=:regular, ylabelvisible=false, xgridvisible=false, ygridvisible=false)
+                            # GPD
+                            lines!(ax1, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2])))
+                            lines!(ax2, clipccdfratio.(ccdf_gpd./dnspot), levels_exc; color=:gray, alpha=0.5, linewidth=3)
+                            # DNS (non-peak, peak)
+                            lines!(ax1, dnspot, levels_exc; linewidth=2, color=:black, linestyle=(:dash,:dense), label="Long DNS")
+                            lines!(ax2, clipccdfratio.(dnspot./dnspot), levels_exc; linewidth=2, color=:black, linestyle=(:dash,:dense))
+                            # Ancestor run (non-peak, peak)
+                            colargs = Dict(:color=>:black,)
+                            scatterlines!(ax1, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; linewidth=2, colargs..., marker=:star6, label="Short DNS\n$(fdivlabel) = $(fdivstr_ancgen)")
+                            scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; linewidth=2, colargs...)
+                            for mc = mcs2mix
+                                scatterlines!(ax1, ccdfs_syn[mc][i_thresh_cquantile:end], levels_exc; color=mixcrit_colors[mc], linestyle=:solid, marker=:star6, label="$(mixcrit_labels[mc]) = $(strs_syn[mc])\n$(fdivlabel) = $(fdivstrs_syn[mc])", linewidth=2)
+                                scatterlines!(ax2, clipccdfratio.(ccdfs_syn[mc][i_thresh_cquantile:end]./dnspot), levels_exc; color=mixcrit_colors[mc], linestyle=:solid, marker=:star6, linewidth=2)
+                            end
                             for mc = ["ei","ent"] #,"r2","ent"]
                                 for i_mcobj = 1:length(mixobjs[mc])
                                     fdiv_cond = fdivs[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl]
-                                    ltstr = @sprintf("%.1f",leadtimes[ilt_fdiv_synclt]*sdm.tu)
-                                    pthstr = @sprintf("%.1f",mixobjs["pth"][ilt_fdiv_synpth])
-                                    pimstr = @sprintf("%.1f",mixobjs["pim"][ilt_fdiv_synpim])
-                                    globcorrstr = @sprintf("σ(%.1f)",transcorr(mixobjs["globcorr"][ilt_fdiv_synglobcorr]))
-                                    contcorrstr = @sprintf("σ(%.1f)",transcorr(mixobjs["contcorr"][ilt_fdiv_syncontcorr]))
-                                    fdivstr_synclt = @sprintf("%.1E",fdiv_synclt)
-                                    fdivstr_synpth = @sprintf("%.1E",fdiv_synpth)
-                                    fdivstr_synglobcorr = @sprintf("%.1E",fdiv_synglobcorr)
-                                    fdivstr_syncontcorr = @sprintf("%.1E",fdiv_syncontcorr)
-                                    fdivstr_synpim = @sprintf("%.1E",fdiv_synpim)
                                     fdivstr_cond = @sprintf("%.1E",fdiv_cond)
-                                    fdivstr_ancgen = @sprintf("%.1E\n(%.2E, %.2E)",fdiv_ancgen_valid_pt, fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi)
                                         
-                                    pdf_cond_mid,pdf_cond_lo,pdf_cond_hi = boot_midlohi_pdf(pdfmixs[dst][rsp][mc][:,:,i_mcobj,i_scl])
-                                    pdf_synclt_mid,pdf_synclt_lo,pdf_synclt_hi = boot_midlohi_pdf(pdfmixs[dst][rsp]["lt"][:,:,ilt_fdiv_synclt,i_scl])
-                                    pdf_synpth_mid,pdf_synpth_lo,pdf_synpth_hi = boot_midlohi_pdf(pdfmixs[dst][rsp]["pth"][:,:,ilt_fdiv_synpth,i_scl])
-                                    pdf_synpim_mid,pdf_synpim_lo,pdf_synpim_hi = boot_midlohi_pdf(pdfmixs[dst][rsp]["pim"][:,:,ilt_fdiv_synpim,i_scl])
-                                    pdf_synglobcorr_mid,pdf_synglobcorr_lo,pdf_synglobcorr_hi = boot_midlohi_pdf(pdfmixs[dst][rsp]["globcorr"][:,:,ilt_fdiv_synglobcorr,i_scl])
-                                    pdf_syncontcorr_mid,pdf_syncontcorr_lo,pdf_syncontcorr_hi = boot_midlohi_pdf(pdfmixs[dst][rsp]["contcorr"][:,:,ilt_fdiv_syncontcorr,i_scl])
                                     ccdf_cond_mid,ccdf_cond_lo,ccdf_cond_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp][mc][:,:,i_mcobj,i_scl])
-                                    ccdf_synclt_mid,ccdf_synclt_lo,ccdf_synclt_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp]["lt"][:,:,ilt_fdiv_synclt,i_scl])
-                                    ccdf_synpth_mid,ccdf_synpth_lo,ccdf_synpth_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp]["pth"][:,:,ilt_fdiv_synpth,i_scl])
-                                    ccdf_synpim_mid,ccdf_synpim_lo,ccdf_synpim_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp]["pim"][:,:,ilt_fdiv_synpim,i_scl])
-                                    ccdf_synglobcorr_mid,ccdf_synglobcorr_lo,ccdf_synglobcorr_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp]["globcorr"][:,:,ilt_fdiv_synglobcorr,i_scl])
-                                    ccdf_syncontcorr_mid,ccdf_syncontcorr_lo,ccdf_syncontcorr_hi = boot_midlohi_ccdf(ccdfmixs[dst][rsp]["contcorr"][:,:,ilt_fdiv_syncontcorr,i_scl])
-                                    #
-                                    # Plot CCDFS 
-                                    #
-                                    #
-                                    dnspot = thresh_cquantile.*ccdf_pot_valid_pt
-                                    fig = Figure(size=(1200,500))
-                                    lout = fig[1,1] = GridLayout()
-                                    ax1 = Axis(lout[1,2]; xscale=log10, xlabel="CCDF", ylabel="Box mean 𝑐", title="$(label_target(cfg,sdm,distn_scales[dst][i_scl]))\nThreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlefont=:regular, xgridvisible=false, ygridvisible=false)
-                                    ax2 = Axis(lout[1,3]; xscale=log10, xlabel="CCDF/CCDF(DNS)", ylabel="Box mean 𝑐", titlefont=:regular, ylabelvisible=false, xgridvisible=false, ygridvisible=false)
-                                    # GPD
-                                    lines!(ax1, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2])))
-                                    lines!(ax2, clipccdfratio.(ccdf_gpd./dnspot), levels_exc; color=:gray, alpha=0.5, linewidth=5)
-                                    # DNS (non-peak, peak)
-                                    lines!(ax1, clipccdf.(ccdf_levels[i_thresh_cquantile:end]), levels_exc; color=:black, linestyle=(:dash,:dense), linewidth=2, label=@sprintf("Long DNS"))
-                                    scatterlines!(ax1, dnspot, levels_exc; linewidth=2, color=:black, marker=:star6, label="Long DNS, peaks")
-                                    scatterlines!(ax2, clipccdfratio.(dnspot./dnspot), levels_exc; linewidth=6, color=:black, marker=:star6)
-                                    # Ancestor run (non-peak, peak)
-                                    lines!(ax1, clipccdf.(ccdf_levels[i_thresh_cquantile:end]), Rccdf_ancgen_pt[i_thresh_cquantile:end]; linewidth=2, color=:darkorange4, linestyle=(:dash,:dense), label=@sprintf("Short DNS"))
-                                    scatterlines!(ax1, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; linewidth=2, color=:darkorange4, marker=:star6, label="Short DNS, peaks\n$(fdivlabel) = $(fdivstr_ancgen)")
-                                    scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; linewidth=2, color=:darkorange4, marker=:star6)
-                                    # Synced AST 
-                                    scatterlines!(ax1, ccdf_synclt_mid[i_thresh_cquantile:end], levels_exc; color=:red, linestyle=:solid, marker=:star6, label="AST = $(ltstr) [synchron] \n$(fdivlabel) = $(fdivstr_synclt)", linewidth=2)
-                                    scatterlines!(ax2, clipccdfratio.(ccdf_synclt_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:red, linestyle=:solid, marker=:star6, linewidth=2)
-                                    # Probability-thresholded AST 
-                                    scatterlines!(ax1, ccdf_synpth_mid[i_thresh_cquantile:end], levels_exc; color=:mediumpurple, linestyle=:solid, marker=:star6, label="𝑞(μ) = $(pthstr) [synthrex] \n$(fdivlabel) = $(fdivstr_synpth)", linewidth=2)
-                                    scatterlines!(ax2, clipccdfratio.(ccdf_synpth_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:mediumpurple, linestyle=:solid, marker=:star6, label="𝑞(μ) = $(pthstr) [synthrex] \n$(fdivlabel) = $(fdivstr_synpth)", linewidth=2)
-                                    # Global correlation-thresholded AST 
-                                    scatterlines!(ax1, ccdf_synglobcorr_mid[i_thresh_cquantile:end], levels_exc; color=:dodgerblue, linestyle=:solid, marker=:star6, label="ρ[𝑐] = $(globcorrstr) \n$(fdivlabel) = $(fdivstr_synglobcorr)", linewidth=2)
-                                    scatterlines!(ax2, clipccdfratio.(ccdf_synglobcorr_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:dodgerblue, linestyle=:solid, marker=:star6, label="$(mixcrit_labels["globcorr"]) = $(globcorrstr)\n$(fdivlabel) = $(fdivstr_synglobcorr)", linewidth=2)
-                                    # Local Correlation-thresholded AST 
-                                    scatterlines!(ax1, ccdf_syncontcorr_mid[i_thresh_cquantile:end], levels_exc; color=:orange, linestyle=:solid, marker=:star6, label="$(mixcrit_labels["contcorr"]) = $(contcorrstr)\n$(fdivlabel) = $(fdivstr_syncontcorr)", linewidth=2)
-                                    scatterlines!(ax2, clipccdfratio.(ccdf_syncontcorr_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:orange, linestyle=:solid, marker=:star6, label="ρ[𝑐] = $(contcorrstr)\n$(fdivlabel) = $(fdivstr_syncontcorr)", linewidth=2)
-                                    # (Improvement-probability) AST
-                                    scatterlines!(ax1, ccdf_synpim_mid[i_thresh_cquantile:end], levels_exc; color=:olivedrab3, linestyle=:solid, marker=:star6, label="𝑞(𝑅*) = $(pimstr) [synimp] \n$(fdivlabel) = $(fdivstr_synpim)", linewidth=2)
-                                    scatterlines!(ax2, clipccdfratio.(ccdf_synpim_mid[i_thresh_cquantile:end]./dnspot), levels_exc; color=:olivedrab3, linestyle=:solid, marker=:star6, label="𝑞(𝑅*)", linewidth=2)
+                                    pdf_cond_mid,pdf_cond_lo,pdf_cond_hi = boot_midlohi_pdf(pdfmixs[dst][rsp][mc][:,:,i_mcobj,i_scl])
                                     # Conditionally optimal AST 
-                                    scatterlines!(ax1, ccdf_cond_mid[i_thresh_cquantile:end], levels_exc; linewidth=2, color=:cyan, linestyle=:solid, label="$(mixobj_labels[mc][i_mcobj])\n$(fdivlabel) = $(fdivstr_cond)", marker=:star6)
-                                    scatterlines!(ax2, clipccdfratio.(ccdf_cond_mid[i_thresh_cquantile:end]./dnspot), levels_exc; linewidth=2, color=:cyan, linestyle=:solid, marker=:star6)
-
-                                    lout[1,1] = Legend(fig, ax1; framevisible=true)
-                                    colsize!(lout, 2, Relative(1/2))
-                                    colsize!(lout, 3, Relative(1/4))
-                                    for ax = (ax1,ax2)
-                                        ylims!(ax, 1.1*levels[i_thresh_cquantile]-0.1*levels[i_thresh_cquantile+1], 1.1*levels[end]-0.1*levels[end-1])
-                                    end
-                                    xlims!(ax1, 1/(time_valid_dns_ph*sdm.tu*10), thresh_cquantile*1.1)
-                                    xlims!(ax2, 1/10, 10)
-                                    save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(mc)_$(i_mcobj)_$(fdivname)_$(i_scl)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
+                                    scatterlines!(ax1, ccdf_cond_mid[i_thresh_cquantile:end], levels_exc; linewidth=2, color=mixcrit_colors[mc], linestyle=:solid, label="$(mixobj_labels[mc][i_mcobj])\n$(fdivlabel) = $(fdivstr_cond)", marker=:star6)
+                                    scatterlines!(ax2, clipccdfratio.(ccdf_cond_mid[i_thresh_cquantile:end]./dnspot), levels_exc; linewidth=2, color=mixcrit_colors[mc], linestyle=:solid, marker=:star6)
                                 end
                             end
+                            lout[1,1] = Legend(fig, ax1; framevisible=true, rowgap=5)
+                            colsize!(lout, 2, Relative(1/2))
+                            colsize!(lout, 3, Relative(1/4))
+                            for ax = (ax1,ax2)
+                                ylims!(ax, 1.1*levels[i_thresh_cquantile]-0.1*levels[i_thresh_cquantile+1], 1.1*levels[end]-0.1*levels[end-1])
+                            end
+                            xlims!(ax1, 1/(time_valid_dns_ph*sdm.tu*10), thresh_cquantile*1.1)
+                            xlims!(ax2, 1/10, 10)
+                            save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(fdivname)_$(i_scl)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                         end
                     end
                 end
@@ -928,7 +901,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     if todo["plot_composite_contours"]
         dst = "b"
         rsp = "e"
-        mc = "ei"
+        mc = "eot"
         i_mcobj = 1
         i_scl = 8
         (
@@ -1100,7 +1073,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                    )
         (
          leadtimes,r2threshes,dsts,rsps,mixobjs,
-         mixcrit_labels,mixobj_labels,distn_scales,
+         mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
          fdivnames,Nboot,ccdf_levels,
          time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
          i_thresh_cquantile,adjust_ccdf_per_ancestor
@@ -1134,7 +1107,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         (mid,lo,hi)
                     end
                     # Heatmap of various mixing criteria as a function of AST; below, invert these functions it
-                    for mc = ["contcorr","globcorr","ei","pim","pth"]
+                    for mc = ["contcorr","globcorr","ei","eot","pim","pth"]
                         fig = Figure(size=(500,400))
                         loutmean = fig[1,1] = GridLayout()
                         axmean = Axis(loutmean[1,1], xlabel="−AST", ylabel="Scale", title="Mean $(mixcrit_labels[mc]), $(label_target(cfg, sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular)
@@ -1231,9 +1204,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     end
                 end
                 if todosub["phdgm_slices"]
+                    mc2maximize = "ent"
                     for (i_fdivname,fdivname) in enumerate(fdivs2plot)
-                        fdiv_max_ent = fdivs[dst][rsp]["ent"][fdivname][i_boot,1,:]
-                        fdiv_max_ei = fdivs[dst][rsp]["ei"][fdivname][i_boot,1,:]
+                        fdiv_max_mc = fdivs[dst][rsp][mc2maximize][fdivname][i_boot,1,:]
                         fig = Figure(size=(1500,1000))
                         lout = fig[1,1] = GridLayout()
                         loutlt = lout[1,1] = GridLayout()
@@ -1246,7 +1219,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         nanstd(arr) = SB.std(filter(!isnan, arr))
                         nanquantile(arr,q) = SB.quantile(filter(!isnan, arr), q)
                         for ax = (axlt,axcorr,axpth,axpim)
-                            scatterlines!(ax, fdiv_max_ei, distn_scales[dst]; label=mixobj_labels["ei"], color=:cyan, linestyle=(:dash,:dense), linewidth=3)
+                            scatterlines!(ax, fdiv_max_mc, distn_scales[dst]; label=mixobj_labels[mc2maximize], color=:cyan, linestyle=(:dash,:dense), linewidth=3)
                             vlines!(ax, nanmean(fdivs_ancgen_valid[fdivname]); color=:black, alpha=1.0, linewidth=4, label="Short DNS peaks\n(90% CI)")
                             band!(ax, (Point2f.(nanquantile(fdivs_ancgen_valid[fdivname], 0.5+0.5*sgn*0.9).*ones(Float64, length(distn_scales[dst])), distn_scales[dst]) for sgn=[-1,1])..., color=:gray, alpha=0.25)
                         end
@@ -1257,9 +1230,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         end
                         # Syncorr
                         ax = axcorr
-                        Ncorr = length(mixobjs["globcorr"])
+                        Ncorr = length(mixobjs["contcorr"])
                         for i_corr = 1:Ncorr
-                            lines!(ax, fdivs[dst][rsp]["globcorr"][fdivname][i_boot,i_corr,:], distn_scales[dst]; label=@sprintf("1−exp(-%.2f)", -log1p(-mixobjs["globcorr"][i_corr])), color=i_corr, colorrange=(1,Nleadtime), colormap=:RdYlBu_4, linewidth=2)
+                            lines!(ax, fdivs[dst][rsp]["contcorr"][fdivname][i_boot,i_corr,:], distn_scales[dst]; label=@sprintf("1−exp(-%.2f)", -log1p(-mixobjs["contcorr"][i_corr])), color=i_corr, colorrange=(1,Nleadtime), colormap=:RdYlBu_4, linewidth=2)
                         end
                         # Synprob (threshold)
                         ax = axpth
@@ -1279,8 +1252,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         loutpim[1,2] = Legend(fig, axpim, "𝑞(𝑅*) [synimp]"; framevisible=true, labelsize=12, nbanks=2, rowgap=2, titlefont=:regular, orientation=:vertical)
 
                         filterfun(arr) = (!isnan(arr)) & (arr > 0)
-                        fdivmin = min((minimum(filter(filterfun,fdiv)) for fdiv=(fdiv_max_ent,fdiv_max_ei,fdivs[dst][rsp]["lt"][fdivname],fdivs[dst][rsp]["globcorr"][fdivname],fdivs[dst][rsp]["pim"][fdivname],fdivs[dst][rsp]["pth"][fdivname],fdivs_ancgen_valid[fdivname]))...)
-                        fdivmax = max((maximum(filter(filterfun,fdiv)) for fdiv=(fdiv_max_ent,fdiv_max_ei,fdivs[dst][rsp]["lt"][fdivname],fdivs[dst][rsp]["globcorr"][fdivname],fdivs[dst][rsp]["pim"][fdivname],fdivs[dst][rsp]["pth"][fdivname],fdivs_ancgen_valid[fdivname]))...)
+                        fdivmin = min((minimum(filter(filterfun,fdiv)) for fdiv=(fdiv_max_mc,fdivs[dst][rsp]["lt"][fdivname],fdivs[dst][rsp]["contcorr"][fdivname],fdivs[dst][rsp]["pim"][fdivname],fdivs[dst][rsp]["pth"][fdivname],fdivs_ancgen_valid[fdivname]))...)
+                        fdivmax = max((maximum(filter(filterfun,fdiv)) for fdiv=(fdiv_max_mc,fdivs[dst][rsp]["lt"][fdivname],fdivs[dst][rsp]["contcorr"][fdivname],fdivs[dst][rsp]["pim"][fdivname],fdivs[dst][rsp]["pth"][fdivname],fdivs_ancgen_valid[fdivname]))...)
                         for ax = (axlt,axpth,axpim)
                             xlims!(ax, fdivmin, fdivmax)
                         end
@@ -1308,7 +1281,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 
 # TODO augment META with composites, lead times displays etc
 
@@ -1322,7 +1295,7 @@ else
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
         #idx_expt = vec([3,6][2:2] .+ [0,1][1:1]'.*11) #Vector{Int64}([6,9])
-        idx_expt = (vec([0,1].*11 .+ [5,7]'))
+        idx_expt = (vec([0,1].*11 .+ [5,6,7]'))
     end
 end
 

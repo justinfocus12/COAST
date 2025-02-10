@@ -41,7 +41,7 @@ function metaCOAST_latdep_boxsizedep_procedure(expt_supdir::String, resultdir_dn
     cfgs = reshape(cfgs, (Nytgt,Nrtgt))
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
-     mixcrit_labels,mixobj_labels,distn_scales,
+     mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
      fdivnames,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
      i_thresh_cquantile,adjust_ccdf_per_ancestor
@@ -63,9 +63,9 @@ end
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
-                             "plot_mixcrits_ydep" =>             0,
-                             "compile_fdivs" =>                  0,
-                             "plot_fdivs" =>                     0,
+                             "plot_mixcrits_ydep" =>             1,
+                             "compile_fdivs" =>                  1,
+                             "plot_fdivs" =>                     1,
                              "plot_ccdfs_latdep" =>              1,
                              # danger zone
                              "remove_pngs" =>                    0,
@@ -111,7 +111,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     end
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
-     mixcrit_labels,mixobj_labels,distn_scales,
+     mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
      fdivnames,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
      i_thresh_cquantile,adjust_ccdf_per_ancestor
@@ -336,7 +336,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         rsps = ("e",)
         i_boot = 1
 
-        fdivs2plot = ["qrmse",]
+        fdivs2plot = ["qrmse","kl","chi2","tv"]
 
         fdivlabels = Dict("qrmse"=>"𝐿²","tv"=>"TV","chi2"=>"χ²","kl"=>"KL")
         for fdivname = fdivs2plot
@@ -348,23 +348,24 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 for rsp = rsps
                     for i_scl = scales2plot
                         scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
-                        syncmcs = ["lt","contcorr","globcorr","pim","pth"]
+                        syncmcs = ["lt","contcorr"]
                         fig = Figure(size=(500,400))
                         lout = fig[1,1] = GridLayout()
                         ax = Axis(lout[1,2], xlabel=fdivlabels[fdivname], ylabel="𝑦₀/𝐿", title="$(label_target(target_r,sdm)), $(scalestr)\nthreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlevisible=true, titlefont=:regular, xscale=log10)
                         # Short simulation
                         band!(ax, Point2f.(fdivs_ancgen_valid_lo,ytgts), Point2f.(fdivs_ancgen_valid_hi,ytgts); color=:gray, alpha=0.25)
                         lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=4, label="Short DNS\n(90% CI)")
-                        colors_by_syncmc = Dict("contcorr"=>:orange, "globcorr"=>:dodgerblue, "lt"=>:red, "pth"=>:mediumpurple, "pim"=>:olivedrab3)
+                        colors_by_syncmc = Dict("contcorr"=>:dodgerblue, "globcorr"=>:orange, "lt"=>:red, "pth"=>:mediumpurple, "pim"=>:olivedrab3)
                         # All desired mixing criteria
                         for (i_syncmc,syncmc) in enumerate(syncmcs)
                             idx_mcobj_best = mapslices(argmin, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1]
-                            scatterlines!(ax, [fdivs[dst][rsp][syncmc][fdivname][i_ytgt,i_boot,idx_mcobj_best[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=colors_by_syncmc[syncmc], linestyle=:solid, label="Optimal $(mixcrit_labels[syncmc])")
+                            scatterlines!(ax, [fdivs[dst][rsp][syncmc][fdivname][i_ytgt,i_boot,idx_mcobj_best[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=mixcrit_colors[syncmc], linestyle=:solid, label="Optimal $(mixcrit_labels[syncmc])")
                             # Max-entropy
                             #lines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=:red, linewidth=3, label=mixobj_labels["ent"][1], alpha=0.5)
                             # Max-EI 
                         end
-                        scatterlines!(ax, fdivs[dst][rsp]["ei"][fdivname][:,i_boot,1,i_scl], ytgts; color=:cyan, linewidth=1, linestyle=:solid, label=mixobj_labels["ei"][1], alpha=1.0)
+                        scatterlines!(ax, fdivs[dst][rsp]["ei"][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ei"], linewidth=1, linestyle=:solid, label=mixobj_labels["ei"][1], alpha=1.0)
+                        scatterlines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ent"], linewidth=1, linestyle=:solid, label=mixobj_labels["ent"][1], alpha=1.0)
                         lout[1,1] = Legend(fig, ax; labelsize=8, framevisible=false)
                         colsize!(lout, 2, Relative(4/5))
 
@@ -386,7 +387,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         i_boot = 1
         fdivname = "qrmse"
         fdivlabel = "𝐿²"
-        mc = "ei" # this is the privileged mixing criterion on which to optimize 
+        mc = "ent" # this is the privileged mixing criterion on which to optimize 
         softmean(x,Eofx,beta) = SB.mean(x, SB.weights(exp.(-Eofx.*beta)))
         for i_scl = scales2plot
             (pim_of_ast,contcorr_of_ast,fdiv_of_ast,mc_of_ast) = (zeros(Float64, (Nleadtime,Nytgt)) for _=1:4)
@@ -424,7 +425,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             #
             colormap = :deep
             normalize_by_latitude = false
-            logscale_flag = true
+            logscale_flag = (mc != "ent")
             if logscale_flag
                 for arr = (
                            fdiv_of_ast,fdiv_of_contcorr,fdiv_of_pim,
@@ -459,7 +460,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 colorrange_fdiv = fdivrange
                 colorrange_mc = mcrange
             end
-            beta = 5.0
+            beta = 12.0
             ast_softbest = mapslices(F->softmean(leadtimes, F, beta), fdiv_of_ast; dims=1)[1,:]
             transcontcorr_softbest = mapslices(F->softmean(transcorr.(mixobjs["contcorr"]), F, beta), fdiv_of_contcorr; dims=1)[1,:]
 
@@ -498,7 +499,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             save(joinpath(resultdir,"phdgm_ast_contcorr_$(dst)_$(rsp)_$(i_scl)_$(fdivname)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
 
             # --------------- Show EI as a function of (AST,contcorr) -----------
-            beta = -15
+            beta = -12.0
             fig = Figure(size=(400,350), )
             lout = fig[1,1] = GridLayout()
             idx_maxei_ast,idx_maxei_contcorr = (mapslices(argmax, mcindep; dims=1)[1,:] for mcindep=(mc_of_ast,mc_of_contcorr))
@@ -532,6 +533,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             # rowsize!(lout, 2, Relative(2/9)) # TODO understand why uncommenting this line messes up all the proportions
             rowsize!(lout, 3, Relative(2/3))
             resize_to_layout!(fig)
+            @infiltrate !(all(isfinite.(mc_of_ast)) && all(isfinite.(mc_of_contcorr)))
             save(joinpath(resultdir,"phdgm_ast_contcorr_$(dst)_$(rsp)_$(i_scl)_$(mc)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
         end
     end

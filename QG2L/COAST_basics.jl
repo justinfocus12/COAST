@@ -777,6 +777,7 @@ function expt_config_COAST_analysis(cfg,pertop)
                    "pth"=>pths,
                    "pim"=>pths, 
                    "ei"=>["max"],  # reinterpreted as expected exceedance over threshold 
+                   "eot"=>["max"],  # reinterpreted as expected exceedance over threshold 
                    "went"=>["max"],
                    "ent"=>["max"],
                    "max"=>["max"],
@@ -791,23 +792,28 @@ function expt_config_COAST_analysis(cfg,pertop)
                          "pth"=>"𝑞(μ)",
                          "pim"=>"𝑞(𝑅*)",
                          "ei"=>"𝔼[(Δ𝑅*)₊]",
+                         "eot"=>"𝔼[(𝑅*-μ)₊]",
                          "globcorr"=>"ρ[𝑐]",
                          "contcorr"=>"ρ[𝑐(⋅,𝑦₀)]",
+                         "ent"=>"𝑆[(𝑅*-μ)₊]", # actually weighted
                          "went"=>"WEntropy",
-                         "ent"=>"Ent",
                         )
     mixobj_labels = Dict(
                          "lt"=>["AST = $(lt2str(lt))" for lt=leadtimes],
                          "r2"=>["𝑅² = $(lt2str(r2))" for r2=r2threshes],
-                         "ei"=>["max 𝔼[(Δ𝑅*)₊]"],
+                         "ei"=>["max $(mixcrit_labels["ei"])"],
+                         "eot"=>["max $(mixcrit_labels["eot"])"],
                          "pth"=>[@sprintf("𝑞(μ)≈%.2f", pth) for pth=pths],
                          "pim"=>[@sprintf("𝑞(𝑅ₙ*)≈%.2f", pth) for pth=pths],
                          "went"=>["Max. WEnt."],
-                         "ent"=>["max Ent"],
+                         "ent"=>["max $(mixcrit_labels["ent"])"],
                          "globcorr"=>[@sprintf("%s ≈ σ(%.2f)", mixcrit_labels["globcorr"], transcorr(corr)) for corr=corrs],
                          "contcorr"=>[@sprintf("%s ≈ σ(%.2f)", mixcrit_labels["contcorr"], transcorr(corr)) for corr=corrs],
                          # TODO add expected exceedance over threshold (tee or eet or ete)
                         )
+    mcs = collect(keys(mixcrit_labels))
+    mccolorlist = cgrad(:tab10, length(mcs); categorical=true).colors #CairoMakie.Colors.HSV.(range(0, 360, length(mcs)), 50, 50)
+    mixcrit_colors = Dict(mcs[i]=>mccolorlist[i] for i=1:length(mcs))
     i_mode_sf = 1
     Rmin,Rmax = pertop.sf_pert_amplitudes_min[i_mode_sf],pertop.sf_pert_amplitudes_max[i_mode_sf]
     distn_scales = Dict(
@@ -824,7 +830,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     time_valid_dns_ph = 16000
     xstride_valid_dns = 1
     adjust_ccdf_per_ancestor = Bool(0)
-    return (leadtimes, r2threshes, distns, rsps, mixobjs, mixcrit_labels, mixobj_labels, distn_scales, fdivnames,Nboot,ccdf_levels,time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor)
+    return (leadtimes, r2threshes, distns, rsps, mixobjs, mixcrit_labels, mixobj_labels, mixcrit_colors, distn_scales, fdivnames,Nboot,ccdf_levels,time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor)
 end
 
 
