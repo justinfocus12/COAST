@@ -447,7 +447,7 @@ function plot_bump_densities_2d(scales::Vector{Float64}, support_radius::Float64
     loglevels2plot = log.(collect(range(exp(-4), exp(-0.01); length=20))) #collect(range(-4.0, 0.0; length=20)[1:end-1])
     fig = Figure(size=(500,400))
     lout = fig[1,1] = GridLayout()
-    axcont = Axis(lout[1,1], xlabel="Re{ω}", ylabel="Im{ω}", xgridvisible=false, ygridvisible=false, title=@sprintf("𝑝(ω,𝑠) for scales 𝑠 ∈ {%.2f,%.2f,...,%.2f}", scales[1], scales[2], scales[end]), titlefont=:regular)
+    axcont = Axis(lout[1,1], xlabel="Re{ω}", ylabel="Im{ω}", xgridvisible=false, ygridvisible=false, title=@sprintf("𝑝(ω; 𝑠, 𝑊)\nfor scales 𝑠 ∈ {%.2f,%.2f,...,%.2f}, support 𝑊 = %.2f", scales[1], scales[2], scales[end], support_radius), titlefont=:regular)
     axslice = Axis(lout[1,2]; title="Transect\nRe{ω}=0", ylabel="Im{ω}", ylabelvisible=false, yticklabelsvisible=false, xscale=identity, xgridvisible=false, ygridvisible=false, titlefont=:regular, xticklabelrotation=-pi/2)
     pslice = zeros(Float64, Nx)
     imomegas = collect(range(-support_radius, support_radius; length=50))
@@ -475,7 +475,6 @@ function plot_bump_densities_2d(scales::Vector{Float64}, support_radius::Float64
     for i_pert = 1:Npert
         text!(axcont, string(i_pert), position=(xperts[i_pert]+support_radius/30,yperts[i_pert]+support_radius*0), align=(:left,:center), color=:black, fontsize=10, font=:bold)
     end
-    # TODO label each of them with a number and plot
     colsize!(lout, 1, Relative(4/5))
     for ax = (axcont,axslice)
         ylims!(ax, -support_radius*1.01, support_radius*1.01)
