@@ -36,8 +36,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "upgrade_ensemble" =>                               0,
                              "update_paths" =>                                   0,
                              "plot_transcorr" =>                                 0,
-                             "plot_pertop" =>                                    1,
-                             "plot_bumps" =>                                     1,
+                             "plot_pertop" =>                                    0,
+                             "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
                              "anchor" =>                                         0,
@@ -47,11 +47,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "plot_objective" =>                                 0, 
                              "mix_COAST_distributions_polynomial" =>             0,
-                             "plot_composite_contours" =>                        0,
+                             "plot_composite_contours" =>                        1,
                              "plot_COAST_mixture" =>                             0,
                              "mixture_COAST_phase_diagram" =>                    0,
                              # Danger zone 
-                             "remove_pngs" =>                                    0,
+                             "remove_pngs" =>                                    1,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -133,7 +133,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
     if todo["remove_pngs"]
         for filename = readdir(figdir, join=true)
-            if endswith(filename,"png") && (!startswith(filename,"GPD"))
+            if endswith(filename,"png") && (startswith(filename,"compcont"))
                 rm(filename)
             end
         end
@@ -901,9 +901,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     if todo["plot_composite_contours"]
         dst = "b"
         rsp = "e"
-        mc = "eot"
+        mc = "ent"
         i_mcobj = 1
-        i_scl = 8
+        i_scl = 12
         (
          levels,levels_mid,
          dsts,rsps,mixobjs,distn_scales,
@@ -938,8 +938,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         support_radius = pertop.sf_pert_amplitudes_max[i_mode_sf]
         desc_weights = QG2L.bump_density(coast.pert_seq_qmc[:,1:cfg.num_perts_max]', distn_scales[dst][i_scl], support_radius)
         for i_anc = idx_anc_strat
-            i_leadtime = round(Int, Nleadtime*2/5) #iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl]
-            figfile = joinpath(figdir,"compcont_$(dst)_$(rsp)_$(mc)_$(i_mcobj)_$(i_scl)_anc$(i_anc).png")
+            i_leadtime = round(Int, Nleadtime*2/5) 
+            figfile = joinpath(figdir,"contours_anc$(i_anc).png")
             composite_field_1family(coast, ens, i_anc, desc_weights, i_leadtime, cfg, thresh, sdm, cop, pertop, contour_dispersion_filename, figfile)
         end
     end

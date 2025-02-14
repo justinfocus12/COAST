@@ -322,11 +322,12 @@ function composite_field_1family(
         conc1fun!(conc1, i_mem, mem)
     end
 
-    contcorrs = JLD2.jldopen(contour_dispersion_filename, "r") do f
-        return f["contcorr"][1:Nt,i_leadtime,1:Ndsc,i_anc]
+    contcorrs,globcorrs = JLD2.jldopen(contour_dispersion_filename, "r") do f
+        return [f[corrname][1:Nt,i_leadtime,1:Ndsc,i_anc] for corrname=["contcorr","globcorr"]]
     end
 
     mean_contcorr = (contcorrs[1:Nt,1:Ndsc] * dsc_weights[1:Ndsc]) / sum(dsc_weights[1:Ndsc])
+    mean_globcorr = (globcorrs[1:Nt,1:Ndsc] * dsc_weights[1:Ndsc]) / sum(dsc_weights[1:Ndsc])
 
     # Start with only the field at the timing of the original peak 
     # sub-select the y's 
@@ -336,12 +337,16 @@ function composite_field_1family(
     fig = Figure(size=(1200,800))
     lout = fig[1,1] = GridLayout()
     # First row: contour messes
-    axs_contour = [Axis(lout[1,it], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿", titlesize=18, xlabelsize=18, ylabelsize=18, ylabelvisible=(it==1), yticklabelsvisible=(it==1), titlefont=:regular, xgridvisible=false, ygridvisible=false, xlabelvisible=false, xticklabelsvisible=false) for it=1:3]
-    axs_concaty = [Axis(lout[2,it], xlabel="𝑥/𝐿", ylabel="𝑐(⋅,𝑦₀)", titlesize=18, xlabelsize=18, ylabelsize=18, ylabelvisible=(it==1), yticklabelsvisible=(it==1), titlefont=:regular, xgridvisible=false, ygridvisible=false) for it=1:3]
+    axs_contour = [Axis(lout[1,it], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿", titlesize=24, xlabelsize=24, ylabelsize=24, xticklabelsize=18, yticklabelsize=18, ylabelvisible=(it==1), yticklabelsvisible=(it==1), titlefont=:regular, xgridvisible=false, ygridvisible=false, xlabelvisible=false, xticklabelsvisible=false) for it=1:3]
+    # Second row: concentrations along a fixed latitude 
+    axs_concaty = [Axis(lout[2,it], xlabel="𝑥/𝐿", ylabel="𝑐(⋅,𝑦₀)", titlesize=24, xlabelsize=24, ylabelsize=24, xticklabelsize=18, yticklabelsize=18, ylabelvisible=(it==1), yticklabelsvisible=(it==1), titlefont=:regular, xgridvisible=false, ygridvisible=false) for it=1:3]
     tinit = floor(Int, ens.trajs[i_anc].tphinit/sdm.tu)
     contour_levels = [thresh]  #collect(range(0,1;length=8))
     for ax = axs_contour
-        locavg_rect = poly!(ax, [(cfg.target_xPerL + sgnx*cfg.target_rxPerL) for sgnx=[-1,1,1,-1]], [(cfg.target_yPerL + sgny*cfg.target_ryPerL) for sgny=[-1,-1,1,1]], color=:gray, alpha=0.25)
+        locavg_rect = poly!(ax, [(cfg.target_xPerL + sgnx*cfg.target_rxPerL) for sgnx=[-1,1,1,-1]], [(cfg.target_yPerL + sgny*cfg.target_ryPerL) for sgny=[-1,-1,1,1]], color=:grey69,)
+    end
+    for ax = axs_concaty
+        vlines!(ax, [(cfg.target_xPerL .+ sgnx*cfg.target_rxPerL for sgnx=[-1,1])...]; color=:grey60)
     end
     Rmaxs = vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][idx_dsc])
     Rmaxbounds = extrema(Rmaxs)
@@ -359,9 +364,9 @@ function composite_field_1family(
             lines!(axs_concaty[i_col], sdm.xgrid./sdm.Lx, conc1[:,iytgt,it,i_dsc+1]; cargs..., linewidth=2.0)
         end
     end
-    axs_contour[1].title = "Post-split:  𝑡= 𝑡* - AST + 1 = 𝑡* − $(round(Int,sdm.tu*(leadtime-1)))"
-    axs_contour[2].title = "Ancestor peak: 𝑡 = 𝑡* = $(round(Int,sdm.tu*coast.anc_tRmax[i_anc]))"
-    axs_contour[3].title = "Descendant peaks"
+    axs_contour[1].title = "Post-split:\n 𝑡 = 𝑡* − AST + 1 = 𝑡* − $(round(Int,sdm.tu*(leadtime-1)))"
+    axs_contour[2].title = "Ancestor peak:\n 𝑡 = 𝑡* = $(round(Int,sdm.tu*coast.anc_tRmax[i_anc]))"
+    axs_contour[3].title = "Descendant peaks:\n 𝑡 = variable"
     cargs = Dict(:color=>:black) #Rmaxcolors[Rmaxrank[1]])
     for (i_col,it) in enumerate((it_after_split,it_anc_tRmax,it_anc_tRmax))
         contour!(axs_contour[i_col], sdm.xgrid./sdm.Lx, sdm.ygrid[iymin:iymax]./sdm.Ly, conc1[:,iymin:iymax,it,1]; cargs..., levels=contour_levels, linestyle=(:dash,:dense), linewidth=2)
@@ -369,42 +374,50 @@ function composite_field_1family(
     end
     t0str = @sprintf("%.0f",coast.anc_tRmax[i_anc]/sdm.tu)
     # Third row: scores
-    ax = Axis(lout[3,1:3], xlabel="𝑡−𝑡*",ylabel="Box mean 𝑐",ylabelsize=18, yticklabelsize=15, xlabelsize=18, xticklabelsize=15, xgridvisible=false, ygridvisible=false, xlabelvisible=false, xticklabelsvisible=false)
+    ax = Axis(lout[3,1:3], xlabel="𝑡−𝑡*",ylabel="𝑅(𝐱(𝑡))",ylabelsize=24, yticklabelsize=18, xlabelsize=24, xticklabelsize=18, xgridvisible=false, ygridvisible=false, xlabelvisible=false, xticklabelsvisible=false)
     for (i_dsc2plot,i_dsc) in enumerate(idx_dsc2plot)
         lines!(sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), coast.desc_Roft[i_anc][idx_dsc[i_dsc]]; color=Rmaxcolors[i_dsc2plot], linewidth=2) #Rmaxrank[i_dsc+1]])
     end
     lines!(sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), coast.anc_Roft[i_anc]; color=:black, linewidth=2, linestyle=(:dash,:dense))
-    vlines!(ax, 0; color=:gray, linestyle=:solid, alpha=0.5)
-    vlines!(ax, sdm.tu*(tinit+it_after_split-coast.anc_tRmax[i_anc]); color=:gray, linestyle=:solid, alpha=0.5)
-    vlines!(ax, sdm.tu*(tinit+it_after_split-1-coast.anc_tRmax[i_anc]); color=:gray, linestyle=(:dash,:dense), alpha=0.5)
-    scatter!(ax, sdm.tu*(coast.desc_tRmax[i_anc][idx_dsc[idx_dsc2plot]] .- coast.anc_tRmax[i_anc]), coast.desc_Rmax[i_anc][idx_dsc[idx_dsc2plot]]; color=Rmaxcolors#=[Rmaxrank[2:end]]=#, marker=:star6, markersize=10)
+    vlines!(ax, 0; color=:gray, linestyle=:solid, alpha=0.75)
+    vlines!(ax, sdm.tu*(tinit+it_after_split-coast.anc_tRmax[i_anc]); color=:gray, linestyle=:solid, alpha=0.75)
+    vlines!(ax, sdm.tu*(tinit+it_after_split-1-coast.anc_tRmax[i_anc]); color=:gray, linestyle=(:dash,:dense), alpha=0.75)
+    scatter!(ax, sdm.tu*(coast.desc_tRmax[i_anc][idx_dsc[idx_dsc2plot]] .- coast.anc_tRmax[i_anc]), coast.desc_Rmax[i_anc][idx_dsc[idx_dsc2plot]]; color=Rmaxcolors#=[Rmaxrank[2:end]]=#, marker=:star6, markersize=20)
     xlims!(ax, (sdm.tu.*(tinit - coast.anc_tRmax[i_anc] .+ [0,Nt]))...)
     # fourth row: correlations 
-    ax = Axis(lout[4,1:3], xlabel="𝑡−𝑡*",ylabel="σ⁻¹($(mixcrit_labels["contcorr"]))", ylabelsize=18, xlabelsize=18, xticklabelsize=15, yticklabelsize=15, xgridvisible=false, ygridvisible=false)
+    ax = Axis(lout[4,1:3], xlabel="𝑡 − 𝑡*", ylabelsize=24, xlabelsize=24, xticklabelsize=18, yticklabelsize=18, xgridvisible=false, ygridvisible=false)
+    contcorrlabel,globcorrlabel = ["σ⁻¹($(mixcrit_labels[corrname]))" for corrname=["contcorr","globcorr"]]
     for (i_dsc2plot,i_dsc) in enumerate(idx_dsc2plot)
-        lines!(sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), transcorr.(contcorrs[:,i_dsc]); color=Rmaxcolors[i_dsc2plot]#=[Rmaxrank[i_dsc+1]]=#, linewidth=2)
+        lines!(ax, sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), transcorr.(contcorrs[:,i_dsc]); color=Rmaxcolors[i_dsc2plot], linewidth=2, label=contcorrlabel)
+        lines!(ax, sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), transcorr.(globcorrs[:,i_dsc]); color=Rmaxcolors[i_dsc2plot], linewidth=2, linestyle=(:dash,:dense), label=globcorrlabel)
     end
-    lines!(ax, sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), transcorr.(mean_contcorr); color=:black, linestyle=(:dash,:dense), linewidth=2)
-    vlines!(ax, 0; color=:gray, linestyle=:solid, alpha=0.5)
-    vlines!(ax, sdm.tu*(tinit+it_after_split-coast.anc_tRmax[i_anc]); color=:gray, linestyle=:solid, alpha=0.5)
+    # Hack to make label work 
+    hlines!(ax, transcorr(1.0); color=:black, linewidth=2, label=contcorrlabel)
+    hlines!(ax, transcorr(1.0); color=:black, linewidth=2, linestyle=(:dash,:dense), label=globcorrlabel)
+    axislegend(ax; linecolor=:black, framevisible=false, labelsize=18, position=:lb, merge=true)
+    #lines!(ax, sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), transcorr.(mean_contcorr); color=:black, linestyle=(:dash,:dense), linewidth=2)
+    vlines!(ax, 0; color=:grey60, linestyle=:solid)
+    vlines!(ax, sdm.tu*(tinit+it_after_split-coast.anc_tRmax[i_anc]); color=:grey60, linestyle=:solid)
     vlines!(ax, sdm.tu*(tinit+it_after_split-1-coast.anc_tRmax[i_anc]); color=:gray, linestyle=(:dash,:dense), alpha=0.5)
     xlims!(ax, (sdm.tu.*(tinit - coast.anc_tRmax[i_anc] .+ [0,Nt]))...)
 
     for ax = (axs_contour..., axs_concaty...)
         xlims!(ax, (0,1))
     end
+    linkyaxes!(axs_concaty...)
 
     
 
-    rowsize!(lout, 1, Relative(0.4))
-    rowsize!(lout, 2, Relative(0.2))
-    rowsize!(lout, 3, Relative(0.2))
+    rowsize!(lout, 1, Relative(1/2))
+    rowsize!(lout, 2, Relative(1/6))
+    rowsize!(lout, 3, Relative(1/6))
     rowgap!(lout, 1, 15)
     rowgap!(lout, 3, 15)
     colgap!(lout, 1, 15)
     colgap!(lout, 2, 15)
         
     save(figfile, fig)
+
 
 
 end
