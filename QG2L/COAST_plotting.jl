@@ -29,7 +29,7 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
     fig = Figure(size=(400,300))
     lout = fig[1:2,1] = GridLayout()
     lblargs = Dict(:xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :titlesize=>14)
-    ax1 = Axis(lout[1,1]; xlabel="𝑡 − $(t0str)", ylabel="Intensity 𝑅(𝑡)", title=label_target(cfg,sdm), xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, titlefont=:regular, lblargs...)
+    ax1 = Axis(lout[1,1]; xlabel="𝑡 − $(t0str)", ylabel="Intensity 𝑅(𝐱(𝑡))", title=label_target(cfg,sdm), xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, xlabelvisible=false, titlefont=:regular, lblargs...)
     ax2 = Axis(lout[2,1]; xlabel="𝑡 − $(t0str)", ylabel="Severity 𝑅*", xgridvisible=false, ygridvisible=false, yticks=[minimum(coast.desc_Rmax[i_anc]), coast.anc_Rmax[i_anc]], ytickformat="{:.2f}", lblargs...)
     for ax = (ax1,ax2)
         hlines!(ax, thresh; color=:gray, alpha=0.25)
@@ -276,7 +276,7 @@ function plot_fit_coefs() # HIBERNATING
     
 end
 
-function composite_field_1family(
+function plot_contours_1family(
         coast::COASTState, 
         ens::EM.Ensemble, 
         i_anc::Int64, 
@@ -384,18 +384,20 @@ function composite_field_1family(
     vlines!(ax, sdm.tu*(tinit+it_after_split-1-coast.anc_tRmax[i_anc]); color=:gray, linestyle=(:dash,:dense), alpha=0.75)
     scatter!(ax, sdm.tu*(coast.desc_tRmax[i_anc][idx_dsc[idx_dsc2plot]] .- coast.anc_tRmax[i_anc]), coast.desc_Rmax[i_anc][idx_dsc[idx_dsc2plot]]; color=Rmaxcolors#=[Rmaxrank[2:end]]=#, marker=:star6, markersize=20)
     xlims!(ax, (sdm.tu.*(tinit - coast.anc_tRmax[i_anc] .+ [0,Nt]))...)
-    # fourth row: correlations 
+    # ---------------- fourth row: correlations  ---------------
     ax = Axis(lout[4,1:3], xlabel="𝑡 − 𝑡*", ylabelsize=24, xlabelsize=24, xticklabelsize=18, yticklabelsize=18, xgridvisible=false, ygridvisible=false)
     contcorrlabel,globcorrlabel = ["σ⁻¹($(mixcrit_labels[corrname]))" for corrname=["contcorr","globcorr"]]
+    # 1-epsilon^2 level
+    epsilon = 3/8
+    hlines!(ax, transcorr.([1.0, 1-epsilon^2, 0.0]); color=:grey79, linewidth=2.0)
     for (i_dsc2plot,i_dsc) in enumerate(idx_dsc2plot)
         lines!(ax, sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), transcorr.(contcorrs[:,i_dsc]); color=Rmaxcolors[i_dsc2plot], linewidth=2, label=contcorrlabel)
         lines!(ax, sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), transcorr.(globcorrs[:,i_dsc]); color=Rmaxcolors[i_dsc2plot], linewidth=2, linestyle=(:dash,:dense), label=globcorrlabel)
     end
-    # Hack to make label work 
-    hlines!(ax, transcorr(1.0); color=:black, linewidth=2, label=contcorrlabel)
-    hlines!(ax, transcorr(1.0); color=:black, linewidth=2, linestyle=(:dash,:dense), label=globcorrlabel)
-    axislegend(ax; linecolor=:black, framevisible=false, labelsize=18, position=:lb, merge=true)
-    #lines!(ax, sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), transcorr.(mean_contcorr); color=:black, linestyle=(:dash,:dense), linewidth=2)
+    # Ensemble mean
+    lines!(ax, sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), transcorr.(mean_contcorr); color=:black, linestyle=:solid, linewidth=2, label=contcorrlabel)
+    lines!(ax, sdm.tu.*(collect(1:1:Nt) .+ tinit .- coast.anc_tRmax[i_anc]), transcorr.(mean_globcorr); color=:black, linestyle=(:dash,:dense), linewidth=2, label=globcorrlabel)
+    axislegend(ax; linecolor=:black, framevisible=true, labelsize=18, position=:lb, merge=true)
     vlines!(ax, 0; color=:grey60, linestyle=:solid)
     vlines!(ax, sdm.tu*(tinit+it_after_split-coast.anc_tRmax[i_anc]); color=:grey60, linestyle=:solid)
     vlines!(ax, sdm.tu*(tinit+it_after_split-1-coast.anc_tRmax[i_anc]); color=:gray, linestyle=(:dash,:dense), alpha=0.5)
@@ -413,8 +415,8 @@ function composite_field_1family(
     rowsize!(lout, 3, Relative(1/6))
     rowgap!(lout, 1, 15)
     rowgap!(lout, 3, 15)
-    colgap!(lout, 1, 15)
-    colgap!(lout, 2, 15)
+    colgap!(lout, 1, 20)
+    colgap!(lout, 2, 20)
         
     save(figfile, fig)
 

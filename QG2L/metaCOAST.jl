@@ -63,10 +63,10 @@ end
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
-                             "plot_mixcrits_ydep" =>             1,
-                             "compile_fdivs" =>                  1,
+                             "plot_mixcrits_ydep" =>             0,
+                             "compile_fdivs" =>                  0,
                              "plot_fdivs" =>                     1,
-                             "plot_ccdfs_latdep" =>              1,
+                             "plot_ccdfs_latdep" =>              0,
                              # danger zone
                              "remove_pngs" =>                    0,
                              # defunct/hibernating
@@ -348,14 +348,13 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 for rsp = rsps
                     for i_scl = scales2plot
                         scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
-                        syncmcs = ["lt","contcorr"]
-                        fig = Figure(size=(500,400))
+                        syncmcs = ["lt","contcorr","globcorr"]
+                        fig = Figure(size=(600,400))
                         lout = fig[1,1] = GridLayout()
-                        ax = Axis(lout[1,2], xlabel=fdivlabels[fdivname], ylabel="𝑦₀/𝐿", title="$(label_target(target_r,sdm)), $(scalestr)\nthreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlevisible=true, titlefont=:regular, xscale=log10)
+                        ax = Axis(lout[1,2], xlabel=fdivlabels[fdivname], ylabel="𝑦₀/𝐿", title="$(label_target(target_r,sdm)), $(scalestr)\nthreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlevisible=true, titlefont=:regular, xscale=log10, xgridvisible=false, ygridvisible=false)
                         # Short simulation
                         band!(ax, Point2f.(fdivs_ancgen_valid_lo,ytgts), Point2f.(fdivs_ancgen_valid_hi,ytgts); color=:gray, alpha=0.25)
                         lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=4, label="Short DNS\n(90% CI)")
-                        colors_by_syncmc = Dict("contcorr"=>:dodgerblue, "globcorr"=>:orange, "lt"=>:red, "pth"=>:mediumpurple, "pim"=>:olivedrab3)
                         # All desired mixing criteria
                         for (i_syncmc,syncmc) in enumerate(syncmcs)
                             idx_mcobj_best = mapslices(argmin, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1]
@@ -366,7 +365,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         end
                         scatterlines!(ax, fdivs[dst][rsp]["ei"][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ei"], linewidth=1, linestyle=:solid, label=mixobj_labels["ei"][1], alpha=1.0)
                         scatterlines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ent"], linewidth=1, linestyle=:solid, label=mixobj_labels["ent"][1], alpha=1.0)
-                        lout[1,1] = Legend(fig, ax; labelsize=8, framevisible=false)
+                        lout[1,1] = Legend(fig, ax; labelsize=10, framevisible=false)
                         colsize!(lout, 2, Relative(4/5))
 
                         save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)

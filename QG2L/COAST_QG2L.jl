@@ -46,12 +46,12 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_contour_dispersion_distribution" =>           0,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "plot_objective" =>                                 0, 
-                             "mix_COAST_distributions_polynomial" =>             0,
-                             "plot_composite_contours" =>                        1,
+                             "mix_COAST_distributions_polynomial" =>             1,
+                             "plot_composite_contours" =>                        0,
                              "plot_COAST_mixture" =>                             0,
                              "mixture_COAST_phase_diagram" =>                    0,
                              # Danger zone 
-                             "remove_pngs" =>                                    1,
+                             "remove_pngs" =>                                    0,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -555,8 +555,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         println("Aabout to plot COAST mixtures")
         todosub = Dict{String,Bool}(
                                     "gains_topt" =>              0,
-                                    "rainbow_pdfs" =>            1,
-                                    "mixcrits_overlay" =>        1,
+                                    "rainbow_pdfs" =>            0,
+                                    "mixcrits_overlay" =>        0,
                                     "mixed_ccdfs" =>             1,
                                    )
 
@@ -658,7 +658,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
 
                 # ---------------- Single-ancestor plots ---------------
-                mixcrits2plot = ["globcorr","contcorr","ei","ent"] # TODO group them 
+                mixcrits2plot = ["ei","ent","globcorr","contcorr"] # TODO group them 
                 Nmc = length(mixcrits2plot)
                 if todosub["rainbow_pdfs"]
                     @assert all(isfinite.(pdfs[dst][rsp]))
@@ -826,7 +826,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     pdf_gpd = thresh_cquantile.*clippdf.(Dists.pdf.(GPD, levels_exc_mid))
                     ccdf_gpd = thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc))
 
-                    mcs2mix = ["lt","contcorr"]
+                    mcs2mix = ["lt","contcorr","globcorr"]
 
                     for i_scl = scales2plot
                         for (fdivname,fdivlabel) = (("qrmse","𝐿²"),("kl","KL"),("chi2","χ²")) #("kl","KL"),("chi2","χ²"),("tv","TV"))
@@ -837,7 +837,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             for mc = mcs2mix
                                 fdivs_syn[mc],imcs_syn[mc] = findmin(fdivs[dst][rsp][mc][fdivname][i_boot,:,i_scl])
                                 if mc in ["globcorr","contcorr"]
-                                    strs_syn[mc] = @sprintf("σ(%.1f)",invtranscorr(mixobjs[mc][imcs_syn[mc]]))
+                                    strs_syn[mc] = @sprintf("σ(%.1f)",transcorr(mixobjs[mc][imcs_syn[mc]]))
                                 else
                                     strs_syn[mc] = @sprintf("%.1f",mixobjs[mc][imcs_syn[mc]])
                                 end
@@ -854,8 +854,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             # -------------- Plot --------------
                             fig = Figure(size=(1200,500))
                             lout = fig[1,1] = GridLayout()
-                            ax1 = Axis(lout[1,2]; xscale=log10, xlabel="CCDF", ylabel="Box mean 𝑐", title="$(label_target(cfg,sdm,distn_scales[dst][i_scl]))\nThreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlefont=:regular, xgridvisible=false, ygridvisible=false)
-                            ax2 = Axis(lout[1,3]; xscale=log10, xlabel="CCDF/CCDF(DNS)", ylabel="Box mean 𝑐", titlefont=:regular, ylabelvisible=false, xgridvisible=false, ygridvisible=false)
+                            ax1 = Axis(lout[1,2]; xscale=log10, xlabel="CCDF", ylabel="Severity 𝑅*", title="$(label_target(cfg,sdm,distn_scales[dst][i_scl]))\nThreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlefont=:regular, xgridvisible=false, ygridvisible=false)
+                            ax2 = Axis(lout[1,3]; xscale=log10, xlabel="CCDF/CCDF(DNS)", ylabel="Severity 𝑅*", titlefont=:regular, ylabelvisible=false, xgridvisible=false, ygridvisible=false)
                             # GPD
                             lines!(ax1, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2])))
                             lines!(ax2, clipccdfratio.(ccdf_gpd./dnspot), levels_exc; color=:gray, alpha=0.5, linewidth=3)
@@ -882,7 +882,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                     scatterlines!(ax2, clipccdfratio.(ccdf_cond_mid[i_thresh_cquantile:end]./dnspot), levels_exc; linewidth=2, color=mixcrit_colors[mc], linestyle=:solid, marker=:star6)
                                 end
                             end
-                            lout[1,1] = Legend(fig, ax1; framevisible=true, rowgap=5)
+                            lout[1,1] = Legend(fig, ax1; framevisible=true, rowgap=8)
                             colsize!(lout, 2, Relative(1/2))
                             colsize!(lout, 3, Relative(1/4))
                             for ax = (ax1,ax2)
@@ -940,7 +940,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         for i_anc = idx_anc_strat
             i_leadtime = round(Int, Nleadtime*2/5) 
             figfile = joinpath(figdir,"contours_anc$(i_anc).png")
-            composite_field_1family(coast, ens, i_anc, desc_weights, i_leadtime, cfg, thresh, sdm, cop, pertop, contour_dispersion_filename, figfile)
+            plot_contours_1family(coast, ens, i_anc, desc_weights, i_leadtime, cfg, thresh, sdm, cop, pertop, contour_dispersion_filename, figfile)
         end
     end
 

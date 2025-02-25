@@ -89,27 +89,34 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
 
     # Doubly nested dictionary: by input distribution, and by map 
     ccdfs,pdfs,mixcrits,ccdfmixs,pdfmixs,iltmixs,fdivs = (Dict() for _=1:7)
+    # Add in ETH ensemble boosting estimator (even though we could derive it)
+    ccweights = Dict() # complementary cumulative weights
+    ccdfpools = Dict()
+    fdivpools = Dict()
 
     # Set the global radii for input distributions 
     i_mode_sf = 1
     support_radius = pertop.sf_pert_amplitudes_max[i_mode_sf]
     
     for dst = dsts
-        ccdfs[dst],pdfs[dst],mixcrits[dst],ccdfmixs[dst],pdfmixs[dst],iltmixs[dst],fdivs[dst] = (Dict() for _=1:7)
+        ccweights[dst],ccdfpools[dst],ccdfs[dst],pdfs[dst],mixcrits[dst],ccdfmixs[dst],pdfmixs[dst],iltmixs[dst],fdivs[dst],fdivpools[dst] = (Dict() for _=1:10)
         for rsp = rsps
             if ("g" == dst) && (rsp in ["1+u","2","2+u"])
                 continue
             end
+            ccweights[dst][rsp] = zeros(Float64, (Nlev, Nleadtime, Nanc, length(distn_scales[dst])))
             ccdfs[dst][rsp] = zeros(Float64, (Nlev, Nleadtime, Nanc, length(distn_scales[dst])))
             pdfs[dst][rsp] = zeros(Float64, (Nlev-1, Nleadtime, Nanc, length(distn_scales[dst])))
-            mixcrits[dst][rsp],ccdfmixs[dst][rsp],pdfmixs[dst][rsp],iltmixs[dst][rsp],fdivs[dst][rsp] = (Dict() for _=1:5)
+            ccdfpools[dst][rsp],mixcrits[dst][rsp],ccdfmixs[dst][rsp],pdfmixs[dst][rsp],iltmixs[dst][rsp],fdivs[dst][rsp],fdivpools[dst][rsp] = (Dict() for _=1:7)
             for mc = keys(mixobjs)
                 mixcrits[dst][rsp][mc] = zeros(Float64, (Nleadtime, Nanc, length(distn_scales[dst])))
                 iltmixs[dst][rsp][mc] = zeros(Int64, (length(mixobjs[mc]), Nanc, length(distn_scales[dst])))
                 # TODO bootstrap for confidence intervals on mixture 
                 ccdfmixs[dst][rsp][mc] = zeros(Float64, (Nlev, Nboot+1, length(mixobjs[mc]), length(distn_scales[dst])))
                 pdfmixs[dst][rsp][mc] = zeros(Float64, (Nlev-1, Nboot+1, length(mixobjs[mc]), length(distn_scales[dst])))
+                ccdfpools[dst][rsp][mc] = zeros(Float64, (Nlev, Nboot+1, length(mixobjs[mc]), length(distn_scales[dst])))
                 fdivs[dst][rsp][mc] = Dict(fdivname=>zeros(Float64, (Nboot+1, length(mixobjs[mc]), length(distn_scales[dst]))) for fdivname = fdivnames)
+                fdivpools[dst][rsp][mc] = Dict(fdivname=>zeros(Float64, (Nboot+1, length(mixobjs[mc]), length(distn_scales[dst]))) for fdivname = fdivnames)
             end
         end
     end
@@ -155,7 +162,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
         end
     end
     Ndsc_per_leadtime = div(cfg.num_perts_max, Nleadtime)
-    dsc_weights = ones(Float64, Ndsc_per_leadtime) # For computing averages for regression skills or correlations 
+    anc_dsc_weights = ones(Float64, 1+Ndsc_per_leadtime) # For computing averages for regression skills or correlations 
     for dst = dsts
         for rsp = rsps
             coefs_at_anc_and_leadtime(i_leadtime,i_anc) = begin
@@ -176,10 +183,12 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
             resid_range = zeros(Float64,2)
             resid_arg = NaN
             #Threads.@threads for i_scl = 1:length(distn_scales[dst])
+            anc_dsc_scores = zeros(Float64, 1+Ndsc_per_leadtime)
             for i_scl = 1:length(distn_scales[dst])
                 println("Starting scale $(i_scl)")
                 scl = distn_scales[dst][i_scl]
-                dsc_weights .= QG2L.bump_density(U_reg2dist[1:Ndsc_per_leadtime,:], scl, support_radius)
+                anc_dsc_weights[2:Ndsc_per_leadtime+1] .= QG2L.bump_density(U_reg2dist[1:Ndsc_per_leadtime,:], scl, support_radius)
+                anc_dsc_weights[1:2] .= QG2L.bump_density(zeros(Float64, (1,2)), scl, support_radius)
                 #Threads.@threads for i_anc = 1:Nanc
                 for i_anc = 1:Nanc
                     Rmaxanc = coast.anc_Rmax[i_anc]
@@ -204,6 +213,10 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                             error()
                         end
                         ccdf,pdf = r2dfun(dst,rsp,scl)(coefs_at_anc_and_leadtime(i_leadtime,i_anc), resid_arg)
+                        # --------------- pooled version ---------------
+                        anc_dsc_scores .= vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][desc_by_leadtime(coast, i_anc, leadtimes[i_leadtime], sdm)])
+                        ccweights[dst][rsp][:,i_leadtime,i_anc,i_scl] .+= sum(anc_dsc_weights .* (anc_dsc_scores .> levels'); dims=1)[1,:] 
+                        # ----------------------------------------------
                         pth = ccdf[i_thresh_cquantile]
                         ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= ccdf #.* adjustment
                         pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= pdf #.* adjustment
@@ -227,8 +240,8 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end]; normalize=false) #pth*QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
                         mixcrits[dst][rsp]["went"][i_leadtime,i_anc,i_scl] = ccdf[i_thresh_cquantile] * QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
                         # For correlations, the averaging weight depends on the scale, so these two aren't totally independent
-                        mixcrits[dst][rsp]["globcorr"][i_leadtime,i_anc,i_scl] = SB.mean(globcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(dsc_weights))
-                        mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(dsc_weights))
+                        mixcrits[dst][rsp]["globcorr"][i_leadtime,i_anc,i_scl] = SB.mean(globcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(anc_dsc_weights[2:Ndsc_per_leadtime+1]))
+                        mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(anc_dsc_weights[2:Ndsc_per_leadtime+1]))
                         if levels[end] >= Rmaxanc
                             i_lev_lo = findlast(levels .< Rmaxanc)
                             i_lev_hi = findfirst(levels .>= Rmaxanc)
@@ -317,7 +330,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                                     ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*(ccdfs[dst][rsp][:,ilt,i_anc,i_scl] .+ (1-pth).*(i_lev_anc .> (1:Nlev)))
 
                                     pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*pdfs[dst][rsp][:,ilt,i_anc,i_scl] .* (1 .+ (1-pth).*(1:(Nlev-1) .== i_lev_anc))
-                                    end
+                                    ccdfpools[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*ccweights[dst][rsp][:,ilt,i_anc,i_scl]
                                     #@infiltrate
                                     if !all(isfinite.(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl]))
                                         println("non-finite PDF for i_boot=$(i_boot)")
@@ -328,7 +341,9 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                                 adjustment = thresh_cquantile / ccdfmixs[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]
                                 ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
                                 pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
-                            #@infiltrate
+                                adjustment_pooled = thresh_cquantile / (ccdfpools[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl] / ccdfpools[dst][rsp][mc][1,i_boot,i_mcobj,i_scl])
+                                ccdfpools[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment_pooled
+                            end
                         end
                         #IFT.@infiltrate ((dst=="b")&(rsp=="2")&(i_scl==2))
                         #println("Starting to compute fdivs")
@@ -337,6 +352,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                             for fdivname = fdivnames
                                 # TODO get the right baseline for subasymptotic POt
                                 fdivs[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][i_thresh_cquantile:end,i_boot,i_mcobj,i_scl], ccdf_pot_valid_agglon, levels_exc, levels_exc, fdivname)
+                                fdivpools[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl] = QG2L.fdiv_fun_ccdf(ccdfpools[dst][rsp][mc][i_thresh_cquantile:end,i_boot,i_mcobj,i_scl], ccdf_pot_valid_agglon, levels_exc, levels_exc, fdivname)
                             end
                         end
                     end
@@ -373,5 +389,8 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
         f["iltmixs"] = iltmixs
         f["ccdfmixs"] = ccdfmixs
         f["pdfmixs"] = pdfmixs 
+        f["ccweights"] = ccweights
+        f["ccdfpools"] = ccdfpools
+        f["fdivpools"] = fdivpools
     end
 end
