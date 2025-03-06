@@ -341,8 +341,9 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                                 adjustment = thresh_cquantile / ccdfmixs[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]
                                 ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
                                 pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
-                                adjustment_pooled = thresh_cquantile / (ccdfpools[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl] / ccdfpools[dst][rsp][mc][1,i_boot,i_mcobj,i_scl])
+                                adjustment_pooled = thresh_cquantile / ccdfpools[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]
                                 ccdfpools[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment_pooled
+                                @infiltrate
                             end
                         end
                         #IFT.@infiltrate ((dst=="b")&(rsp=="2")&(i_scl==2))

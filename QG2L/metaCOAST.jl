@@ -64,7 +64,7 @@ end
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
                              "plot_mixcrits_ydep" =>             0,
-                             "compile_fdivs" =>                  0,
+                             "compile_fdivs" =>                  1,
                              "plot_fdivs" =>                     1,
                              "plot_ccdfs_latdep" =>              0,
                              # danger zone
@@ -278,14 +278,19 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         @show Nleadtime
 
         fdivs = Dict()
+        fdivpools = Dict()
         for dst = dsts
             fdivs[dst] = Dict()
+            fdivpools[dst] = Dict()
             for rsp = rsps
                 fdivs[dst][rsp] = Dict()
+                fdivpools[dst][rsp] = Dict()
                 for mc = ["contcorr","globcorr","ei","pim","pth","ent","lt","r2"]
                     fdivs[dst][rsp][mc] = Dict()
+                    fdivpools[dst][rsp][mc] = Dict()
                     for fdivname = fdivnames
                         fdivs[dst][rsp][mc][fdivname] = zeros(Float64, (Nytgt,Nboot+1,Nmcs[mc],Nscales[dst]))
+                        fdivpools[dst][rsp][mc][fdivname] = zeros(Float64, (Nytgt,Nboot+1,Nmcs[mc],Nscales[dst]))
                     end
                 end
             end
@@ -302,6 +307,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         for mc = ["contcorr","globcorr","ei","pim","pth","ent","lt","r2"]
                             for fdivname = fdivnames
                                 fdivs[dst][rsp][mc][fdivname][i_ytgt,:,:,:] .= f["fdivs"][dst][rsp][mc][fdivname][:,:,:]
+                                fdivpools[dst][rsp][mc][fdivname][i_ytgt,:,:,:] .= f["fdivpools"][dst][rsp][mc][fdivname][:,:,:]
                             end
                         end
                     end
@@ -319,11 +325,12 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         end
         JLD2.jldopen(joinpath(resultdir,"fdivs_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"w") do f
             f["fdivs"] = fdivs
+            f["fdivpools"] = fdivpools
             f["fdivs_ancgen_valid"] = fdivs_ancgen_valid
         end
     else
-        fdivs,fdivs_ancgen_valid = JLD2.jldopen(joinpath(resultdir,"fdivs_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"r") do f
-            return f["fdivs"],f["fdivs_ancgen_valid"]
+        fdivs,fdivpools,fdivs_ancgen_valid = JLD2.jldopen(joinpath(resultdir,"fdivs_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"r") do f
+            return f["fdivs"],f["fdivpools"],f["fdivs_ancgen_valid"]
         end
     end
 
@@ -359,12 +366,16 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         for (i_syncmc,syncmc) in enumerate(syncmcs)
                             idx_mcobj_best = mapslices(argmin, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1]
                             scatterlines!(ax, [fdivs[dst][rsp][syncmc][fdivname][i_ytgt,i_boot,idx_mcobj_best[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=mixcrit_colors[syncmc], linestyle=:solid, label="Optimal $(mixcrit_labels[syncmc])")
+                            idx_mcobj_best_pool = mapslices(argmin, fdivpools[dst][rsp][syncmc][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1]
+                            scatterlines!(ax, [fdivpools[dst][rsp][syncmc][fdivname][i_ytgt,i_boot,idx_mcobj_best_pool[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=mixcrit_colors[syncmc], linestyle=(:dot,:dense), #=label="Optimal $(mixcrit_labels[syncmc])"=#)
                             # Max-entropy
                             #lines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=:red, linewidth=3, label=mixobj_labels["ent"][1], alpha=0.5)
                             # Max-EI 
                         end
                         scatterlines!(ax, fdivs[dst][rsp]["ei"][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ei"], linewidth=1, linestyle=:solid, label=mixobj_labels["ei"][1], alpha=1.0)
+                        scatterlines!(ax, fdivpools[dst][rsp]["ei"][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ei"], linewidth=1, linestyle=(:dot,:dense), #=label=mixobj_labels["ei"][1],=# alpha=1.0)
                         scatterlines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ent"], linewidth=1, linestyle=:solid, label=mixobj_labels["ent"][1], alpha=1.0)
+                        scatterlines!(ax, fdivpools[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ent"], linewidth=1, linestyle=(:dot,:dense), #=label=mixobj_labels["ent"][1],=# alpha=1.0)
                         lout[1,1] = Legend(fig, ax; labelsize=10, framevisible=false)
                         colsize!(lout, 2, Relative(4/5))
 

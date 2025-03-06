@@ -10,5 +10,5 @@
 #SBATCH --mem-per-cpu=64GB
 
 module load julia/1.9.1
-julia dns_QG2L.jl $SLURM_ARRAY_TASK_ID 
+stdbuf julia dns_QG2L.jl $SLURM_ARRAY_TASK_ID > /orcd/archive/pog/001/ju26596/COAST/QG2L/logs/dns_%A_%a_log.out
 

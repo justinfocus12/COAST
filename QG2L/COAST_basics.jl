@@ -93,7 +93,7 @@ function ConfigCOAST(
         follow_time_ph::Float64 = 20.0,
         peak_prebuffer_time_ph::Float64 = 30.0,
         dtRmax_max_ph::Float64 = 40.0,
-        num_init_conds_max::Int64 = 16,
+        num_init_conds_max::Int64 = 17,
         num_perts_max_per_lead_time::Int64 = 12,
         target_field::String = "conc1",
         target_xPerL::Float64 = 0.5,
@@ -600,19 +600,19 @@ function set_sail!(
     println("Starting to write history")
     QG2L.write_history(sf_hist, conc_hist, history_file)
     QG2L.write_state(flow_next, term_cond_file)
-    println("Finished writing history")
-    println("Starting to increment ensemble")
+    #println("Finished writing history")
+    #println("Starting to increment ensemble")
     traj = EM.Trajectory(flow_init.tph, tfin, init_cond_file, pert_seq_file, term_cond_file, history_file)
     EM.add_trajectory!(ens, traj; parent=parent)
-    println("Finished incrementing ensemble")
-    println("Starting to evaluate objective")
+    #println("Finished incrementing ensemble")
+    #println("Starting to evaluate objective")
     new_obj_val = obj_fun_COAST_from_histories(sf_hist,conc_hist)
     if false
         new_obj_val = JLD2.jldopen(history_file, "r") do f
             return obj_fun_COAST_from_file(f)
         end
     end
-    println("Finished evaluating objective")
+    #println("Finished evaluating objective")
     if mem_is_ancestor
         add_ancestor!(coast, ens, mem, cfg, new_obj_val)
         i_anc = length(coast.ancestors)
