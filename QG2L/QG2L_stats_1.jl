@@ -118,9 +118,10 @@ function flag_running_max(x::Vector{Float64}, buffer::Int64)
     Nt = length(x)
     mop = -Inf .* ones(Float64, Nt) # x is max of past
     xismop = ones(Bool, Nt)
+    xismop[1:buffer] .= 0
     mop[buffer+1:Nt] .= x[buffer+1:Nt]
+    idx_mop = (buffer+1):Nt
     for dt = 1:buffer
-        idx_mop = (buffer+1):Nt
         idx_x = idx_mop .- dt
         xismop[idx_mop] .&= (mop[idx_mop] .> x[idx_x])
         mop[idx_mop] .= max.(mop[idx_mop], x[idx_x])

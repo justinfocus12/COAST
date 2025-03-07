@@ -481,9 +481,10 @@ function prepare_init_cond_from_dns(
     it_peak = peak_tidx[num_peaks_to_skip+1]
     it_upcross = upcross_tidx[num_peaks_to_skip+1]
     it_downcross = downcross_tidx[num_peaks_to_skip+1]
-    @show it_peak
-    @show obj_val_dns[it_peak-2:it_peak+2]
-    if !(obj_val_dns[it_peak] >= max(obj_val_dns[it_peak-1],obj_val_dns[it_peak+1]))
+    @show it_upcross,it_peak,it_downcross
+    surrounding_vals = obj_val_dns[max(1,it_peak-1):min(length(obj_val_dns),it_peak+1)]
+    @show surrounding_vals
+    if !(obj_val_dns[it_peak] >= maximum(surrounding_vals))
         #@infiltrate
         error()
     end
