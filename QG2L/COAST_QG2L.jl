@@ -33,8 +33,8 @@ include("./metaCOAST.jl")
 
 function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir::String; i_expt=nothing, overwrite_expt_setup=false, overwrite_ensemble=false, old_path_part::String, new_path_part::String)
     todo = Dict{String,Bool}(
-                             "upgrade_ensemble" =>                               1,
-                             "update_paths" =>                                   1,
+                             "upgrade_ensemble" =>                               0,
+                             "update_paths" =>                                   0,
                              "plot_transcorr" =>                                 1,
                              "plot_pertop" =>                                    1,
                              "plot_bumps" =>                                     1,
@@ -168,7 +168,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     ens = EM.load_Ensemble(ensfile_COAST)
     coast = load_COASTState(coastfile_COAST)
 
-    @infiltrate
+    #@infiltrate
 
 
     if todo["plot_transcorr"]
@@ -550,15 +550,15 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
     if todo["mix_COAST_distributions_polynomial"]
         println("About to mix COAST distributions")
-        mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir)
+        mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, ens, resultdir)
         println("Finished mixing")
     end
     if todo["plot_COAST_mixture"]
         println("Aabout to plot COAST mixtures")
         todosub = Dict{String,Bool}(
                                     "gains_topt" =>              0,
-                                    "rainbow_pdfs" =>            0,
-                                    "mixcrits_overlay" =>        0,
+                                    "rainbow_pdfs" =>            1,
+                                    "mixcrits_overlay" =>        1,
                                     "mixed_ccdfs" =>             1,
                                    )
 
@@ -612,7 +612,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
         for dst = ["b"]
             Nscales = length(distn_scales[dst])
-            for rsp = ["e"] #,"2"]
+            for rsp = ["e","1"] #,"2"]
                 if ("g" == dst) && (rsp in ["1+u","2","2+u"])
                     continue
                 end
@@ -790,7 +790,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     #lout[Nmc+1,1] = Legend(fig, axs[Nmc]; framevisible=false, labelsize=15)
                     #rowsize!(lout, Nmc+1, Relative(1/(3*Nmc)))
 
-                    save(joinpath(figdir, "mixcrits_overlay.png"), fig)
+                    save(joinpath(figdir, "mixcrits_overlay_$(dst)_$(rsp).png"), fig)
                 end
 
                 # ----------------- Mixed-ancestor plots -----------------
@@ -1106,7 +1106,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         i_boot = 1
         i_r2thresh = 1
         for dst = ["b"]
-            for rsp = ["e",]
+            for rsp = ["e","1"]
                 if ("g" == dst) && (rsp in ("2","1+u","2+u"))
                     continue
                 end
@@ -1315,7 +1315,7 @@ else
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
         #idx_expt = vec([3,6][2:2] .+ [0,1][1:1]'.*11) #Vector{Int64}([6,9])
-        idx_expt = (vec([0,1].*11 .+ [5,6,7]'))[1:2]
+        idx_expt = (vec([0,1].*11 .+ [5,6,7]'))[1:1]
     end
 end
 

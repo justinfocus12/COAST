@@ -1036,6 +1036,8 @@ function compute_contour_dispersion(
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
     Nleadtime = length(leadtimes)
     Nanc = length(coast.ancestors)
+    Nmem = EM.get_Nmem(ens)
+    Ndsc = Nmem - Nanc
     Nt = cfg.follow_time + cfg.lead_time_max
 
     conc1_zonal_mean = JLD2.jldopen(dns_stats_filename,"r") do f
@@ -1057,7 +1059,8 @@ function compute_contour_dispersion(
         end
         conc1_onemem .-= conc1_zonal_mean
     end
-    Ndsc_per_leadtime = div(cfg.num_perts_max, Nleadtime)
+    #Ndsc_per_leadtime = div(cfg.num_perts_max, Nleadtime)
+    Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nanc)
     # Various notions of similarity based on contours
     globcorr,contsymdiff,contcorr,= (zeros(Float64, (Nt, Nleadtime, Ndsc_per_leadtime, Nanc)) for _=1:3)
 

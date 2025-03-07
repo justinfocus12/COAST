@@ -40,7 +40,7 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
     #
     kwargs = Dict(:colormap=>:RdYlBu_4, :colorrange=>(cfg.lead_time_min,cfg.lead_time_max), :color=>1)
     leadtimes = collect(range(cfg.lead_time_min, cfg.lead_time_max; step=cfg.lead_time_inc))
-    idx_leadtimes2plot = reverse(unique(clamp.(round.(Int, length(leadtimes).*[1/20, 2/5]), 1, length(leadtimes))))
+    idx_leadtimes2plot = reverse(unique(clamp.(round.(Int, length(leadtimes).*[1/20, 2/5, 4/5]), 1, length(leadtimes))))
     spaghetti_leadtimes = leadtimes[reverse(idx_leadtimes2plot)]
     for (i_desc,desc) in enumerate(descendants)
         desc = descendants[i_desc]
@@ -297,6 +297,12 @@ function plot_contours_1family(
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
      i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
+
+    Nanc = length(coast.ancestors)
+    Nmem = EM.get_Nmem(ens)
+    Ndsc = Nmem - Nanc
+    Nleadtime = length(leadtimes)
+    Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nanc)
     # Two 2-panel plots
     # 1a. Average slightly-evolved perturbation (would be near 0 if not evolved)
     # 1b. Std. Dev. slightly-evolved perturbation
@@ -304,10 +310,9 @@ function plot_contours_1family(
     # 2b. Std. dev. perturbed peak
     leadtime = leadtimes[i_leadtime]
     anc = coast.ancestors[i_anc]
-    idx_dsc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
+    idx_dsc = desc_by_leadtime(coast, i_anc, leadtime, sdm)[1:Ndsc_per_leadtime]
     dscs = Graphs.outneighbors(ens.famtree, anc)[idx_dsc]
     mems = vcat([anc], dscs)
-    Ndsc = length(dscs)
     idx_dsc2plot = [argmin(coast.desc_Rmax[i_anc][idx_dsc]), argmax(coast.desc_Rmax[i_anc][idx_dsc])]
     Nt = cfg.follow_time + cfg.lead_time_max
     conc1fun!(conc1_onemem::Array{Float64,4},i_mem::Int64,mem::Int64) = begin
@@ -316,18 +321,18 @@ function plot_contours_1family(
         end
     end
 
-    conc1 = zeros(Float64, (sdm.Nx, sdm.Ny, Nt, Ndsc+1))
+    conc1 = zeros(Float64, (sdm.Nx, sdm.Ny, Nt, Ndsc_per_leadtime+1))
 
     for (i_mem,mem) in enumerate(mems)
         conc1fun!(conc1, i_mem, mem)
     end
 
     contcorrs,globcorrs = JLD2.jldopen(contour_dispersion_filename, "r") do f
-        return [f[corrname][1:Nt,i_leadtime,1:Ndsc,i_anc] for corrname=["contcorr","globcorr"]]
+        return [f[corrname][1:Nt,i_leadtime,1:Ndsc_per_leadtime,i_anc] for corrname=["contcorr","globcorr"]]
     end
 
-    mean_contcorr = (contcorrs[1:Nt,1:Ndsc] * dsc_weights[1:Ndsc]) / sum(dsc_weights[1:Ndsc])
-    mean_globcorr = (globcorrs[1:Nt,1:Ndsc] * dsc_weights[1:Ndsc]) / sum(dsc_weights[1:Ndsc])
+    mean_contcorr = (contcorrs[1:Nt,1:Ndsc_per_leadtime] * dsc_weights[1:Ndsc_per_leadtime]) / sum(dsc_weights[1:Ndsc_per_leadtime])
+    mean_globcorr = (globcorrs[1:Nt,1:Ndsc_per_leadtime] * dsc_weights[1:Ndsc_per_leadtime]) / sum(dsc_weights[1:Ndsc_per_leadtime])
 
     # Start with only the field at the timing of the original peak 
     # sub-select the y's 

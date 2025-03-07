@@ -1,4 +1,4 @@
-function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
+function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, ens, resultdir,)
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
@@ -161,7 +161,10 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
             end
         end
     end
-    Ndsc_per_leadtime = div(cfg.num_perts_max, Nleadtime)
+    #Ndsc_per_leadtime = div(cfg.num_perts_max, Nleadtime)
+    Nmem = EM.get_Nmem(ens)
+    Ndsc = Nmem - Nanc
+    Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nanc)
     anc_dsc_weights = ones(Float64, 1+Ndsc_per_leadtime) # For computing averages for regression skills or correlations 
     for dst = dsts
         for rsp = rsps
@@ -214,7 +217,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                         end
                         ccdf,pdf = r2dfun(dst,rsp,scl)(coefs_at_anc_and_leadtime(i_leadtime,i_anc), resid_arg)
                         # --------------- pooled version ---------------
-                        anc_dsc_scores .= vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][desc_by_leadtime(coast, i_anc, leadtimes[i_leadtime], sdm)])
+                        anc_dsc_scores .= vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][desc_by_leadtime(coast, i_anc, leadtimes[i_leadtime], sdm)[1:Ndsc_per_leadtime]])
                         ccweights[dst][rsp][:,i_leadtime,i_anc,i_scl] .+= sum(anc_dsc_weights .* (anc_dsc_scores .> levels'); dims=1)[1,:] 
                         # ----------------------------------------------
                         pth = ccdf[i_thresh_cquantile]
@@ -343,7 +346,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, resultdir,)
                                 pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
                                 adjustment_pooled = thresh_cquantile / ccdfpools[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]
                                 ccdfpools[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment_pooled
-                                @infiltrate
+                                #@infiltrate
                             end
                         end
                         #IFT.@infiltrate ((dst=="b")&(rsp=="2")&(i_scl==2))
