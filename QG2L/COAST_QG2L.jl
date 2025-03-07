@@ -33,23 +33,23 @@ include("./metaCOAST.jl")
 
 function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir::String; i_expt=nothing, overwrite_expt_setup=false, overwrite_ensemble=false, old_path_part::String, new_path_part::String)
     todo = Dict{String,Bool}(
-                             "upgrade_ensemble" =>                               0,
-                             "update_paths" =>                                   0,
-                             "plot_transcorr" =>                                 0,
-                             "plot_pertop" =>                                    0,
-                             "plot_bumps" =>                                     0,
-                             "compute_dns_objective" =>                          0,
-                             "plot_dns_objective_stats" =>                       0,
+                             "upgrade_ensemble" =>                               1,
+                             "update_paths" =>                                   1,
+                             "plot_transcorr" =>                                 1,
+                             "plot_pertop" =>                                    1,
+                             "plot_bumps" =>                                     1,
+                             "compute_dns_objective" =>                          1,
+                             "plot_dns_objective_stats" =>                       1,
                              "anchor" =>                                         1,
                              "sail" =>                                           1, 
-                             "compute_contour_dispersion" =>                     0,
-                             "plot_contour_dispersion_distribution" =>           0,
-                             "regress_lead_dependent_risk_polynomial" =>         0, 
-                             "plot_objective" =>                                 0, 
-                             "mix_COAST_distributions_polynomial" =>             0,
-                             "plot_composite_contours" =>                        0,
-                             "plot_COAST_mixture" =>                             0,
-                             "mixture_COAST_phase_diagram" =>                    0,
+                             "compute_contour_dispersion" =>                     1,
+                             "plot_contour_dispersion_distribution" =>           1,
+                             "regress_lead_dependent_risk_polynomial" =>         1, 
+                             "plot_objective" =>                                 1, 
+                             "mix_COAST_distributions_polynomial" =>             1,
+                             "plot_composite_contours" =>                        1,
+                             "plot_COAST_mixture" =>                             1,
+                             "mixture_COAST_phase_diagram" =>                    1,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
                              # vestigial or hibernating
@@ -1324,8 +1324,8 @@ phpstr = QG2L.strrep_PhysicalParams(php)
 sdmstr = QG2L.strrep_SpaceDomain(sdm)
 computer = "engaging"
 if computer == "engaging"
-    expt_supdir_dns = "/orcd/archive/pog/001/ju26596/COAST/QG2L/2024-12-29/0/$(phpstr)_$(sdmstr)"
-    expt_supdir_COAST = "/orcd/archive/pog/001/ju26596/COAST/QG2L/2024-12-29/3/$(phpstr)_$(sdmstr)"
+    expt_supdir_dns = "/orcd/archive/pog/001/ju26596/COAST/QG2L/2025-02-06/0/$(phpstr)_$(sdmstr)"
+    expt_supdir_COAST = "/orcd/archive/pog/001/ju26596/COAST/QG2L/2025-02-06/0/$(phpstr)_$(sdmstr)"
 else
     expt_supdir_dns = "/Users/justinfinkel/Documents/postdoc_mit/computing/tracer_extremes_resuls/2024-10-22/0/$(phpstr)_$(sdmstr)"
     expt_supdir_COAST = "/Users/justinfinkel/Documents/postdoc_mit/computing/tracer_extremes_resuls/2024-10-22/0/$(phpstr)_$(sdmstr)"

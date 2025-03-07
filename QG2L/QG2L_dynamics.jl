@@ -30,7 +30,10 @@ function timestep!(
     flow_next.sf.ok .= flob_prev.sf_fwdmap_lin.ok .+ 0.5 .* (flob_prev.sf_fwdmap_nonlin.ok .+ flob_next.sf_fwdmap_nonlin.ok)
     flow_next.sf.ok .*= cop.dealias_mask
     synchronize_FlowField_k2x!(flow_next.sf) #, cop)
-    flow_next.conc .= 0.5 .* (flob_prev.conc_fwdmap .+ flob_next.conc_fwdmap)
+    # WRONG HEUN
+    #flow_next.conc .= 0.5 .* (flob_prev.conc_fwdmap .+ flob_next.conc_fwdmap)
+    # RIGHT HEUN
+    flow_next.conc .= 0.5 .* (flow_prev.conc .+ flob_next.conc_fwdmap)
     #flow_next.conc.ok .= flob_prev.conc_fwdmap_lin.ok .+ 0.5*(flob_prev.conc_fwdmap_nonlin.ok .+ flob_next.conc_fwdmap_nonlin.ok)
     #flow_next.conc.ok .*= cop.dealias_mask
     compute_observables!(flob_next, flow_next, cop, sdm, php)

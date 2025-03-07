@@ -93,8 +93,8 @@ function ConfigCOAST(
         follow_time_ph::Float64 = 20.0,
         peak_prebuffer_time_ph::Float64 = 30.0,
         dtRmax_max_ph::Float64 = 40.0,
-        num_init_conds_max::Int64 = 17,
-        num_perts_max_per_lead_time::Int64 = 12,
+        num_init_conds_max::Int64 = 32,
+        num_perts_max_per_lead_time::Int64 = 15,
         target_field::String = "conc1",
         target_xPerL::Float64 = 0.5,
         target_rxPerL::Float64 = 1/64,
@@ -738,7 +738,7 @@ end
 
 function paramsets()
     target_yPerLs = collect(range(0, 1; length=17)[4:14]) #1/2 .+ [-1/4,-1/8,0,1/8,1/4][1:3]
-    target_rs = (1/16) .* sqrt.([1.0, 4.0])
+    target_rs = (1/32) .* sqrt.([1.0, 4.0])
     return target_yPerLs, target_rs
 end
 

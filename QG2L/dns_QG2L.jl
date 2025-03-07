@@ -71,17 +71,18 @@ end
 
 function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_setup=false, overwrite_ensemble=false)
     todo = Dict(
-                "integrate" =>                      0,
-                "compute_moments" =>                0,
-                "plot_moment_map" =>                0,
-                "compute_rough_quantiles" =>        0,
-                "compute_global_histograms" =>      0,
-                "compute_extrema" =>                0,
-                "plot_energy" =>                    0,
+                "integrate" =>                      1,
+                "compute_moments" =>                1,
+                "plot_moment_map" =>                1,
+                "compute_rough_quantiles" =>        1,
+                "compute_global_histograms" =>      1,
+                "compute_extrema" =>                1,
+                "plot_energy" =>                    1,
+                "plot_hovmoller" =>                 1, 
+                "animate" =>                        1,
+                # ---------- defunct ---------
                 "compute_local_GPD_params" =>       0,
                 "plot_GPD_param_map" =>             0,
-                "plot_hovmoller" =>                 1, 
-                "animate" =>                        0,
                )
     php,sdm = QG2L.expt_config(i_expt=i_expt)
     cfg = ConfigDNS(; duration_spinup_ph=500.0, duration_spinon_ph=1000.0, num_chunks_max=28)
@@ -91,7 +92,8 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
     sdmstr = QG2L.strrep_SpaceDomain(sdm)
     computer = "engaging"
     if computer == "engaging"
-        savedir = "/orcd/archive/pog/001/ju26596/COAST/QG2L/2024-12-29/0/$(phpstr)_$(sdmstr)/DNS"
+        #savedir = "/orcd/archive/pog/001/ju26596/COAST/QG2L/2024-12-29/0/$(phpstr)_$(sdmstr)/DNS"
+        savedir = "/orcd/archive/pog/001/ju26596/COAST/QG2L/2025-02-06/0/$(phpstr)_$(sdmstr)/DNS"
     else
         savedir = "/Users/justinfinkel/Documents/postdoc_mit/computing/tracer_extremes_resuls/2024-10-22/0/$(phpstr)_$(sdmstr)/DNS"
     end
