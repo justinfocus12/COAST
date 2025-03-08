@@ -1027,6 +1027,8 @@ function compute_contour_dispersion(
         dns_stats_filename::String, 
         contour_dispersion_filename::String,
         thresh::Float64,
+        ;
+        overwrite_correlations::Bool = false,
     )
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
@@ -1064,19 +1066,31 @@ function compute_contour_dispersion(
     Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nanc)
     # Various notions of similarity based on contours
     globcorr,contsymdiff,contcorr,= (zeros(Float64, (Nt, Nleadtime, Ndsc_per_leadtime, Nanc)) for _=1:3)
+    size_pre = zeros(Int64, 4)
+
+    if ispath(contour_dispersion_filename) && !overwrite_correlations
+        JLD2.jldopen(contour_dispersion_filename, "r") do f
+            size_pre .= size(f["globcorr"])
+            globcorr[1:size_pre[1],1:size_pre[2],1:size_pre[3],1:size_pre[4]] .= f["globcorr"]
+            contcorr[1:size_pre[1],1:size_pre[2],1:size_pre[3],1:size_pre[4]] .= f["contcorr"]
+            contsymdiff[1:size_pre[1],1:size_pre[2],1:size_pre[3],1:size_pre[4]] .= f["contsymdiff"]
+        end
+    end
+    @show size_pre
+    @infiltrate
+    # load the pre-computed correlations if they exist 
 
     # pre-allocate arrays for fast in-place correlation calculations 
     # spatially resolved fields
     # (c,i) --> concentration, indicator that concentration is over threshold
     # (x,m,v) --> (dependent on x,y, mean over x,y, variance over x,y)
     # (a,d) --> (ancestor,descendant)
+    #Threads.@threads for i_anc = 1:Nanc
     (cxa,cxd) = (zeros(Float64,(sdm.Nx,sdm.Ny,1,Nt)) for _=1:2)
     (cma,cmd,cma2,cmd2,cmaa,cva,cmdd,cmad) = (zeros(Float64,(1,1,1,Nt)) for _=1:8)
     (ixa,ixd) = (zeros(Float64,(sdm.Nx,1,1,Nt)) for _=1:2)
     (ima,imd,ima2,imd2,imaa,iva,imdd,imad) = (zeros(Float64,(1,1,1,Nt)) for _=1:8)
-    #Threads.@threads for i_anc = 1:Nanc
     for i_anc = 1:Nanc
-
         anc = coast.ancestors[i_anc]
         dscs = Graphs.outneighbors(ens.famtree, anc)
 
@@ -1100,7 +1114,8 @@ function compute_contour_dispersion(
             print("$(i_leadtime), ")
             idx_dsc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
             it1 = cfg.lead_time_max - leadtime
-            for i_dsc = 1:Ndsc_per_leadtime
+            for i_dsc = size_pre[3]+1:Ndsc_per_leadtime
+                @infiltrate
                 # Compute the intermediates for the descendant
                 dsc = dscs[idx_dsc[i_dsc]]
                 conc1fun!(cxd,dsc)
@@ -1117,7 +1132,6 @@ function compute_contour_dispersion(
                 # Fill in the relevant slice of the array
                 globcorr[:,i_leadtime,i_dsc,i_anc] .= ((cmad .- cma.*cmd) ./ sqrt.(cva .* (cmdd .- cmd2)))[1,1,1,:]
                 contcorr[:,i_leadtime,i_dsc,i_anc] .= ((imad .- ima.*imd) ./ sqrt.(iva .* (imdd .- imd2)))[1,1,1,:]
-                @infiltrate false
                 
                 #globcorr[:,i_leadtime,i_dsc,i_anc] .= SB.mean(cxd .* cxa; dims=[1,2])[1,1,1,:] .- baseline_globcorr
                 #contcorr[:,i_leadtime,i_dsc,i_anc] .= SB.mean(ixd .* ixa; dims=[1,2])[1,1,1,:] .- baseline_contcor

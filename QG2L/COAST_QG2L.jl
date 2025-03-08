@@ -40,15 +40,15 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
-                             "anchor" =>                                         0,
-                             "sail" =>                                           0, 
-                             "compute_contour_dispersion" =>                     0,
-                             "plot_contour_dispersion_distribution" =>           0,
-                             "regress_lead_dependent_risk_polynomial" =>         0, 
-                             "plot_objective" =>                                 0, 
-                             "mix_COAST_distributions_polynomial" =>             0,
-                             "plot_composite_contours" =>                        0,
-                             "plot_COAST_mixture" =>                             0,
+                             "anchor" =>                                         1,
+                             "sail" =>                                           1, 
+                             "compute_contour_dispersion" =>                     1,
+                             "plot_contour_dispersion_distribution" =>           1,
+                             "regress_lead_dependent_risk_polynomial" =>         1, 
+                             "plot_objective" =>                                 1, 
+                             "mix_COAST_distributions_polynomial" =>             1,
+                             "plot_composite_contours" =>                        1,
+                             "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    1,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
@@ -1310,7 +1310,7 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
-        idx_expt = (vec([5,6,7] .+ [0,1]'.*11))[5:5]
+        idx_expt = (vec([5,6,7] .+ [0,1]'.*11))[4:4]
         #idx_expt = [8]
     end
 end
