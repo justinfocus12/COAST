@@ -56,6 +56,13 @@ function add_trajectory!(ens::Ensemble, traj::Trajectory; parent=nothing)
     end
 end
 
+function remove_final_trajectory!(ens::Ensemble)
+    Nmem = get_Nmem(ens)
+    Graphs.rem_vertex!(ens.famtree, Nmem)
+    pop!(ens.trajs)
+end
+
+
 function save_Ensemble(ens::Ensemble, filename::String)
     JLD2.jldopen(filename, "w") do f
         f["ens"] = ens

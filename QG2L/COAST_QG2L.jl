@@ -192,6 +192,16 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         adjust_paths!(coast, old_path_part, new_path_part)
         save_COASTState(coast, coastfile_COAST)
     end
+    # ------------ KLUG for failed synchronization previous time ----------------
+    Nmem_ens = EM.get_Nmem(ens)
+    Nmem_coast = length(coast.ancestors) + sum(length.(coast.desc_Rmax))
+    if Nmem_ens != Nmem_coast
+        if Nmem_ens != Nmem_coast + 1
+            error()
+        else
+            EM.remove_final_trajectory!(ens)
+        end
+    end
     adjust_scores!(coast, ens, cfg, sdm)
     @show coast.pert_seq_qmc[:,1:6]
     rng = Serialization.deserialize(rngfile_COAST)
@@ -443,14 +453,22 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                 i_anc = findfirst(coast.ancestors .== anc)
             end
             # Save the state for next round
-            EM.save_Ensemble(ens, ensfile_COAST_backup)
-            cp(ensfile_COAST_backup, ensfile_COAST, force=true)
-            open(rngfile_COAST_backup,"w") do f
+            # ensemble 
+            EM.save_Ensemble(ens, ensfile_COAST)
+            # rng
+            open(rngfile_COAST,"w") do f
                 Serialization.serialize(f, rng)
             end
-            cp(rngfile_COAST_backup, rngfile_COAST, force=true)
-            save_COASTState(coast, coastfile_COAST_backup)
-            cp(coastfile_COAST_backup, coastfile_COAST, force=true)
+            # coast 
+            save_COASTState(coast, coastfile_COAST)
+
+            # Overwrite backup files 
+            cp(ensfile_COAST, ensfile_COAST_backup, force=true)
+            cp(rngfile_COAST, rngfile_COAST_backup, force=true)
+            cp(coastfile_COAST, coastfile_COAST_backup, force=true)
+
+            # collect garbage 
+
             if mod(Nmem,100) == 0
                 GC.gc()
             end
@@ -1310,8 +1328,8 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
-        idx_expt = (vec([5,6,7] .+ [0,1]'.*11))[4:4]
-        #idx_expt = [8]
+        #idx_expt = (vec([5,6,7] .+ [0,1]'.*11))[4:4]
+        idx_expt = [2]
     end
 end
 

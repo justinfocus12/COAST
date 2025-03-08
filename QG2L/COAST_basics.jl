@@ -601,12 +601,8 @@ function set_sail!(
     println("Starting to write history")
     QG2L.write_history(sf_hist, conc_hist, history_file)
     QG2L.write_state(flow_next, term_cond_file)
-    #println("Finished writing history")
-    #println("Starting to increment ensemble")
     traj = EM.Trajectory(flow_init.tph, tfin, init_cond_file, pert_seq_file, term_cond_file, history_file)
     EM.add_trajectory!(ens, traj; parent=parent)
-    #println("Finished incrementing ensemble")
-    #println("Starting to evaluate objective")
     new_obj_val = obj_fun_COAST_from_histories(sf_hist,conc_hist)
     if false
         new_obj_val = JLD2.jldopen(history_file, "r") do f
