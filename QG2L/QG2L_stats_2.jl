@@ -641,6 +641,21 @@ function kldiv_fun(pmf1, pmf2)
     return kl
 end
 
+function entropy_fun_samples(xs::Vector{Float64}, weights::Vector{Float64}, lolim::Float64)
+    # from Learned-Miller 2003 
+    @assert minimum(weights) > 0
+    order = sortperm(xs)
+    N = size(xs)
+    N1 = findfirst(xs[order] > lolim)
+    x0 = (N1 == 1 ? lolim : xs[order[N1-1]])
+    weightsum = sum(weights) 
+    dxs = vcat(xs[order[N1]]-x0, diff(xs[order[N1:N]]))
+    pdf_vals = weights[order[N1:N]] ./ (weightsum .* dxs)
+    entropy_contributions = -weights[order[N1:end]] ./ weightsum .* log.(pdf_vals)
+    entropy_contributions[1] .*= (xs[order[N1]] - lolim) ./ (xs[order[N1]] - x0)
+    condent = sum(entropy_contributions)
+    return condent
+end
 
 
 function entropy_fun_ccdf(ccdf; normalize::Bool=true)

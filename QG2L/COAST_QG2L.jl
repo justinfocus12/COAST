@@ -40,15 +40,15 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
-                             "anchor" =>                                         1,
-                             "sail" =>                                           1, 
-                             "compute_contour_dispersion" =>                     1,
-                             "plot_contour_dispersion_distribution" =>           1,
-                             "regress_lead_dependent_risk_polynomial" =>         1, 
-                             "plot_objective" =>                                 1, 
-                             "mix_COAST_distributions_polynomial" =>             1,
-                             "plot_composite_contours" =>                        1,
-                             "plot_COAST_mixture" =>                             1,
+                             "anchor" =>                                         0,
+                             "sail" =>                                           0, 
+                             "compute_contour_dispersion" =>                     0,
+                             "plot_contour_dispersion_distribution" =>           0,
+                             "regress_lead_dependent_risk_polynomial" =>         0, 
+                             "plot_objective" =>                                 0, 
+                             "mix_COAST_distributions" =>                        0,
+                             "plot_composite_contours" =>                        0,
+                             "plot_COAST_mixture" =>                             0,
                              "mixture_COAST_phase_diagram" =>                    1,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
@@ -566,9 +566,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
 
 
-    if todo["mix_COAST_distributions_polynomial"]
+    if todo["mix_COAST_distributions"]
         println("About to mix COAST distributions")
-        mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, ens, resultdir)
+        mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir)
         println("Finished mixing")
     end
     if todo["plot_COAST_mixture"]
@@ -1145,7 +1145,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         (mid,lo,hi)
                     end
                     # Heatmap of various mixing criteria as a function of AST; below, invert these functions it
-                    for mc = ["contcorr","globcorr","ei","eot","pim","pth"]
+                    for mc = ["contcorr","globcorr","ei","ent","pim","pth"]
                         fig = Figure(size=(500,400))
                         loutmean = fig[1,1] = GridLayout()
                         axmean = Axis(loutmean[1,1], xlabel="−AST", ylabel="Scale", title="Mean $(mixcrit_labels[mc]), $(label_target(cfg, sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular)
@@ -1184,7 +1184,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             end
                             hm = heatmap!(ax, transcorr.(mixobjs[corrkey]), distn_scales[dst], fdivs[dst][rsp][corrkey][fdivname][i_boot,:,:]; colormap=:deep, colorscale=log10)
                             cbar = Colorbar(lout[1,2], hm, vertical=true)
-                            co = contour!(ax, transcorr.(mixobjs[corrkey]), distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*leadtimes, color=:black, labels=true)
+                            co = contour!(ax, transcorr.(mixobjs[corrkey]), distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*collect(range(extrema(ltmean)...; length=10)), color=:black, labels=true)
                             save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_syn$(corrkey)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                         end
                         # pim as the independent variable
@@ -1201,7 +1201,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         end
                         hm = heatmap!(ax, reverse(mixobjs["pim"]; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["pim"][fdivname][i_boot,:,:]; dims=1); colormap=:deep, colorscale=log10)
                         cbar = Colorbar(lout[1,2], hm, vertical=true)
-                        co = contour!(ax, mixobjs["pim"], distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*leadtimes, color=:black, labels=true)
+                        co = contour!(ax, mixobjs["pim"], distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*collect(range(extrema(ltmean)...; length=10)), color=:black, labels=true)
                         save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_synimp_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                         # pth as the independent variable 
                         fig = Figure(size=(500,400))
@@ -1315,7 +1315,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 
 # TODO augment META with composites, lead times displays etc
 
@@ -1329,7 +1329,7 @@ else
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
         #idx_expt = (vec([5,6,7] .+ [0,1]'.*11))[4:4]
-        idx_expt = [2]
+        idx_expt = [9,20]
     end
 end
 

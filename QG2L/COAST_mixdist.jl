@@ -1,4 +1,93 @@
-function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, ens, resultdir,)
+function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
+    # No need to go through thissong and dance of intermediate highly discretized CCDFs. Just estimate entropy and expected improvement empirically 
+    (
+     leadtimes,r2threshes,dsts,rsps,mixobjs,
+     mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
+     fdivnames,Nboot,ccdf_levels,
+     time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
+    ) = expt_config_COAST_analysis(cfg,pertop)
+    thresh_cquantile = ccdf_levels[i_thresh_cquantile]
+    Nleadtime = length(leadtimes)
+    Nr2th = length(r2threshes)
+    Nscales = [length(dstn_scales[dst]) for dst=dsts]
+    i_mode_sf = 1
+    support_radius = pertop.sf_pert_amplitudes_max[i_mode_sf]
+    (
+     tgrid_ancgen,
+     Roft_ancgen_seplon,
+     Rccdf_ancgen_seplon,
+     Rccdf_ancgen_agglon,
+     ccdf_pot_ancgen_seplon,
+     ccdf_pot_ancgen_agglon,
+     tgrid_valid,
+     Roft_valid_seplon,
+     Rccdf_valid_seplon,
+     Rccdf_valid_agglon,
+     ccdf_pot_valid_seplon,
+     ccdf_pot_valid_agglon,
+    ) = (
+         JLD2.jldopen(joinpath(resultdir,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
+             return (
+                     f["tgrid_ancgen"], # tgrid_ancgen
+                     f["Roft_ancgen_seplon"], # Roft_ancgen_seplon
+                     f["Rccdf_ancgen_seplon"], # Rccdf_ancgen_seplon
+                     f["Rccdf_ancgen_agglon"], # Rccdf_ancgen_seplon
+                     f["ccdf_pot_ancgen_seplon"],
+                     f["ccdf_pot_ancgen_agglon"],
+                     f["tgrid_valid"], # tgrid_valid
+                     f["Roft_valid_seplon"], # Roft_valid_seplon
+                     f["Rccdf_valid_seplon"], # Rccdf_valid_seplon
+                     f["Rccdf_valid_agglon"], # Rccdf_valid_agglon
+                     f["ccdf_pot_valid_seplon"],
+                     f["ccdf_pot_valid_agglon"],
+                    )
+         end
+        )
+    thresh = Rccdf_valid_agglon[i_thresh_cquantile] 
+    mixcrits = Dict()
+    # Pre-allocate some arrays for samples and weights 
+    Neprt = cfg.num_perts_max_per_leadtime
+    Rs,Ws = (zeros(Npert+1) for _=1:2)
+    U = vcat(zeros(Float64, (1,2)), collect(transpose(coast.pert_seq_qmc[:,1:Npert])))
+    for dst = dsts
+        mixcrits[dst] = Dict()
+        for rsp = rsps
+            mixcrits[dst][rsp] = Dict()
+            for mc = keys(mixobjs)
+                mixcrits[dst][rsp][mc] = zeros(Float64, (Nleadtime,Nanc,Nscales[dst]))
+            end
+        end
+    end
+    for i_anc = 1:Nanc
+        Rs[1] = coast.anc_Rmax[i_anc]
+        for i_leadtime = 1:Nleadtime
+            idx_dsc = desc_by_leadtime(coast, i_anc, i_leadtime, sdm)
+            Rs[2:Npert+1] .= coast.desc_Rmax[i_anc][idx_dsc]
+            for i_scl = 1:Nscales[dst]
+                # conditional entropy
+                for dst = ["b"]
+                    for rsp = ["e"]
+                        for i_scl = 1:Nscales[dst]
+                            Ws .= bump_density(U, distn_scales[dst][i_scl], support_radius)
+                            mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_samples(Rs, Ws, thresh)
+                            mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = sum(Ws .* max.(0, Rs .- coast.anc_Rmax[i_anc])) / sum(Ws)
+                            # For correlations, the averaging weight depends on the scale, so these two aren't totally independent
+                            mixcrits[dst][rsp]["globcorr"][i_leadtime,i_anc,i_scl] = SB.mean(globcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(anc_dsc_weights[2:Ndsc_per_leadtime+1]))
+                            mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(anc_dsc_weights[2:Ndsc_per_leadtime+1]))
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return mixcrits
+end
+
+
+                        
+
+
+function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
@@ -191,7 +280,7 @@ function mix_COAST_distributions_polynomial(cfg, cop, pertop, coast, ens, result
                 println("Starting scale $(i_scl)")
                 scl = distn_scales[dst][i_scl]
                 anc_dsc_weights[2:Ndsc_per_leadtime+1] .= QG2L.bump_density(U_reg2dist[1:Ndsc_per_leadtime,:], scl, support_radius)
-                anc_dsc_weights[1:2] .= QG2L.bump_density(zeros(Float64, (1,2)), scl, support_radius)
+                anc_dsc_weights[1:1] .= QG2L.bump_density(zeros(Float64, (1,2)), scl, support_radius)
                 #Threads.@threads for i_anc = 1:Nanc
                 for i_anc = 1:Nanc
                     Rmaxanc = coast.anc_Rmax[i_anc]

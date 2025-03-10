@@ -63,10 +63,10 @@ end
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
-                             "plot_mixcrits_ydep" =>             0,
+                             "plot_mixcrits_ydep" =>             1,
                              "compile_fdivs" =>                  1,
                              "plot_fdivs" =>                     1,
-                             "plot_ccdfs_latdep" =>              0,
+                             "plot_ccdfs_latdep" =>              1,
                              # danger zone
                              "remove_pngs" =>                    0,
                              # defunct/hibernating
@@ -488,14 +488,15 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             leadtime_bounds = tuple((-sdm.tu .* [1.5*leadtimes[end]-0.5*leadtimes[end-1], 1.5*leadtimes[1]-0.5*leadtimes[2]])...)
             # First heatmap: AST as independent variable
             hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(fdiv_of_ast; dims=1); colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
-            scatterlines!(ax1, -sdm.tu.*leadtimes[idx_ast_best], ytgts; color=:black, linewidth=2)
-            lines!(ax1, -sdm.tu.*ast_softbest, ytgts; color=:black, linewidth=2, linestyle=(:dash,:dense))
+            co1 = contour!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast; dims=1); levels=range(mcrange...; length=7), colormap=:heat, labels=false)
+            scatter!(ax1, -sdm.tu.*leadtimes[idx_ast_best], ytgts; color=:black)
+            #lines!(ax1, -sdm.tu.*ast_softbest, ytgts; color=:black, linewidth=2, linestyle=(:dash,:dense))
             #co1pim = contour!(ax1, -leadtimes.*sdm.tu, ytgts, reverse(pim_of_ast; dims=1); color=:black, linestyle=(:dot,:dense), labels=false)
             cbar1 = Colorbar(lout[2,1], hm1; vertical=false, label="$(errlabel) (iso-$(mixcrit_labels["lt"]))", cbarargs...)
             # Second heatmap: contcorr as independent variable
             hm2 = heatmap!(ax2, transcorr.(mixobjs["contcorr"]), ytgts, fdiv_of_contcorr; colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv) 
-            scatterlines!(ax2, transcorr.(mixobjs["contcorr"][idx_contcorr_best]), ytgts; color=:black, linewidth=2)
-            lines!(ax2, transcontcorr_softbest, ytgts; color=:black, linewidth=2, linestyle=(:dash,:dense))
+            co2 = contour!(ax2, transcorr.(mixobjs["contcorr"]), ytgts, mc_of_contcorr; levels=range(mcrange...; length=7), colormap=:heat, labels=false) 
+            scatter!(ax2, transcorr.(mixobjs["contcorr"][idx_contcorr_best]), ytgts; color=:black)
             cbar2 = Colorbar(lout[2,2], hm2; vertical=false, label="$(errlabel) (iso-$(mixcrit_labels["contcorr"])", cbarargs...)
             rowgap!(lout, 1, 0)
             rowgap!(lout, 2, 5)
@@ -527,12 +528,12 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             # First heatmap: AST as independent variable
             hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast; dims=1); colormap=Reverse(colormap), colorscale=colorscale, colorrange=colorrange_mc)
             scatterlines!(ax1, -sdm.tu.*leadtimes[idx_maxei_ast], ytgts; color=:black, linewidth=2)
-            lines!(ax1, -sdm.tu.*ast_softmaxei, ytgts; color=:black, linewidth=2, linestyle=(:dash,:dense))
+            #lines!(ax1, -sdm.tu.*ast_softmaxei, ytgts; color=:black, linewidth=2, linestyle=(:dash,:dense))
             cbar1 = Colorbar(lout[2,1], hm1; vertical=false, label="$(mclabel) (iso-$(mixcrit_labels["lt"]))", cbarargs...)
             # Second heatmap: contcorr as independent variable
             hm2 = heatmap!(ax2, transcorr.(mixobjs["contcorr"]), ytgts, mc_of_contcorr; colormap=Reverse(colormap), colorscale=colorscale, colorrange=colorrange_mc) 
             scatterlines!(ax2, transcorr.(mixobjs["contcorr"][idx_maxei_contcorr]), ytgts; color=:black, linewidth=2)
-            lines!(ax2, transcontcorr_softmaxei, ytgts; color=:black, linewidth=2, linestyle=(:dash,:dense))
+            #lines!(ax2, transcontcorr_softmaxei, ytgts; color=:black, linewidth=2, linestyle=(:dash,:dense))
             cbar2 = Colorbar(lout[2,2], hm2; vertical=false, label="$(mclabel) (iso-$(mixcrit_labels["contcorr"]))", cbarargs...)
             #rowsize!(lout, 0, Relative(1/8))
             rowgap!(lout, 1, 0)
