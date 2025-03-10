@@ -769,14 +769,15 @@ function expt_config_COAST_analysis(cfg,pertop)
     rsps = ("e","1","2") # empirical, linear model, quadratic model
     mixobjs = Dict(
                    "lt"=>leadtimes, 
-                   "r2"=>r2threshes, 
+                   "r2lin"=>r2threshes, 
+                   "r2quad"=>r2threshes, 
                    "pth"=>pths,
                    "pim"=>pths, 
                    "ei"=>["max"],  # reinterpreted as expected exceedance over threshold 
-                   "eot"=>["max"],  # reinterpreted as expected exceedance over threshold 
-                   "went"=>["max"],
+                   #"eot"=>["max"],  # reinterpreted as expected exceedance over threshold 
+                   #"went"=>["max"],
                    "ent"=>["max"],
-                   "max"=>["max"],
+                   #"max"=>["max"],
                    "globcorr"=>corrs,
                    "contcorr"=>corrs,
                   ) # mixing-related objectives to maximize when choosing a leadtime. Each entry of each list represents a different objective 
@@ -784,24 +785,26 @@ function expt_config_COAST_analysis(cfg,pertop)
 
     mixcrit_labels = Dict(
                          "lt"=>"AST", 
-                         "r2"=>"𝑅²",
+                         "r2lin"=>"𝑅² (linear)",
+                         "r2quad"=>"𝑅² (quadratic)",
                          "pth"=>"𝑞(μ)",
                          "pim"=>"𝑞(𝑅*)",
                          "ei"=>"𝔼[(Δ𝑅*)₊]",
-                         "eot"=>"𝔼[(𝑅*-μ)₊]",
+                         #"eot"=>"𝔼[(𝑅*-μ)₊]",
                          "globcorr"=>"ρ[𝑐]",
                          "contcorr"=>"ρ[𝑐(⋅,𝑦₀)]",
                          "ent"=>"𝑆[(𝑅*-μ)₊]", # actually weighted
-                         "went"=>"WEntropy",
+                         #"went"=>"WEntropy",
                         )
     mixobj_labels = Dict(
                          "lt"=>["AST = $(lt2str(lt))" for lt=leadtimes],
-                         "r2"=>["𝑅² = $(lt2str(r2))" for r2=r2threshes],
+                         "r2lin"=>["𝑅² (linear) = $(lt2str(r2))" for r2=r2threshes],
+                         "r2quad"=>["𝑅² (quadratic) = $(lt2str(r2))" for r2=r2threshes],
                          "ei"=>["max $(mixcrit_labels["ei"])"],
-                         "eot"=>["max $(mixcrit_labels["eot"])"],
+                         #"eot"=>["max $(mixcrit_labels["eot"])"],
                          "pth"=>[@sprintf("𝑞(μ)≈%.2f", pth) for pth=pths],
                          "pim"=>[@sprintf("𝑞(𝑅ₙ*)≈%.2f", pth) for pth=pths],
-                         "went"=>["Max. WEnt."],
+                         #"went"=>["Max. WEnt."],
                          "ent"=>["max $(mixcrit_labels["ent"])"],
                          "globcorr"=>[@sprintf("%s ≈ σ(%.2f)", mixcrit_labels["globcorr"], transcorr(corr)) for corr=corrs],
                          "contcorr"=>[@sprintf("%s ≈ σ(%.2f)", mixcrit_labels["contcorr"], transcorr(corr)) for corr=corrs],

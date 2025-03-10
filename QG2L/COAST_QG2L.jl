@@ -46,10 +46,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_contour_dispersion_distribution" =>           0,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "plot_objective" =>                                 0, 
+                             "evaluate_mixing_criteria" =>                       1,
                              "mix_COAST_distributions" =>                        0,
                              "plot_composite_contours" =>                        0,
                              "plot_COAST_mixture" =>                             0,
-                             "mixture_COAST_phase_diagram" =>                    1,
+                             "mixture_COAST_phase_diagram" =>                    0,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
                              # vestigial or hibernating
@@ -565,6 +566,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
 
 
+    if todo["evaluate_mixing_criteria"]
+        println("About to evaluate mixing criteria")
+        evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir)
+        println("finished evaluating mixing criteria")
+    end
 
     if todo["mix_COAST_distributions"]
         println("About to mix COAST distributions")
@@ -1315,7 +1321,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 
 # TODO augment META with composites, lead times displays etc
 
@@ -1328,8 +1334,8 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
-        #idx_expt = (vec([5,6,7] .+ [0,1]'.*11))[4:4]
-        idx_expt = [9,20]
+        idx_expt = (vec([5,6,7] .+ [0,1]'.*11))[1:1]
+        #idx_expt = [9,20]
     end
 end
 

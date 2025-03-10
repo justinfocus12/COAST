@@ -645,18 +645,78 @@ function entropy_fun_samples(xs::Vector{Float64}, weights::Vector{Float64}, loli
     # from Learned-Miller 2003 
     @assert minimum(weights) > 0
     order = sortperm(xs)
-    N = size(xs)
-    N1 = findfirst(xs[order] > lolim)
+    N = length(xs)
+    N1 = findfirst(xs[order] .> lolim)
     x0 = (N1 == 1 ? lolim : xs[order[N1-1]])
     weightsum = sum(weights) 
     dxs = vcat(xs[order[N1]]-x0, diff(xs[order[N1:N]]))
     pdf_vals = weights[order[N1:N]] ./ (weightsum .* dxs)
     entropy_contributions = -weights[order[N1:end]] ./ weightsum .* log.(pdf_vals)
-    entropy_contributions[1] .*= (xs[order[N1]] - lolim) ./ (xs[order[N1]] - x0)
+    entropy_contributions[1] *= (xs[order[N1]] - lolim) ./ (xs[order[N1]] - x0)
     condent = sum(entropy_contributions)
     return condent
 end
 
+function expected_improvement_samples(xs::Vector{Float64}, weights::Vector{Float64}, lolim::Float64)
+    order = sortperm(xs)
+    N = length(xs)
+    N1 = findfirst(xs[order] .> lolim)
+    if xs[order[N]] <= lolim
+        return 0.0
+    end
+    x0 = (N1 == 1 ? lolim : xs[order[N1-1]])
+    weightsum = sum(weights) 
+    exp_imp_contributions = vcat((lolim+xs[order[N1]])/2, (xs[order[N1:N-1]] .+ xs[order[N1+1:N]])./2) .* weights[order[N1:N]] ./ weightsum .- lolim
+    exp_imp_contributions[1] *= (xs[order[N1]] - lolim) / (xs[order[N1]] - x0)
+    condent = sum(exp_imp_contributions)
+    return condent
+end
+
+function ccdf_gridded_from_samples(xs::Vector{Float64}, weights::Vector{Float64}, levels::Vector{Float64})
+    Nlev = length(levels)
+    Nx = length(xs)
+    order = sortperm(xs)
+    ccdf = zeros(Nlev)
+    ws = weights ./ sum(weights)
+    i_x = 1
+    ccdf_prev = 1.0
+    ccdf_curr = 1.0 - ws[order[1]]
+    for i_lev = 1:Nlev
+        while levels[i_lev] >= xs[order[i_x]]
+            i_x += 1
+            ccdf_prev = ccdf_curr
+            ccdf_curr -= ws[order[i_x]]
+        end
+        if i_x > 1
+            frac = (levels[i_lev] - xs[order[i_x-1]]) / (xs[order[i_x]] - xs[order[i_x-1]])
+            ccdf[i_lev] = ccdf_prev * (1-frac) + ccdf_curr*frac
+        else
+            ccdf[i_lev] = ccdf_prev
+        end
+    end
+    pdf = -diff(ccdf) ./ diff(xs[order])
+    return ccdf, pdf
+end
+
+
+
+
+
+function threshold_exceedance_probability_samples(xs::Vector{Float64}, weights::Vector{Float64}, lolim::Float64)
+    order = sortperm(xs)
+    N = length(xs)
+    if xs[order[N]] <= lolim
+        return 0.0
+    end
+    N1 = findfirst(xs[order] .> lolim)
+    @infiltrate isnothing(N1)
+    x0 = (N1 == 1 ? lolim : xs[order[N1-1]])
+    weightsum = sum(weights) 
+    prob_exc = sum(weights[order[N1+1:N]])
+    prob_exc += (xs[order[N1]] - lolim) / (xs[order[N1]] - x0) * weights[order[N1]]
+    prob_exc /= weightsum
+    return prob_exc 
+end
 
 function entropy_fun_ccdf(ccdf; normalize::Bool=true)
     pmf = ccdf2pmf(ccdf; normalize=normalize)

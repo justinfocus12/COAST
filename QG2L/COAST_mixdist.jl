@@ -7,9 +7,10 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
+    Nanc = length(coast.ancestors)
     Nleadtime = length(leadtimes)
     Nr2th = length(r2threshes)
-    Nscales = [length(dstn_scales[dst]) for dst=dsts]
+    Nscales = Dict(dst=>length(distn_scales[dst]) for dst=dsts)
     i_mode_sf = 1
     support_radius = pertop.sf_pert_amplitudes_max[i_mode_sf]
     (
@@ -43,16 +44,24 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                     )
          end
         )
+    coefslin,coefsquad,r2lin,r2quad = JLD2.jldopen(joinpath(resultdir,"regression_coefs.jld2"), "r") do f
+        return f["coefs_linear"],f["coefs_quadratic"],f["rsquared_linear"],f["rsquared_quadratic"]
+    end
+    globcorr,contcorr = JLD2.jldopen(joinpath(resultdir,"contour_dispersion.jld2"), "r") do f
+        return f["globcorr"], f["contcorr"]
+    end
     thresh = Rccdf_valid_agglon[i_thresh_cquantile] 
-    mixcrits = Dict()
     # Pre-allocate some arrays for samples and weights 
-    Neprt = cfg.num_perts_max_per_leadtime
+    Npert = div(cfg.num_perts_max, Nleadtime)
     Rs,Ws = (zeros(Npert+1) for _=1:2)
     U = vcat(zeros(Float64, (1,2)), collect(transpose(coast.pert_seq_qmc[:,1:Npert])))
-    for dst = dsts
-        mixcrits[dst] = Dict()
-        for rsp = rsps
-            mixcrits[dst][rsp] = Dict()
+    mixcrits,ccdfs,pdfs = (Dict{String,Dict}() for _=1:3)
+    for dst = ["b"]
+        mixcrits[dst],ccdfs[dst],pdfs[dst] = (Dict{String,Dict}() for _=1:3)
+        for rsp = ["e"]
+            mixcrits[dst][rsp] = Dict{String,Array{Float64}}()
+            ccdfs[dst][rsp] = zeros(Float64, (Nlev,Nleadtime,Nanc,Nscales[dst]))
+            pdfs[dst][rsp] = zeros(Float64, (Nlev-1,Nleadtime,Nanc,Nscales[dst]))
             for mc = keys(mixobjs)
                 mixcrits[dst][rsp][mc] = zeros(Float64, (Nleadtime,Nanc,Nscales[dst]))
             end
@@ -60,25 +69,33 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
     end
     for i_anc = 1:Nanc
         Rs[1] = coast.anc_Rmax[i_anc]
-        for i_leadtime = 1:Nleadtime
-            idx_dsc = desc_by_leadtime(coast, i_anc, i_leadtime, sdm)
+        for (i_leadtime,leadtime) in enumerate(leadtimes)
+            idx_dsc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
             Rs[2:Npert+1] .= coast.desc_Rmax[i_anc][idx_dsc]
-            for i_scl = 1:Nscales[dst]
-                # conditional entropy
-                for dst = ["b"]
-                    for rsp = ["e"]
-                        for i_scl = 1:Nscales[dst]
-                            Ws .= bump_density(U, distn_scales[dst][i_scl], support_radius)
-                            mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_samples(Rs, Ws, thresh)
-                            mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = sum(Ws .* max.(0, Rs .- coast.anc_Rmax[i_anc])) / sum(Ws)
-                            # For correlations, the averaging weight depends on the scale, so these two aren't totally independent
-                            mixcrits[dst][rsp]["globcorr"][i_leadtime,i_anc,i_scl] = SB.mean(globcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(anc_dsc_weights[2:Ndsc_per_leadtime+1]))
-                            mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(anc_dsc_weights[2:Ndsc_per_leadtime+1]))
-                        end
+            for dst = ["b"]
+                for rsp = ["e"]
+                    for i_scl = 1:Nscales[dst]
+                        Ws .= QG2L.bump_density(U, distn_scales[dst][i_scl], support_radius)
+                        mixcrits[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = leadtimes[i_leadtime]
+                        mixcrits[dst][rsp]["pth"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs, Ws, thresh)
+                        mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs, Ws, Rs[1])
+                        mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_samples(Rs, Ws, thresh)
+                        mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = QG2L.expected_improvement_samples(Rs, Ws, Rs[1])
+                        # For correlations, the averaging weight depends on the scale, so these two aren't totally independent
+                        mixcrits[dst][rsp]["globcorr"][i_leadtime,i_anc,i_scl] = SB.mean(globcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws[2:Npert+1]))
+                        mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws[2:Npert+1]))
+                        mixcrits[dst][rsp]["r2lin"][i_leadtime,i_anc,i_scl] = r2lin[i_leadtime,i_anc]
+                        mixcrits[dst][rsp]["r2quad"][i_leadtime,i_anc,i_scl] = r2quad[i_leadtime,i_anc]
+                        ccdfs[dst][rsp][i_leadtime,i_anc,i_scl],pdfs[i_leadtime,i_anc,i_scl] = ccdf_gridded_from_samples(Rs, Ws, levels) #r2dfun(dst,rsp,scl)(coefs_at_anc_and_leadtime(i_leadtime,i_anc), resid_arg)
                     end
                 end
+                
             end
         end
+    end
+    @assert minimum(mixcrits[dst][rsp]["pth"]) > 0
+    JLD2.jldopen(joinpath(resultdir,"mixcrits.jld2"),"w") do f
+        f["mixcrits"] = mixcrits
     end
     return mixcrits
 end
@@ -175,9 +192,10 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
         end
     end
 
+    mixcrits = evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir)
 
     # Doubly nested dictionary: by input distribution, and by map 
-    ccdfs,pdfs,mixcrits,ccdfmixs,pdfmixs,iltmixs,fdivs = (Dict() for _=1:7)
+    ccdfs,pdfs,ccdfmixs,pdfmixs,iltmixs,fdivs = (Dict() for _=1:6)
     # Add in ETH ensemble boosting estimator (even though we could derive it)
     ccweights = Dict() # complementary cumulative weights
     ccdfpools = Dict()
@@ -188,7 +206,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     support_radius = pertop.sf_pert_amplitudes_max[i_mode_sf]
     
     for dst = dsts
-        ccweights[dst],ccdfpools[dst],ccdfs[dst],pdfs[dst],mixcrits[dst],ccdfmixs[dst],pdfmixs[dst],iltmixs[dst],fdivs[dst],fdivpools[dst] = (Dict() for _=1:10)
+        ccweights[dst],ccdfpools[dst],ccdfs[dst],pdfs[dst],ccdfmixs[dst],pdfmixs[dst],iltmixs[dst],fdivs[dst],fdivpools[dst] = (Dict() for _=1:9)
         for rsp = rsps
             if ("g" == dst) && (rsp in ["1+u","2","2+u"])
                 continue
@@ -196,9 +214,8 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
             ccweights[dst][rsp] = zeros(Float64, (Nlev, Nleadtime, Nanc, length(distn_scales[dst])))
             ccdfs[dst][rsp] = zeros(Float64, (Nlev, Nleadtime, Nanc, length(distn_scales[dst])))
             pdfs[dst][rsp] = zeros(Float64, (Nlev-1, Nleadtime, Nanc, length(distn_scales[dst])))
-            ccdfpools[dst][rsp],mixcrits[dst][rsp],ccdfmixs[dst][rsp],pdfmixs[dst][rsp],iltmixs[dst][rsp],fdivs[dst][rsp],fdivpools[dst][rsp] = (Dict() for _=1:7)
+            ccdfpools[dst][rsp],ccdfmixs[dst][rsp],pdfmixs[dst][rsp],iltmixs[dst][rsp],fdivs[dst][rsp],fdivpools[dst][rsp] = (Dict() for _=1:6)
             for mc = keys(mixobjs)
-                mixcrits[dst][rsp][mc] = zeros(Float64, (Nleadtime, Nanc, length(distn_scales[dst])))
                 iltmixs[dst][rsp][mc] = zeros(Int64, (length(mixobjs[mc]), Nanc, length(distn_scales[dst])))
                 # TODO bootstrap for confidence intervals on mixture 
                 ccdfmixs[dst][rsp][mc] = zeros(Float64, (Nlev, Nboot+1, length(mixobjs[mc]), length(distn_scales[dst])))
@@ -276,6 +293,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
             resid_arg = NaN
             #Threads.@threads for i_scl = 1:length(distn_scales[dst])
             anc_dsc_scores = zeros(Float64, 1+Ndsc_per_leadtime)
+            ccdf = zeros(Float64, Nlev)
             for i_scl = 1:length(distn_scales[dst])
                 println("Starting scale $(i_scl)")
                 scl = distn_scales[dst][i_scl]
@@ -285,26 +303,9 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                 for i_anc = 1:Nanc
                     Rmaxanc = coast.anc_Rmax[i_anc]
                     for i_leadtime = 1:Nleadtime
-                        #if "g" == dst
-                        #    resid_range .= resid_range_linear[:,i_leadtime,i_anc]
-                        #    residmse = residmse_linear[i_leadtime,i_anc]
-                        #    resid_arg = residmse
-                        if rsp in ["1","2","e"]
-                            resid_range .= [0.0, 0.0] 
-                            resid_arg = resid_range
-                        elseif rsp in ["1+u"]
-                            resid_range .= resid_range_linear[:,i_leadtime,i_anc]
-                            resid_arg = resid_range
-                        elseif rsp in ["2+u"]
-                            resid_range .= resid_range_quadratic[:,i_leadtime,i_anc]
-                            resid_arg = resid_range
-                        elseif "1+g" == rsp
-                            residmse = residmse_linear[i_leadtime,i_anc]
-                            resid_arg = residmse
-                        else
-                            error()
-                        end
-                        ccdf,pdf = r2dfun(dst,rsp,scl)(coefs_at_anc_and_leadtime(i_leadtime,i_anc), resid_arg)
+                        ccdf,pdf = ccdf_gridded_from_samples(Rs, Ws, levels) #r2dfun(dst,rsp,scl)(coefs_at_anc_and_leadtime(i_leadtime,i_anc), resid_arg)
+                        # ---------------- Conditional CCDF ------------
+
                         # --------------- pooled version ---------------
                         anc_dsc_scores .= vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][desc_by_leadtime(coast, i_anc, leadtimes[i_leadtime], sdm)[1:Ndsc_per_leadtime]])
                         ccweights[dst][rsp][:,i_leadtime,i_anc,i_scl] .+= sum(anc_dsc_weights .* (anc_dsc_scores .> levels'); dims=1)[1,:] 
@@ -320,77 +321,44 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                             @show i_anc, ccdf[1] 
                             error()
                         end
-                        # Evaluate these distributions by mixing criteria 
-                        mixcrits[dst][rsp]["pth"][i_leadtime,i_anc,i_scl] = pth
-                        mixcrits[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = leadtimes[i_leadtime]
-                        mixcrits[dst][rsp]["r2"][i_leadtime,i_anc,i_scl] = (rsp in ["1","1+u","1+g"] ? rsquared_linear : rsquared_quadratic)[i_leadtime,i_anc]
-                        mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = sum(max.(0, levels_mid .- Rmaxanc) .* (levels[1:Nlev-1] .> Rmaxanc) .* pdf .* dlev)
-                        mixcrits[dst][rsp]["eot"][i_leadtime,i_anc,i_scl] = sum(0.5 .* (ccdf[i_thresh_cquantile:Nlev-1] .+ ccdf[i_thresh_cquantile+1:Nlev]) .* dlev[i_thresh_cquantile:Nlev-1]) 
-                        #mixcrits[dst][rsp]["eot"][i_leadtime,i_anc,i_scl] += ccdf[Nlev]/(2*dlev[Nlev-1])
-
-                        # weight the entropy by the probability of exceeding the threshold 
-                        mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end]; normalize=false) #pth*QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
-                        mixcrits[dst][rsp]["went"][i_leadtime,i_anc,i_scl] = ccdf[i_thresh_cquantile] * QG2L.entropy_fun_ccdf(ccdf[i_thresh_cquantile:end])
-                        # For correlations, the averaging weight depends on the scale, so these two aren't totally independent
-                        mixcrits[dst][rsp]["globcorr"][i_leadtime,i_anc,i_scl] = SB.mean(globcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(anc_dsc_weights[2:Ndsc_per_leadtime+1]))
-                        mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(anc_dsc_weights[2:Ndsc_per_leadtime+1]))
-                        if levels[end] >= Rmaxanc
-                            i_lev_lo = findlast(levels .< Rmaxanc)
-                            i_lev_hi = findfirst(levels .>= Rmaxanc)
-                            slope = (ccdf[i_lev_hi] - ccdf[i_lev_lo])/(levels[i_lev_hi] - levels[i_lev_lo])
-                            mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] = ccdf[i_lev_lo] + slope*(Rmaxanc - levels[i_lev_lo])
-                            @assert ccdf[i_lev_lo] >= mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] >= ccdf[i_lev_hi]
-                            mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] += (mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] - ccdf[i_lev_hi]) * (levels[i_lev_hi] + Rmaxanc)/2 * (levels[i_lev_hi] - Rmaxanc)
-
-                        end
                     end
                     # optimize each mixing objective across lead times 
                     # R-squared
                     for (i_r2thresh,r2thresh) in enumerate(r2threshes)
-                        first_inceedance = findfirst(mixcrits[dst][rsp]["r2"][:,i_anc,i_scl] .< r2thresh)
-                        #IFT.@infiltrate ("b" == dst) && ("2" == rsp) && (i_scl >= 3) 
-                        # TODO investigate whether last exceedance is better
-                        iltmixs[dst][rsp]["r2"][i_r2thresh,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
+                        for mc = ["r2lin","r2quad"]
+                            first_inceedance = findfirst(mixcrits[dst][rsp][mc][:,i_anc,i_scl] .< r2thresh)
+                            iltmixs[dst][rsp][mc][i_r2thresh,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
+                        end
                     end
-                    ilt_r2 = ("e" == rsp ? Nleadtime : iltmixs[dst][rsp]["r2"][1,i_anc,i_scl])
-                    for i_leadtime = 1:Nleadtime
-                        iltmixs[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = min(i_leadtime, ilt_r2)
-                    end
+                    iltmixs[dst][rsp]["lt"][:,i_anc,i_scl] .= 1:Nleadtime
                     for (i_pth,pth) in enumerate(mixobjs["pth"])
-                        first_inceedance = findfirst(mixcrits[dst][rsp]["pth"][1:ilt_r2,i_anc,i_scl] .< pth)
-                        last_exceedance = findlast(mixcrits[dst][rsp]["pth"][1:ilt_r2,i_anc,i_scl] .>= pth)
-                        #IFT.@infiltrate ("b" == dst) && ("2" == rsp) && (i_scl >= 3) 
-                        # TODO investigate whether last exceedance is better
-                        #iltmixs[dst][rsp]["pth"][i_pth,i_anc,i_scl] = (isnothing(first_inceedance) ? ilt_r2 : max(1, first_inceedance-1))
+                        first_inceedance = findfirst(mixcrits[dst][rsp]["pth"][1:Nleadtime,i_anc,i_scl] .< pth)
+                        last_exceedance = findlast(mixcrits[dst][rsp]["pth"][1:Nleadtime,i_anc,i_scl] .>= pth)
                         iltmixs[dst][rsp]["pth"][i_pth,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
                     end
                     for (i_pim,pim) in enumerate(mixobjs["pim"])
-                        first_inceedance = findfirst(mixcrits[dst][rsp]["pim"][1:ilt_r2,i_anc,i_scl] .< pim)
-                        last_exceedance = findlast(mixcrits[dst][rsp]["pim"][1:ilt_r2,i_anc,i_scl] .>= pim)
-                        #IFT.@infiltrate ("b" == dst) && ("2" == rsp) && (i_scl >= 3) 
-                        # TODO investigate whether last exceedance is better
-                        #iltmixs[dst][rsp]["pim"][i_pim,i_anc,i_scl] = (isnothing(first_inceedance) ? ilt_r2 : max(1, first_inceedance-1))
+                        first_inceedance = findfirst(mixcrits[dst][rsp]["pim"][1:Nleadtime,i_anc,i_scl] .< pim)
+                        last_exceedance = findlast(mixcrits[dst][rsp]["pim"][1:Nleadtime,i_anc,i_scl] .>= pim)
                         iltmixs[dst][rsp]["pim"][i_pim,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
                     end
 
                     for corrkey = ["globcorr","contcorr"]
                         for (i_corr,corr) in enumerate(mixobjs[corrkey])
-                            first_inceedance = findfirst(mixcrits[dst][rsp][corrkey][1:ilt_r2,i_anc,i_scl] .< corr)
-                            last_exceedance = findlast(mixcrits[dst][rsp][corrkey][1:ilt_r2,i_anc,i_scl] .>= corr)
+                            first_inceedance = findfirst(mixcrits[dst][rsp][corrkey][1:Nleadtime,i_anc,i_scl] .< corr)
+                            last_exceedance = findlast(mixcrits[dst][rsp][corrkey][1:Nleadtime,i_anc,i_scl] .>= corr)
                             iltmixs[dst][rsp][corrkey][i_corr,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
                         end
                     end
-
-                    # Other objectives to condition on R^2 
                     for mc = ("ent","ei","eot")
-                        iltmixs[dst][rsp][mc][1,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:ilt_r2,i_anc,i_scl])
+                        # TODO look into replacing the argmax with some weighted mean 
+                        iltmixs[dst][rsp][mc][1,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:Nleadtime,i_anc,i_scl])
                     end
                 end
                 # Now average together the PDFs and CCDFs based on the criteria from above 
                 println("Starting to sum together pdfs and ccdfs")
                 #IFT.@infiltrate ((dst=="b")&(rsp=="2"))
                 anc_weights = zeros(Float64, Nanc)
-                for mc = ("globcorr","contcorr","pim","pth","ent","ei","eot","lt","r2",) #keys(mixobjs)
+                for mc = keys(mixobjs)
                     for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
                         for i_boot = 1:Nboot+1
                             anc_weights .= 0
@@ -399,7 +367,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                                     ilt = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl] 
                                     pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
                                     @assert pth > 0
-                                    anc_weights[i_anc] = (0 == pth ? 0.0 : anc_boot_mults[i_anc]/pth)
+                                    anc_weights[i_anc] = anc_boot_mults[i_anc]/pth
                                     ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*ccdfs[dst][rsp][:,ilt,i_anc,i_scl]
                                     pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*pdfs[dst][rsp][:,ilt,i_anc,i_scl] 
                                     #@infiltrate
