@@ -672,11 +672,10 @@ function expected_improvement_samples(xs::Vector{Float64}, weights::Vector{Float
     return condent
 end
 
-function ccdf_gridded_from_samples(xs::Vector{Float64}, weights::Vector{Float64}, levels::Vector{Float64})
+function ccdf_gridded_from_samples!(ccdf::AbstractArray{Float64}, pdf::AbstractArray{Float64}, xs::Vector{Float64}, weights::Vector{Float64}, levels::Vector{Float64})
     Nlev = length(levels)
     Nx = length(xs)
     order = sortperm(xs)
-    ccdf = zeros(Nlev)
     ws = weights ./ sum(weights)
     i_x = 1
     ccdf_prev = 1.0
@@ -694,8 +693,8 @@ function ccdf_gridded_from_samples(xs::Vector{Float64}, weights::Vector{Float64}
             ccdf[i_lev] = ccdf_prev
         end
     end
-    pdf = -diff(ccdf) ./ diff(xs[order])
-    return ccdf, pdf
+    pdf .= -diff(ccdf) ./ diff(levels)
+    return 
 end
 
 

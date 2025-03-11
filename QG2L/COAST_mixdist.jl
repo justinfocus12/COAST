@@ -11,6 +11,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
     Nleadtime = length(leadtimes)
     Nr2th = length(r2threshes)
     Nscales = Dict(dst=>length(distn_scales[dst]) for dst=dsts)
+    Nlev = length(ccdf_levels)
     i_mode_sf = 1
     support_radius = pertop.sf_pert_amplitudes_max[i_mode_sf]
     (
@@ -57,7 +58,8 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
     U = vcat(zeros(Float64, (1,2)), collect(transpose(coast.pert_seq_qmc[:,1:Npert])))
     mixcrits,ccdfs,pdfs = (Dict{String,Dict}() for _=1:3)
     for dst = ["b"]
-        mixcrits[dst],ccdfs[dst],pdfs[dst] = (Dict{String,Dict}() for _=1:3)
+        mixcrits[dst] = Dict{String,Dict}()
+        ccdfs[dst],pdfs[dst] = (Dict{String,Array{Float64}}() for _=1:2)
         for rsp = ["e"]
             mixcrits[dst][rsp] = Dict{String,Array{Float64}}()
             ccdfs[dst][rsp] = zeros(Float64, (Nlev,Nleadtime,Nanc,Nscales[dst]))
@@ -86,16 +88,19 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                         mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws[2:Npert+1]))
                         mixcrits[dst][rsp]["r2lin"][i_leadtime,i_anc,i_scl] = r2lin[i_leadtime,i_anc]
                         mixcrits[dst][rsp]["r2quad"][i_leadtime,i_anc,i_scl] = r2quad[i_leadtime,i_anc]
-                        ccdfs[dst][rsp][i_leadtime,i_anc,i_scl],pdfs[i_leadtime,i_anc,i_scl] = ccdf_gridded_from_samples(Rs, Ws, levels) #r2dfun(dst,rsp,scl)(coefs_at_anc_and_leadtime(i_leadtime,i_anc), resid_arg)
+                        QG2L.ccdf_gridded_from_samples!(
+                                                        @view(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),@view(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),
+                                                        Rs, Ws, ccdf_levels
+                                                       ) 
                     end
                 end
-                
             end
         end
     end
-    @assert minimum(mixcrits[dst][rsp]["pth"]) > 0
-    JLD2.jldopen(joinpath(resultdir,"mixcrits.jld2"),"w") do f
+    JLD2.jldopen(joinpath(resultdir,"mixcrits_ccdf_pdfs.jld2"),"w") do f
         f["mixcrits"] = mixcrits
+        f["ccdfs"] = ccdfs
+        f["pdfs"] = pdfs
     end
     return mixcrits
 end
@@ -192,28 +197,20 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
         end
     end
 
-    mixcrits = evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir)
+    mixcrits,ccdfs,pdfs = JLD2.jldopen(joinpath(resultdir,"mixcrits_ccdfs_pdfs.jld2"),"r") do f
+        return f["mixcrits"],f["ccdfs"],f["pdfs"]
+    end
 
-    # Doubly nested dictionary: by input distribution, and by map 
-    ccdfs,pdfs,ccdfmixs,pdfmixs,iltmixs,fdivs = (Dict() for _=1:6)
-    # Add in ETH ensemble boosting estimator (even though we could derive it)
+    ccdfmixs,pdfmixs,iltmixs,fdivs = (Dict() for _=1:4)
     ccweights = Dict() # complementary cumulative weights
     ccdfpools = Dict()
     fdivpools = Dict()
 
-    # Set the global radii for input distributions 
-    i_mode_sf = 1
-    support_radius = pertop.sf_pert_amplitudes_max[i_mode_sf]
     
     for dst = dsts
-        ccweights[dst],ccdfpools[dst],ccdfs[dst],pdfs[dst],ccdfmixs[dst],pdfmixs[dst],iltmixs[dst],fdivs[dst],fdivpools[dst] = (Dict() for _=1:9)
-        for rsp = rsps
-            if ("g" == dst) && (rsp in ["1+u","2","2+u"])
-                continue
-            end
+        ccweights[dst],ccdfpools[dst],ccdfmixs[dst],pdfmixs[dst],iltmixs[dst],fdivs[dst],fdivpools[dst] = (Dict() for _=1:7)
+        for rsp = ["e"]
             ccweights[dst][rsp] = zeros(Float64, (Nlev, Nleadtime, Nanc, length(distn_scales[dst])))
-            ccdfs[dst][rsp] = zeros(Float64, (Nlev, Nleadtime, Nanc, length(distn_scales[dst])))
-            pdfs[dst][rsp] = zeros(Float64, (Nlev-1, Nleadtime, Nanc, length(distn_scales[dst])))
             ccdfpools[dst][rsp],ccdfmixs[dst][rsp],pdfmixs[dst][rsp],iltmixs[dst][rsp],fdivs[dst][rsp],fdivpools[dst][rsp] = (Dict() for _=1:6)
             for mc = keys(mixobjs)
                 iltmixs[dst][rsp][mc] = zeros(Int64, (length(mixobjs[mc]), Nanc, length(distn_scales[dst])))
@@ -229,44 +226,6 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     println("Initialized the fdivs and mixs")
 
 
-
-    # Combine based on Rsq and other indicators 
-    #
-    # pre-allocate the QMC sequence
-    Nsamp_reg2dist = 128^2
-    U_reg2dist = collect(transpose(QMC.sample(Nsamp_reg2dist, zeros(Float64, 2), ones(Float64, 2), QMC.LatticeRuleSample())))
-    function r2dfun(d,r,s)
-        # Below, resid might refer to either a single MSE value or a range. 
-        if "b" == d # bump function
-            if "1" == r
-                return ((coefs,resid)->QG2L.regression2distn_linear_bump(coefs, s, support_radius, levels, U_reg2dist))
-            elseif "2" == r
-                return ((coefs,resid)->QG2L.regression2distn_quadratic_bump(coefs, s, support_radius, levels, U_reg2dist))
-            elseif "e" == r
-                return ((scores,resid)->QG2L.regression2distn_empirical_bump(scores, s, support_radius, levels, U_reg2dist[1:length(scores),:]))
-            end
-        elseif "u" == d
-            if "1" == r
-                return ((coefs,resid)->QG2L.regression2distn_linear_uniform(coefs, s, levels))
-            elseif "2" == r
-                return ((coefs,resid)->QG2L.regression2distn_quadratic_uniform(coefs, s, levels, U_reg2dist))
-            elseif "1+u" == r
-                return ((coefs,resid)->QG2L.regression2distn_linear_uniform(coefs, resid, s, levels))
-            elseif "1+g" == r
-                return ((coefs,resid)->QG2L.regression2distn_linear_uniform(coefs, resid, s, levels))
-            elseif "2+u" == r
-                return ((coefs,resid)->QG2L.regression2distn_quadratic_uniform(coefs, resid, s, levels))
-            end
-        elseif "g" == d
-            if "1" == r
-                return ((coefs,resid)->QG2L.regression2distn_linear_gaussian(coefs, s, levels))
-            elseif "1+g" == r
-                return ((coefs,resid)->QG2L.regression2distn_linear_gaussian(coefs, resid, s, levels))
-            else
-                error("r2dfun is not defined for the combination of d = $d, r = $r")
-            end
-        end
-    end
     #Ndsc_per_leadtime = div(cfg.num_perts_max, Nleadtime)
     Nmem = EM.get_Nmem(ens)
     Ndsc = Nmem - Nanc
@@ -274,23 +233,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     anc_dsc_weights = ones(Float64, 1+Ndsc_per_leadtime) # For computing averages for regression skills or correlations 
     for dst = dsts
         for rsp = rsps
-            coefs_at_anc_and_leadtime(i_leadtime,i_anc) = begin
-                if rsp in ["1","1+u","1+g"] # == rsp
-                    return coefs_linear[:,i_leadtime,i_anc]
-                elseif rsp in ["2","2+u","1+u"] #"2" == rsp
-                    return coefs_quadratic[:,i_leadtime,i_anc]
-                elseif "e" == rsp
-                    idx_desc = desc_by_leadtime(coast, i_anc, leadtimes[i_leadtime], sdm)
-                    return vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][idx_desc])
-                end
-            end
-            if ("g" == dst) && (rsp in ["2","2+u","1+u"])
-                continue
-            end
-            @show dst,rsp
-            residmse = 0.0
-            resid_range = zeros(Float64,2)
-            resid_arg = NaN
+            # TODO continue here
             #Threads.@threads for i_scl = 1:length(distn_scales[dst])
             anc_dsc_scores = zeros(Float64, 1+Ndsc_per_leadtime)
             ccdf = zeros(Float64, Nlev)
