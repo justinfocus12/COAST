@@ -45,6 +45,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                     )
          end
         )
+        levels = Rccdf_valid_agglon
     coefslin,coefsquad,r2lin,r2quad = JLD2.jldopen(joinpath(resultdir,"regression_coefs.jld2"), "r") do f
         return f["coefs_linear"],f["coefs_quadratic"],f["rsquared_linear"],f["rsquared_quadratic"]
     end
@@ -56,16 +57,19 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
     Npert = div(cfg.num_perts_max, Nleadtime)
     Rs,Ws = (zeros(Npert+1) for _=1:2)
     U = vcat(zeros(Float64, (1,2)), collect(transpose(coast.pert_seq_qmc[:,1:Npert])))
-    mixcrits,ccdfs,pdfs = (Dict{String,Dict}() for _=1:3)
+    mixcrits,ccdfs,pdfs,ilts = (Dict{String,Dict}() for _=1:4)
     for dst = ["b"]
         mixcrits[dst] = Dict{String,Dict}()
+        ilts[dst] = Dict{String,Dict}()
         ccdfs[dst],pdfs[dst] = (Dict{String,Array{Float64}}() for _=1:2)
         for rsp = ["e"]
             mixcrits[dst][rsp] = Dict{String,Array{Float64}}()
+            ilts[dst][rsp] = Dict{String,Array{Int64}}()
             ccdfs[dst][rsp] = zeros(Float64, (Nlev,Nleadtime,Nanc,Nscales[dst]))
             pdfs[dst][rsp] = zeros(Float64, (Nlev-1,Nleadtime,Nanc,Nscales[dst]))
             for mc = keys(mixobjs)
                 mixcrits[dst][rsp][mc] = zeros(Float64, (Nleadtime,Nanc,Nscales[dst]))
+                ilts[dst][rsp][mc] = zeros(Float64, (length(mixobjs[mc]),Nanc,Nscales[dst]))
             end
         end
     end
@@ -81,7 +85,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                         mixcrits[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = leadtimes[i_leadtime]
                         mixcrits[dst][rsp]["pth"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs, Ws, thresh)
                         mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs, Ws, Rs[1])
-                        mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_samples(Rs, Ws, thresh)
+                        #mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_samples(Rs, Ws, thresh)
                         mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = QG2L.expected_improvement_samples(Rs, Ws, Rs[1])
                         # For correlations, the averaging weight depends on the scale, so these two aren't totally independent
                         mixcrits[dst][rsp]["globcorr"][i_leadtime,i_anc,i_scl] = SB.mean(globcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws[2:Npert+1]))
@@ -90,17 +94,39 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                         mixcrits[dst][rsp]["r2quad"][i_leadtime,i_anc,i_scl] = r2quad[i_leadtime,i_anc]
                         QG2L.ccdf_gridded_from_samples!(
                                                         @view(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),@view(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),
-                                                        Rs, Ws, ccdf_levels
+                                                        Rs, Ws, levels
                                                        ) 
+                        mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdfs[dst][rsp][i_thresh_cquantile:Nlev,i_leadtime,i_anc,i_scl]; normalize=false)
+                    end
+                end
+            end
+        end
+        for dst = ["b"]
+            for rsp = ["e"]
+                for i_scl = 1:Nscales[dst]
+                    for mc = keys(mixobjs)
+                        for (i_mcval,mcval) in enumerate(mixobjs[mc])
+                            if "lt" == mc
+                                ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = i_mcval
+                            elseif mc in ["r2lin","r2quad","pth","pim","globcorr","contcorr"]
+                                last_exceedance = findlast(mixcrits[dst][rsp][mc][:,i_anc,i_scl] .> mcval)
+                                ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
+                            elseif mc in ["ei","ent"]
+                                ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][:,i_anc,i_scl])
+                            else
+                                error()
+                            end
+                        end
                     end
                 end
             end
         end
     end
-    JLD2.jldopen(joinpath(resultdir,"mixcrits_ccdf_pdfs.jld2"),"w") do f
+    JLD2.jldopen(joinpath(resultdir,"mixcrits_ccdfs_pdfs.jld2"),"w") do f
         f["mixcrits"] = mixcrits
         f["ccdfs"] = ccdfs
         f["pdfs"] = pdfs
+        f["ilts"] = ilts
     end
     return mixcrits
 end
@@ -119,6 +145,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
     Nleadtime = length(leadtimes)
     Nr2th = length(r2threshes)
+    Nscales = Dict(dst=>length(distn_scales[dst]) for dst=dsts)
     (
      coefs_linear,residmse_linear,rsquared_linear,resid_range_linear,
      coefs_quadratic,residmse_quadratic,rsquared_quadratic,resid_range_quadratic,
@@ -197,171 +224,63 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
         end
     end
 
-    mixcrits,ccdfs,pdfs = JLD2.jldopen(joinpath(resultdir,"mixcrits_ccdfs_pdfs.jld2"),"r") do f
-        return f["mixcrits"],f["ccdfs"],f["pdfs"]
+    mixcrits,ccdfs,pdfs,iltmixs = JLD2.jldopen(joinpath(resultdir,"mixcrits_ccdfs_pdfs.jld2"),"r") do f
+        return f["mixcrits"],f["ccdfs"],f["pdfs"],f["ilts"]
     end
 
-    ccdfmixs,pdfmixs,iltmixs,fdivs = (Dict() for _=1:4)
-    ccweights = Dict() # complementary cumulative weights
-    ccdfpools = Dict()
-    fdivpools = Dict()
-
-    
-    for dst = dsts
-        ccweights[dst],ccdfpools[dst],ccdfmixs[dst],pdfmixs[dst],iltmixs[dst],fdivs[dst],fdivpools[dst] = (Dict() for _=1:7)
+    ccdfmixs,pdfmixs,fdivs = (Dict{String,Dict}() for _=1:3)
+    for dst = ["b"]
+        ccdfmixs[dst],pdfmixs[dst],fdivs[dst] = (Dict{String,Dict}() for _=1:3)
         for rsp = ["e"]
-            ccweights[dst][rsp] = zeros(Float64, (Nlev, Nleadtime, Nanc, length(distn_scales[dst])))
-            ccdfpools[dst][rsp],ccdfmixs[dst][rsp],pdfmixs[dst][rsp],iltmixs[dst][rsp],fdivs[dst][rsp],fdivpools[dst][rsp] = (Dict() for _=1:6)
+            ccdfmixs[dst][rsp],pdfmixs[dst][rsp],fdivs[dst][rsp] = (Dict{String,Dict}() for _=1:3)
             for mc = keys(mixobjs)
-                iltmixs[dst][rsp][mc] = zeros(Int64, (length(mixobjs[mc]), Nanc, length(distn_scales[dst])))
-                # TODO bootstrap for confidence intervals on mixture 
-                ccdfmixs[dst][rsp][mc] = zeros(Float64, (Nlev, Nboot+1, length(mixobjs[mc]), length(distn_scales[dst])))
-                pdfmixs[dst][rsp][mc] = zeros(Float64, (Nlev-1, Nboot+1, length(mixobjs[mc]), length(distn_scales[dst])))
-                ccdfpools[dst][rsp][mc] = zeros(Float64, (Nlev, Nboot+1, length(mixobjs[mc]), length(distn_scales[dst])))
-                fdivs[dst][rsp][mc] = Dict(fdivname=>zeros(Float64, (Nboot+1, length(mixobjs[mc]), length(distn_scales[dst]))) for fdivname = fdivnames)
-                fdivpools[dst][rsp][mc] = Dict(fdivname=>zeros(Float64, (Nboot+1, length(mixobjs[mc]), length(distn_scales[dst]))) for fdivname = fdivnames)
+                ccdfmixs[dst][rsp][mc],pdfmixs[dst][rsp][mc],fdivs[dst][rsp][mc] = (Dict{String,Array{Float64}}() for _=1:3)
+                for est = ["mix","pool"]
+                    ccdfmixs[dst][rsp][mc][est],pdfmixs[dst][rsp][mc][est],fdivs[dst][rsp][mc][est] = (zeros(Float64, (Nlev, Nboot+1, length(mixobjs[mc]), length(distn_scales[dst]))) for _=1:3)
+                end
             end
         end
     end
-    println("Initialized the fdivs and mixs")
+    println("Initialized the fdivs and (cc,p)dfmixs")
 
 
-    #Ndsc_per_leadtime = div(cfg.num_perts_max, Nleadtime)
     Nmem = EM.get_Nmem(ens)
     Ndsc = Nmem - Nanc
     Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nanc)
-    anc_dsc_weights = ones(Float64, 1+Ndsc_per_leadtime) # For computing averages for regression skills or correlations 
-    for dst = dsts
-        for rsp = rsps
-            # TODO continue here
-            #Threads.@threads for i_scl = 1:length(distn_scales[dst])
-            anc_dsc_scores = zeros(Float64, 1+Ndsc_per_leadtime)
-            ccdf = zeros(Float64, Nlev)
+    i_boot = 1
+    for dst = ["b"]
+        for rsp = ["e"]
             for i_scl = 1:length(distn_scales[dst])
                 println("Starting scale $(i_scl)")
-                scl = distn_scales[dst][i_scl]
-                anc_dsc_weights[2:Ndsc_per_leadtime+1] .= QG2L.bump_density(U_reg2dist[1:Ndsc_per_leadtime,:], scl, support_radius)
-                anc_dsc_weights[1:1] .= QG2L.bump_density(zeros(Float64, (1,2)), scl, support_radius)
-                #Threads.@threads for i_anc = 1:Nanc
-                for i_anc = 1:Nanc
-                    Rmaxanc = coast.anc_Rmax[i_anc]
-                    for i_leadtime = 1:Nleadtime
-                        ccdf,pdf = ccdf_gridded_from_samples(Rs, Ws, levels) #r2dfun(dst,rsp,scl)(coefs_at_anc_and_leadtime(i_leadtime,i_anc), resid_arg)
-                        # ---------------- Conditional CCDF ------------
-
-                        # --------------- pooled version ---------------
-                        anc_dsc_scores .= vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][desc_by_leadtime(coast, i_anc, leadtimes[i_leadtime], sdm)[1:Ndsc_per_leadtime]])
-                        ccweights[dst][rsp][:,i_leadtime,i_anc,i_scl] .+= sum(anc_dsc_weights .* (anc_dsc_scores .> levels'); dims=1)[1,:] 
-                        # ----------------------------------------------
-                        pth = ccdf[i_thresh_cquantile]
-                        ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= ccdf #.* adjustment
-                        pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl] .= pdf #.* adjustment
-                        #ccdfs[dst][rsp][1:i_thresh_cquantile-1,i_leadtime,i_anc,i_scl] .= thresh_cquantile
-                        if !(all(isfinite.(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])) && all(isfinite.(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])))
-                            println("non-finite pdf or ccdf")
-                            display(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])
-                            display(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl])
-                            @show i_anc, ccdf[1] 
-                            error()
-                        end
-                    end
-                    # optimize each mixing objective across lead times 
-                    # R-squared
-                    for (i_r2thresh,r2thresh) in enumerate(r2threshes)
-                        for mc = ["r2lin","r2quad"]
-                            first_inceedance = findfirst(mixcrits[dst][rsp][mc][:,i_anc,i_scl] .< r2thresh)
-                            iltmixs[dst][rsp][mc][i_r2thresh,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1, first_inceedance-1))
-                        end
-                    end
-                    iltmixs[dst][rsp]["lt"][:,i_anc,i_scl] .= 1:Nleadtime
-                    for (i_pth,pth) in enumerate(mixobjs["pth"])
-                        first_inceedance = findfirst(mixcrits[dst][rsp]["pth"][1:Nleadtime,i_anc,i_scl] .< pth)
-                        last_exceedance = findlast(mixcrits[dst][rsp]["pth"][1:Nleadtime,i_anc,i_scl] .>= pth)
-                        iltmixs[dst][rsp]["pth"][i_pth,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
-                    end
-                    for (i_pim,pim) in enumerate(mixobjs["pim"])
-                        first_inceedance = findfirst(mixcrits[dst][rsp]["pim"][1:Nleadtime,i_anc,i_scl] .< pim)
-                        last_exceedance = findlast(mixcrits[dst][rsp]["pim"][1:Nleadtime,i_anc,i_scl] .>= pim)
-                        iltmixs[dst][rsp]["pim"][i_pim,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
-                    end
-
-                    for corrkey = ["globcorr","contcorr"]
-                        for (i_corr,corr) in enumerate(mixobjs[corrkey])
-                            first_inceedance = findfirst(mixcrits[dst][rsp][corrkey][1:Nleadtime,i_anc,i_scl] .< corr)
-                            last_exceedance = findlast(mixcrits[dst][rsp][corrkey][1:Nleadtime,i_anc,i_scl] .>= corr)
-                            iltmixs[dst][rsp][corrkey][i_corr,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
-                        end
-                    end
-                    for mc = ("ent","ei","eot")
-                        # TODO look into replacing the argmax with some weighted mean 
-                        iltmixs[dst][rsp][mc][1,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:Nleadtime,i_anc,i_scl])
-                    end
-                end
-                # Now average together the PDFs and CCDFs based on the criteria from above 
-                println("Starting to sum together pdfs and ccdfs")
-                #IFT.@infiltrate ((dst=="b")&(rsp=="2"))
-                anc_weights = zeros(Float64, Nanc)
+                # Iterate through each mixing objective of each mixing criterion
                 for mc = keys(mixobjs)
-                    for (i_mcobj,mcobj) in enumerate(mixobjs[mc])
-                        for i_boot = 1:Nboot+1
-                            anc_weights .= 0
-                            if adjust_ccdf_per_ancestor
-                                for i_anc = 1:Nanc
-                                    ilt = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl] 
-                                    pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
-                                    @assert pth > 0
-                                    anc_weights[i_anc] = anc_boot_mults[i_anc]/pth
-                                    ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*ccdfs[dst][rsp][:,ilt,i_anc,i_scl]
-                                    pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*pdfs[dst][rsp][:,ilt,i_anc,i_scl] 
-                                    #@infiltrate
-                                    if !all(isfinite.(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl]))
-                                        println("non-finite PDF for i_boot=$(i_boot)")
-                                        display(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl])
-                                        error()
-                                    end
-                                end
-                                adjustment = thresh_cquantile / ccdfmixs[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]
-                                ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
-                                pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
-                            else
-                                for i_anc = 1:Nanc
-                                    ilt = iltmixs[dst][rsp][mc][i_mcobj,i_anc,i_scl] 
-                                    pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
-                                    @assert pth > 0
-                                    anc_weights[i_anc] = anc_boot_mults[i_anc]
-                                    i_lev_anc = findfirst(coast.anc_Rmax[i_anc] .> levels)
-                                    ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*(ccdfs[dst][rsp][:,ilt,i_anc,i_scl] .+ (1-pth).*(i_lev_anc .> (1:Nlev)))
-
-                                    pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*pdfs[dst][rsp][:,ilt,i_anc,i_scl] .* (1 .+ (1-pth).*(1:(Nlev-1) .== i_lev_anc))
-                                    ccdfpools[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .+= anc_weights[i_anc].*ccweights[dst][rsp][:,ilt,i_anc,i_scl]
-                                    #@infiltrate
-                                    if !all(isfinite.(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl]))
-                                        println("non-finite PDF for i_boot=$(i_boot)")
-                                        display(pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl])
-                                        error()
-                                    end
-                                end
-                                adjustment = thresh_cquantile / ccdfmixs[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]
-                                ccdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
-                                pdfmixs[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment
-                                adjustment_pooled = thresh_cquantile / ccdfpools[dst][rsp][mc][i_thresh_cquantile,i_boot,i_mcobj,i_scl]
-                                ccdfpools[dst][rsp][mc][:,i_boot,i_mcobj,i_scl] .*= adjustment_pooled
-                                #@infiltrate
-                            end
+                    Nmcv = length(mixobjs[mc])
+                    for i_mcval = 1:Nmcv
+                        for i_anc = 1:Nanc
+                            ilt = iltmixs[dst][rsp][mc][i_mcval,i_anc,i_scl]
+                            ccdfmixs[dst][rsp][mc]["pool"][:,i_boot,i_mcval,i_scl] .+= (anc_boot_mults[i_anc,i_boot]/Nanc) .* ccdfs[dst][rsp][:,ilt,i_anc,i_scl]
+                            pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
+                            ccdfmixs[dst][rsp][mc]["mix"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl] .+= (anc_boot_mults[i_anc,i_boot]/Nanc) .* (ccdfs[dst][rsp][i_thresh_cquantile:Nlev,ilt,i_anc,i_scl] .+ (1-pth).*(coast.anc_Rmax[i_anc] .> levels[i_thresh_cquantile:Nlev]))
                         end
-                        #IFT.@infiltrate ((dst=="b")&(rsp=="2")&(i_scl==2))
-                        #println("Starting to compute fdivs")
-                        #IFT.@infiltrate ("lt"==mc)
-                        for i_boot = 1:Nboot+1
-                            for fdivname = fdivnames
-                                # TODO get the right baseline for subasymptotic POt
-                                fdivs[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][i_thresh_cquantile:end,i_boot,i_mcobj,i_scl], ccdf_pot_valid_agglon, levels_exc, levels_exc, fdivname)
-                                fdivpools[dst][rsp][mc][fdivname][i_boot,i_mcobj,i_scl] = QG2L.fdiv_fun_ccdf(ccdfpools[dst][rsp][mc][i_thresh_cquantile:end,i_boot,i_mcobj,i_scl], ccdf_pot_valid_agglon, levels_exc, levels_exc, fdivname)
+                    end
+                    # normalize 
+                    ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]] ./= ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:i_thresh_cquantile, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]]
+                    ccdfmixs[dst][rsp][mc]["pool"][1:i_thresh_cquantile-1, :, :, :] .= NaN
+                    ccdfmixs[dst][rsp][mc]["mix"][1:i_thresh_cquantile-1, :, :, :] .= NaN
+                    for est = ["mix","pool"]
+                        # TODO manual broadcast 
+                        pdfmixs[dst][rsp][mc][est][1:Nlev-1, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]] .= -diff(ccdfmixs[dst][rsp][mc][est][1:Nlev,1:Nboot+1,1:Nmcv,1:Nscales[dst]]; dims=1) ./ diff(levels)
+                        pdfmixs[dst][rsp][mc][est][Nlev, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]] .= -ccdfmixs[dst][rsp][mc][est][Nlev,1:Nboot+1,1:Nmcv,1:Nscales[dst]] ./ (levels[Nlev]-levels[Nlev-1])
+                    end
+                    # Penalize 
+                    for fdivname = fdivnames
+                        for est = ["mix","pool"]
+                            for i_mcval = 1:length(mixobjs[mc])
+                                fdivs[dst][rsp][mc][fdivname][i_boot,i_mcval,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][est][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon, levels_exc, levels_exc, fdivname)
                             end
                         end
                     end
                 end
-                #IFT.@infiltrate true
             end
         end
     end
@@ -372,11 +291,11 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     end
 
     for filename = readdir(resultdir,join=true)
-        if endswith(filename, "ccdfs_regressed.jld2")
+        if endswith(filename, "ccdfs_regressed_oldversion.jld2")
             rm(filename)
         end
     end
-    JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"w") do f
+    JLD2.jldopen(joinpath(resultdir,"ccdfs_combined.jld2"),"w") do f
         # coordinates for parameters of distributions 
         f["levels"] = levels
         f["levels_mid"] = levels_mid
@@ -393,8 +312,5 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
         f["iltmixs"] = iltmixs
         f["ccdfmixs"] = ccdfmixs
         f["pdfmixs"] = pdfmixs 
-        f["ccweights"] = ccweights
-        f["ccdfpools"] = ccdfpools
-        f["fdivpools"] = fdivpools
     end
 end

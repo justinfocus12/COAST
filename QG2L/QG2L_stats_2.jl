@@ -557,7 +557,7 @@ function pdf2pmfnorm(pdf, edges)
     return pmf
 end
 
-function check_ccdf_validity(ccdf::Vector{Float64})
+function check_ccdf_validity(ccdf::AbstractVector{Float64})
     return (minimum(ccdf) >= 0) & (maximum(diff(ccdf)) <= 0)
 end
 
@@ -648,12 +648,19 @@ function entropy_fun_samples(xs::Vector{Float64}, weights::Vector{Float64}, loli
     N = length(xs)
     N1 = findfirst(xs[order] .> lolim)
     x0 = (N1 == 1 ? lolim : xs[order[N1-1]])
-    weightsum = sum(weights) 
-    dxs = vcat(xs[order[N1]]-x0, diff(xs[order[N1:N]]))
-    pdf_vals = weights[order[N1:N]] ./ (weightsum .* dxs)
-    entropy_contributions = -weights[order[N1:end]] ./ weightsum .* log.(pdf_vals)
-    entropy_contributions[1] *= (xs[order[N1]] - lolim) ./ (xs[order[N1]] - x0)
+    gaps = vcat(xs[order[N1]]-x0, diff(xs[order[N1:N]]))
+    weights_exc = weights[order[N1:end]]./sum(weights)
+    pdf_in_gaps = weights_exc ./ gaps
+    entropy_contributions = -xlogx.(pdf_in_gaps) .* gaps
+    #entropy_contributions[1] *= (xs[order[N1]] - lolim) ./ (xs[order[N1]] - x0)
     condent = sum(entropy_contributions)
+    #weightsum = sum(weights) 
+    #dxs = vcat(xs[order[N1]]-x0, diff(xs[order[N1:N]]))
+    #pdf_vals = weights[order[N1:N]] ./ (weightsum .* dxs)
+    #entropy_contributions = -weights[order[N1:end]] ./ weightsum .* log.(pdf_vals) .* dxs
+    #entropy_contributions[1] *= (xs[order[N1]] - lolim) ./ (xs[order[N1]] - x0)
+    #condent = sum(entropy_contributions)
+    @infiltrate
     return condent
 end
 
@@ -666,10 +673,10 @@ function expected_improvement_samples(xs::Vector{Float64}, weights::Vector{Float
     end
     x0 = (N1 == 1 ? lolim : xs[order[N1-1]])
     weightsum = sum(weights) 
-    exp_imp_contributions = vcat((lolim+xs[order[N1]])/2, (xs[order[N1:N-1]] .+ xs[order[N1+1:N]])./2) .* weights[order[N1:N]] ./ weightsum .- lolim
+    exp_imp_contributions = (vcat((lolim+xs[order[N1]])/2, (xs[order[N1:N-1]] .+ xs[order[N1+1:N]])./2) .- lolim) .* weights[order[N1:N]] ./ weightsum 
     exp_imp_contributions[1] *= (xs[order[N1]] - lolim) / (xs[order[N1]] - x0)
-    condent = sum(exp_imp_contributions)
-    return condent
+    exp_imp = sum(exp_imp_contributions)
+    return exp_imp
 end
 
 function ccdf_gridded_from_samples!(ccdf::AbstractArray{Float64}, pdf::AbstractArray{Float64}, xs::Vector{Float64}, weights::Vector{Float64}, levels::Vector{Float64})
@@ -677,22 +684,32 @@ function ccdf_gridded_from_samples!(ccdf::AbstractArray{Float64}, pdf::AbstractA
     Nx = length(xs)
     order = sortperm(xs)
     ws = weights ./ sum(weights)
+    tailsum = reverse(cumsum(reverse(weights)))
+    ws = weights ./ tailsum[1]
+    tailsum ./= tailsum[1]
     i_x = 1
     ccdf_prev = 1.0
-    ccdf_curr = 1.0 - ws[order[1]]
+    ccdf_curr = 1.0
     for i_lev = 1:Nlev
-        while levels[i_lev] >= xs[order[i_x]]
-            i_x += 1
+        while i_x <= Nx && xs[order[i_x]] <= levels[i_lev]
             ccdf_prev = ccdf_curr
-            ccdf_curr -= ws[order[i_x]]
+            ccdf_curr = (i_x == Nx ? 0 : tailsum[i_x+1])
+            i_x += 1
         end
-        if i_x > 1
-            frac = (levels[i_lev] - xs[order[i_x-1]]) / (xs[order[i_x]] - xs[order[i_x-1]])
-            ccdf[i_lev] = ccdf_prev * (1-frac) + ccdf_curr*frac
-        else
+        if i_x == 1
             ccdf[i_lev] = ccdf_prev
-        end
+        elseif 1 < i_x <= Nx
+            frac = (levels[i_lev] - xs[order[i_x-1]]) / (xs[order[i_x]] - xs[order[i_x-1]])
+            @assert (0 <= frac <= 1)
+            if i_x == Nx
+                ccdf[i_lev] = ccdf_prev * (1-frac)
+            else
+                ccdf[i_lev] = clamp(exp(log(ccdf_prev)*(1-frac) + log(ccdf_curr)*frac), ccdf_curr, ccdf_prev)
+            end
+        end # otherwise all remaining ccdf values are zero
+
     end
+    @infiltrate !check_ccdf_validity(ccdf)
     pdf .= -diff(ccdf) ./ diff(levels)
     return 
 end
