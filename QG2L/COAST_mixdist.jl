@@ -109,8 +109,10 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                             if "lt" == mc
                                 ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = i_mcval
                             elseif mc in ["r2lin","r2quad","pth","pim","globcorr","contcorr"]
+                                first_inceedance = findfirst(mixcrits[dst][rsp][mc][:,i_anc,i_scl] .<= mcval)
                                 last_exceedance = findlast(mixcrits[dst][rsp][mc][:,i_anc,i_scl] .> mcval)
-                                ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
+                                ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1,first_inceedance-1))
+                                #ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
                             elseif mc in ["ei","ent"]
                                 ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][:,i_anc,i_scl])
                             else
@@ -234,9 +236,14 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
         for rsp = ["e"]
             ccdfmixs[dst][rsp],pdfmixs[dst][rsp],fdivs[dst][rsp] = (Dict{String,Dict}() for _=1:3)
             for mc = keys(mixobjs)
-                ccdfmixs[dst][rsp][mc],pdfmixs[dst][rsp][mc],fdivs[dst][rsp][mc] = (Dict{String,Array{Float64}}() for _=1:3)
+                ccdfmixs[dst][rsp][mc],pdfmixs[dst][rsp][mc] = (Dict{String,Array{Float64}}() for _=1:2)
+                fdivs[dst][rsp][mc] = Dict{String,Dict}()
                 for est = ["mix","pool"]
-                    ccdfmixs[dst][rsp][mc][est],pdfmixs[dst][rsp][mc][est],fdivs[dst][rsp][mc][est] = (zeros(Float64, (Nlev, Nboot+1, length(mixobjs[mc]), length(distn_scales[dst]))) for _=1:3)
+                    ccdfmixs[dst][rsp][mc][est],pdfmixs[dst][rsp][mc][est] = (zeros(Float64, (Nlev, Nboot+1, length(mixobjs[mc]), length(distn_scales[dst]))) for _=1:2)
+                    fdivs[dst][rsp][mc][est] = Dict{String,Array{Float64}}()
+                    for fdivname = fdivnames
+                        fdivs[dst][rsp][mc][est][fdivname] = zeros(Float64, (Nboot+1, length(mixobjs[mc]), length(distn_scales[dst])))
+                    end
                 end
             end
         end
@@ -257,16 +264,22 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                     Nmcv = length(mixobjs[mc])
                     for i_mcval = 1:Nmcv
                         for i_anc = 1:Nanc
+                            @infiltrate !all(isfinite.(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl]))
                             ilt = iltmixs[dst][rsp][mc][i_mcval,i_anc,i_scl]
                             ccdfmixs[dst][rsp][mc]["pool"][:,i_boot,i_mcval,i_scl] .+= (anc_boot_mults[i_anc,i_boot]/Nanc) .* ccdfs[dst][rsp][:,ilt,i_anc,i_scl]
                             pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
+                            @infiltrate pth <= 0
+                            pthmix = ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile,i_boot,i_mcval,i_scl]
+                            @infiltrate !(pthmix > 0)
                             ccdfmixs[dst][rsp][mc]["mix"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl] .+= (anc_boot_mults[i_anc,i_boot]/Nanc) .* (ccdfs[dst][rsp][i_thresh_cquantile:Nlev,ilt,i_anc,i_scl] .+ (1-pth).*(coast.anc_Rmax[i_anc] .> levels[i_thresh_cquantile:Nlev]))
+                            @infiltrate !QG2L.check_ccdf_validity(ccdfmixs[dst][rsp][mc]["mix"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl])
+                            @infiltrate !QG2L.check_ccdf_validity(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl])
                         end
                     end
                     # normalize 
-                    ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]] ./= ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:i_thresh_cquantile, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]]
-                    ccdfmixs[dst][rsp][mc]["pool"][1:i_thresh_cquantile-1, :, :, :] .= NaN
-                    ccdfmixs[dst][rsp][mc]["mix"][1:i_thresh_cquantile-1, :, :, :] .= NaN
+                    ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev, 1:Nboot+1, 1:Nmcv, i_scl] ./= ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:i_thresh_cquantile, 1:Nboot+1, 1:Nmcv, i_scl]
+                    ccdfmixs[dst][rsp][mc]["pool"][1:i_thresh_cquantile-1, :, :, i_scl] .= NaN
+                    ccdfmixs[dst][rsp][mc]["mix"][1:i_thresh_cquantile-1, :, :, i_scl] .= NaN
                     for est = ["mix","pool"]
                         # TODO manual broadcast 
                         pdfmixs[dst][rsp][mc][est][1:Nlev-1, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]] .= -diff(ccdfmixs[dst][rsp][mc][est][1:Nlev,1:Nboot+1,1:Nmcv,1:Nscales[dst]]; dims=1) ./ diff(levels)
@@ -276,7 +289,8 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                     for fdivname = fdivnames
                         for est = ["mix","pool"]
                             for i_mcval = 1:length(mixobjs[mc])
-                                fdivs[dst][rsp][mc][fdivname][i_boot,i_mcval,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][est][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon, levels_exc, levels_exc, fdivname)
+                                @assert maximum(abs.(1 .- [ccdfmixs[dst][rsp][mc][est][i_thresh_cquantile,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1]])) < 1e-6
+                                fdivs[dst][rsp][mc][est][fdivname][i_boot,i_mcval,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][est][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon, levels_exc, levels_exc, fdivname)
                             end
                         end
                     end

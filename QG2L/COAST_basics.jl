@@ -1075,7 +1075,6 @@ function compute_contour_dispersion(
         end
     end
     @show size_pre
-    @infiltrate
     # load the pre-computed correlations if they exist 
 
     # pre-allocate arrays for fast in-place correlation calculations 

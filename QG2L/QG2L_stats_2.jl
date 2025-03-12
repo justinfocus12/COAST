@@ -558,11 +558,12 @@ function pdf2pmfnorm(pdf, edges)
 end
 
 function check_ccdf_validity(ccdf::AbstractVector{Float64})
-    return (minimum(ccdf) >= 0) & (maximum(diff(ccdf)) <= 0)
+    return (minimum(ccdf) >= 0) & (maximum(diff(ccdf)) <= 0) & (ccdf[1] > 0)
 end
 
 
 function ccdf2pmf(ccdf; normalize::Bool=true)
+    @infiltrate !check_ccdf_validity(ccdf)
     @assert check_ccdf_validity(ccdf)
     pmf = vcat(-diff(ccdf), [ccdf[end]])
     if normalize

@@ -68,7 +68,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                              "plot_fdivs" =>                     1,
                              "plot_ccdfs_latdep" =>              1,
                              # danger zone
-                             "remove_pngs" =>                    0,
+                             "remove_pngs" =>                    1,
                              # defunct/hibernating
                              "print_simtimes" =>                 0,
                              "plot_pot_ccdfs_latdep" =>          0,
@@ -205,7 +205,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         colgap!(lout, 1, 10)
         colgap!(lout, 2, 10)
         #colgap!(lout, 3, 10)
-        save(joinpath(resultdir,"ccdfs_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph))_accpa$(Int(adjust_ccdf_per_ancestor)).png"),fig)
+        save(joinpath(resultdir,"ccdfs_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
 
         # ---------- Plot GPD parameters along with moments ---------
         mssk = JLD2.jldopen(joinpath(resultdir_dns,"moments_mssk_$(cfgs[1].target_field[1:end-1]).jld2"),"r") do f
@@ -272,25 +272,25 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     if todo["compile_fdivs"] 
         # Plot the TV achieved by (a) maximizing entropy, and (b) choosing a specific lead time, as a function of latitude. Do this with two vertically stacked plots
         dsts = ("b",)
-        rsps = ("2","e")
+        rsps = ("e",)
         i_boot = 1
 
         @show Nleadtime
 
-        fdivs = Dict()
-        fdivpools = Dict()
+        mcs2compile = ["contcorr","globcorr","ei","pim","pth","ent","lt","r2lin","r2quad"]
+
+        fdivs = Dict{String,Dict}()
         for dst = dsts
-            fdivs[dst] = Dict()
-            fdivpools[dst] = Dict()
+            fdivs[dst] = Dict{String,Dict}()
             for rsp = rsps
-                fdivs[dst][rsp] = Dict()
-                fdivpools[dst][rsp] = Dict()
-                for mc = ["contcorr","globcorr","ei","pim","pth","ent","lt","r2"]
-                    fdivs[dst][rsp][mc] = Dict()
-                    fdivpools[dst][rsp][mc] = Dict()
-                    for fdivname = fdivnames
-                        fdivs[dst][rsp][mc][fdivname] = zeros(Float64, (Nytgt,Nboot+1,Nmcs[mc],Nscales[dst]))
-                        fdivpools[dst][rsp][mc][fdivname] = zeros(Float64, (Nytgt,Nboot+1,Nmcs[mc],Nscales[dst]))
+                fdivs[dst][rsp] = Dict{String,Dict}()
+                for mc = mcs2compile
+                    fdivs[dst][rsp][mc] = Dict{String,Dict}()
+                    for est = ["mix","pool"]
+                        fdivs[dst][rsp][mc][est] = Dict{String,Array{Float64}}()
+                        for fdivname = fdivnames
+                            fdivs[dst][rsp][mc][est][fdivname] = zeros(Float64, (Nytgt,Nboot+1,Nmcs[mc],Nscales[dst]))
+                        end
                     end
                 end
             end
@@ -301,13 +301,14 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         end
         for (i_ytgt,ytgt) in enumerate(ytgts)
             resultdir_y = joinpath(exptdirs_COAST[i_ytgt],"results")
-            JLD2.jldopen(joinpath(resultdir_y,"ccdfs_regressed_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"r") do f
+            JLD2.jldopen(joinpath(resultdir_y,"ccdfs_combined.jld2"),"r") do f
                 for dst = dsts
                     for rsp = rsps
-                        for mc = ["contcorr","globcorr","ei","pim","pth","ent","lt","r2"]
-                            for fdivname = fdivnames
-                                fdivs[dst][rsp][mc][fdivname][i_ytgt,:,:,:] .= f["fdivs"][dst][rsp][mc][fdivname][:,:,:]
-                                fdivpools[dst][rsp][mc][fdivname][i_ytgt,:,:,:] .= f["fdivpools"][dst][rsp][mc][fdivname][:,:,:]
+                        for mc = mcs2compile
+                            for est = ["mix","pool"]
+                                for fdivname = fdivnames
+                                    fdivs[dst][rsp][mc][est][fdivname][i_ytgt,:,:,:] .= f["fdivs"][dst][rsp][mc][est][fdivname][:,:,:]
+                                end
                             end
                         end
                     end
@@ -318,19 +319,13 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             end
         end
 
-        for filename = readdir(resultdir,join=true)
-            if endswith(filename,"fdivs.jld2")
-                rm(filename)
-            end
-        end
-        JLD2.jldopen(joinpath(resultdir,"fdivs_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"w") do f
+        JLD2.jldopen(joinpath(resultdir,"fdivs.jld2"),"w") do f
             f["fdivs"] = fdivs
-            f["fdivpools"] = fdivpools
             f["fdivs_ancgen_valid"] = fdivs_ancgen_valid
         end
     else
-        fdivs,fdivpools,fdivs_ancgen_valid = JLD2.jldopen(joinpath(resultdir,"fdivs_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"r") do f
-            return f["fdivs"],f["fdivpools"],f["fdivs_ancgen_valid"]
+        fdivs,fdivs_ancgen_valid = JLD2.jldopen(joinpath(resultdir,"fdivs.jld2"),"r") do f
+            return f["fdivs"],f["fdivs_ancgen_valid"]
         end
     end
 
@@ -364,22 +359,22 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=4, label="Short DNS\n(90% CI)")
                         # All desired mixing criteria
                         for (i_syncmc,syncmc) in enumerate(syncmcs)
-                            idx_mcobj_best = mapslices(argmin, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1]
-                            scatterlines!(ax, [fdivs[dst][rsp][syncmc][fdivname][i_ytgt,i_boot,idx_mcobj_best[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=mixcrit_colors[syncmc], linestyle=:solid, label="Optimal $(mixcrit_labels[syncmc])")
-                            idx_mcobj_best_pool = mapslices(argmin, fdivpools[dst][rsp][syncmc][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1]
-                            scatterlines!(ax, [fdivpools[dst][rsp][syncmc][fdivname][i_ytgt,i_boot,idx_mcobj_best_pool[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=mixcrit_colors[syncmc], linestyle=(:dot,:dense), #=label="Optimal $(mixcrit_labels[syncmc])"=#)
-                            # Max-entropy
-                            #lines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=:red, linewidth=3, label=mixobj_labels["ent"][1], alpha=0.5)
-                            # Max-EI 
+                            for (est,linestyle) = (("mix",:solid),("pool",(:dot,:dense)))
+                                idx_mcobj_best = mapslices(argmin, fdivs[dst][rsp][syncmc][est][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1]
+                                scatterlines!(ax, [fdivs[dst][rsp][syncmc][est][fdivname][i_ytgt,i_boot,idx_mcobj_best[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=mixcrit_colors[syncmc], linestyle=linestyle, label="Optimal $(mixcrit_labels[syncmc])")
+                                # Max-entropy
+                                #lines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=:red, linewidth=3, label=mixobj_labels["ent"][1], alpha=0.5)
+                                # Max-EI 
+                            end
                         end
-                        scatterlines!(ax, fdivs[dst][rsp]["ei"][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ei"], linewidth=1, linestyle=:solid, label=mixobj_labels["ei"][1], alpha=1.0)
-                        scatterlines!(ax, fdivpools[dst][rsp]["ei"][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ei"], linewidth=1, linestyle=(:dot,:dense), #=label=mixobj_labels["ei"][1],=# alpha=1.0)
-                        scatterlines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ent"], linewidth=1, linestyle=:solid, label=mixobj_labels["ent"][1], alpha=1.0)
-                        scatterlines!(ax, fdivpools[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ent"], linewidth=1, linestyle=(:dot,:dense), #=label=mixobj_labels["ent"][1],=# alpha=1.0)
-                        lout[1,1] = Legend(fig, ax; labelsize=10, framevisible=false)
+                        for (est,linestyle) = (("mix",:solid),("pool",(:dot,:dense)))
+                            scatterlines!(ax, fdivs[dst][rsp]["ei"][est][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ei"], linewidth=1, linestyle=linestyle, label=mixobj_labels["ei"][1], alpha=1.0)
+                            scatterlines!(ax, fdivs[dst][rsp]["ent"][est][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ent"], linewidth=1, linestyle=linestyle, label=mixobj_labels["ent"][1], alpha=1.0)
+                        end
+                        lout[1,1] = Legend(fig, ax; labelsize=10, framevisible=false, merge=true)
                         colsize!(lout, 2, Relative(4/5))
 
-                        save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
+                        save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl).png"), fig)
                         # TODO Do a parallel figure bit with leadtime and committor as the independent variables, fdiv as the dependent variable 9just a slice of the phdgms from the one-latitude cases)
                     end
                 end
@@ -398,24 +393,25 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         fdivname = "qrmse"
         fdivlabel = "𝐿²"
         mc = "ent" # this is the privileged mixing criterion on which to optimize 
+        est = "mix"
         softmean(x,Eofx,beta) = SB.mean(x, SB.weights(exp.(-Eofx.*beta)))
         for i_scl = scales2plot
             (pim_of_ast,contcorr_of_ast,fdiv_of_ast,mc_of_ast) = (zeros(Float64, (Nleadtime,Nytgt)) for _=1:4)
             (ast_of_contcorr,fdiv_of_contcorr,mc_of_contcorr) = (zeros(Float64, (Nmcs["contcorr"],Nytgt)) for _=1:3)
             (ast_of_pim,fdiv_of_pim,mc_of_pim) = (zeros(Float64, (Nmcs["pim"],Nytgt)) for _=1:3)
-            (idx_ast_best,idx_contcorr_best) = (mapslices(argmin, fdivs[dst][rsp][syncmc][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1] for syncmc=("lt","contcorr"))
+            (idx_ast_best,idx_contcorr_best) = (mapslices(argmin, fdivs[dst][rsp][syncmc][est][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1] for syncmc=("lt","contcorr"))
             for (i_ytgt,ytgt) in enumerate(ytgts)
-                JLD2.jldopen(joinpath(exptdirs_COAST[i_ytgt],"results","ccdfs_regressed_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"r") do f
+                JLD2.jldopen(joinpath(exptdirs_COAST[i_ytgt],"results","ccdfs_combined.jld2"),"r") do f
                     Nancy = size(f["mixcrits"][dst][rsp]["lt"],2)
                     # AST as independent variable
                     contcorr_of_ast[:,i_ytgt] .= SB.mean(f["mixcrits"][dst][rsp]["contcorr"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
                     pim_of_ast[:,i_ytgt] .= SB.mean(f["mixcrits"][dst][rsp]["pim"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
                     mc_of_ast[:,i_ytgt] .= SB.mean(f["mixcrits"][dst][rsp][mc][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
-                    fdiv_of_ast[:,i_ytgt] .= (f["fdivs"][dst][rsp]["lt"][fdivname][i_boot,1:Nleadtime,i_scl])
+                    fdiv_of_ast[:,i_ytgt] .= (f["fdivs"][dst][rsp]["lt"][est][fdivname][i_boot,1:Nleadtime,i_scl])
                     # pim as independent variable
                     ilts = f["iltmixs"][dst][rsp]["pim"][1:Nmcs["pim"],1:Nancy,i_scl]
                     ast_of_pim[:,i_ytgt] .= sdm.tu.*SB.mean(leadtimes[ilts]; dims=2)[:,1]
-                    fdiv_of_pim[:,i_ytgt] .= (f["fdivs"][dst][rsp]["pim"][fdivname][i_boot,1:Nmcs["pim"],i_scl])
+                    fdiv_of_pim[:,i_ytgt] .= (f["fdivs"][dst][rsp]["pim"][est][fdivname][i_boot,1:Nmcs["pim"],i_scl])
                     mc_of_pim[:,i_ytgt] .= [
                                             SB.mean([f["mixcrits"][dst][rsp][mc][ilts[i_pim,i_anc],i_anc,i_scl] for i_anc=1:Nancy]) 
                                             for i_pim=1:Nmcs["pim"]
@@ -423,7 +419,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     # contcorr as independent variable
                     ilts = f["iltmixs"][dst][rsp]["contcorr"][1:Nmcs["contcorr"],1:Nancy,i_scl]
                     ast_of_contcorr[:,i_ytgt] .= sdm.tu.*SB.mean(leadtimes[ilts]; dims=2)[:,1]
-                    fdiv_of_contcorr[:,i_ytgt] .= (f["fdivs"][dst][rsp]["contcorr"][fdivname][i_boot,1:Nmcs["contcorr"],i_scl])
+                    fdiv_of_contcorr[:,i_ytgt] .= (f["fdivs"][dst][rsp]["contcorr"][est][fdivname][i_boot,1:Nmcs["contcorr"],i_scl])
                     mc_of_contcorr[:,i_ytgt] .= [
                                             SB.mean([f["mixcrits"][dst][rsp][mc][ilts[i_contcorr,i_anc],i_anc,i_scl] for i_anc=1:Nancy]) 
                                             for i_contcorr=1:Nmcs["contcorr"]
@@ -457,6 +453,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             colorscale = identity
             fdivrange = [minimum(minimum.([fdiv_of_ast,fdiv_of_contcorr,fdiv_of_pim])),maximum(maximum.([fdiv_of_ast,fdiv_of_contcorr,fdiv_of_pim]))]
             mcrange = (minimum(minimum.([mc_of_ast,mc_of_contcorr,mc_of_pim])),maximum(maximum.([mc_of_ast,mc_of_contcorr,mc_of_pim])))
+            idx_maxmc_ast,idx_maxmc_contcorr = (mapslices(argmax, mcindep; dims=1)[1,:] for mcindep=(mc_of_ast,mc_of_contcorr))
             if normalize_by_latitude
                 for arr = (
                            fdiv_of_ast,fdiv_of_contcorr,fdiv_of_pim,
@@ -470,9 +467,6 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 colorrange_fdiv = fdivrange
                 colorrange_mc = mcrange
             end
-            beta = 12.0
-            ast_softbest = mapslices(F->softmean(leadtimes, F, beta), fdiv_of_ast; dims=1)[1,:]
-            transcontcorr_softbest = mapslices(F->softmean(transcorr.(mixobjs["contcorr"]), F, beta), fdiv_of_contcorr; dims=1)[1,:]
 
 
             fig = Figure(size=(400,350))
@@ -490,6 +484,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(fdiv_of_ast; dims=1); colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
             co1 = contour!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast; dims=1); levels=range(mcrange...; length=7), colormap=:heat, labels=false)
             scatter!(ax1, -sdm.tu.*leadtimes[idx_ast_best], ytgts; color=:black)
+            lines!(ax1, -sdm.tu.*leadtimes[idx_maxmc_ast], ytgts; color=:black, linewidth=2)
             #lines!(ax1, -sdm.tu.*ast_softbest, ytgts; color=:black, linewidth=2, linestyle=(:dash,:dense))
             #co1pim = contour!(ax1, -leadtimes.*sdm.tu, ytgts, reverse(pim_of_ast; dims=1); color=:black, linestyle=(:dot,:dense), labels=false)
             cbar1 = Colorbar(lout[2,1], hm1; vertical=false, label="$(errlabel) (iso-$(mixcrit_labels["lt"]))", cbarargs...)
@@ -497,6 +492,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             hm2 = heatmap!(ax2, transcorr.(mixobjs["contcorr"]), ytgts, fdiv_of_contcorr; colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv) 
             co2 = contour!(ax2, transcorr.(mixobjs["contcorr"]), ytgts, mc_of_contcorr; levels=range(mcrange...; length=7), colormap=:heat, labels=false) 
             scatter!(ax2, transcorr.(mixobjs["contcorr"][idx_contcorr_best]), ytgts; color=:black)
+            lines!(ax2, transcorr.(mixobjs["contcorr"][idx_maxmc_contcorr]), ytgts; color=:black, linewidth=2)
             cbar2 = Colorbar(lout[2,2], hm2; vertical=false, label="$(errlabel) (iso-$(mixcrit_labels["contcorr"])", cbarargs...)
             rowgap!(lout, 1, 0)
             rowgap!(lout, 2, 5)
@@ -507,15 +503,12 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             rowsize!(lout, 3, Relative(2/3))
 
             resize_to_layout!(fig)
-            save(joinpath(resultdir,"phdgm_ast_contcorr_$(dst)_$(rsp)_$(i_scl)_$(fdivname)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
+            save(joinpath(resultdir,"phdgm_ast_contcorr_$(dst)_$(rsp)_$(i_scl)_$(fdivname).png"), fig)
 
             # --------------- Show EI as a function of (AST,contcorr) -----------
-            beta = -12.0
             fig = Figure(size=(400,350), )
             lout = fig[1,1] = GridLayout()
             idx_maxei_ast,idx_maxei_contcorr = (mapslices(argmax, mcindep; dims=1)[1,:] for mcindep=(mc_of_ast,mc_of_contcorr))
-            ast_softmaxei = mapslices(F->softmean(leadtimes, F, beta), mc_of_ast, dims=1)[1,:]
-            transcontcorr_softmaxei = mapslices(F->softmean(transcorr.(mixobjs["contcorr"]), F, beta), mc_of_contcorr; dims=1)[1,:]
             axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6)
             cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :valign=>:bottom)
             toplabel = "$(label_target(target_r, sdm)), scale $(distn_scales[dst][i_scl]), threshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))=$(threshcquantstr)"
@@ -545,97 +538,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             rowsize!(lout, 3, Relative(2/3))
             resize_to_layout!(fig)
             @infiltrate !(all(isfinite.(mc_of_ast)) && all(isfinite.(mc_of_contcorr)))
-            save(joinpath(resultdir,"phdgm_ast_contcorr_$(dst)_$(rsp)_$(i_scl)_$(mc)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
-        end
-    end
-    if todo["plot_pot_ccdfs_latdep"]
-        # Two panels: (1) compare valid to ancgen, (2) compare valid to coast 
-        ccdfs_pot_valid,ccdfs_pot_ancgen = (zeros(Float64, (Nytgt,Nlev_exc)) for _=1:3)
-        for (i_ytgt,ytgt) in enumerate(ytgts)
-            cfgstr = strrep_ConfigCOAST(cfgs[i_ytgt])
-            resultdir_COAST = joinpath(exptdirs_COAST[i_ytgt], "results")
-            JLD2.jldopen(joinpath(resultdir_COAST, "objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
-                ccdfs_pot_ancgen[i_ytgt,:] .= f["ccdf_pot_ancgen_seplon"][:,1]
-                ccdfs_pot_valid[i_ytgt,:] .= f["ccdf_pot_valid_agglon"]
-            end
-        end
-        potccdfmixs = Dict()
-        for dst = dsts
-            potccdfmixs[dst] = Dict()
-            for rsp = rsps
-                potccdfmixs[dst][rsp] = Dict()
-                for mc = ["pim","pth","ent",]
-                    potccdfmixs[dst][rsp][mc] = zeros(Float64, (Nytgt,Nlev_exc,Nmcs[mc],Nscales[dst]))
-                end
-            end
-        end
-        i_boot = 1
-        for (i_ytgt,ytgt) in enumerate(ytgts)
-            resultdir_COAST = joinpath(exptdirs_COAST[i_ytgt], "results")
-            JLD2.jldopen(joinpath(resultdir_COAST, "ccdfs_regressed_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"r") do f
-                for dst = dsts
-                    for rsp = rsps
-                        for mc = ["pim","ent","pth"]
-                            potccdfmixs[dst][rsp][mc][i_ytgt,1:Nlev_exc,1:Nmcs[mc],1:Nscales[dst]] .= f["ccdfmixs"][dst][rsp][mc][i_thresh_cquantile:end, i_boot, :, :]
-                        end
-                    end
-                end
-            end
-        end
-
-        for dst = ["b",]
-            for rsp = ["e"]
-                for mc = ["ent","pth","pim"]
-                    for fdivname = ["qrmse"]
-                        for i_scl = [1,4,8,12]
-                            idx_mcobj = mapslices(argmin, fdivs[dst][rsp][mc][fdivname][:,i_boot,:,i_scl]; dims=2)
-                            scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
-                            fig = Figure(size=(500,1000))
-                            lout = fig[1,1] = GridLayout()
-                            title_suffixes = ["Short DNS","best $(mc_labels[mc])"]
-                            axag,axcoast = [
-                                            Axis(lout[i,1], 
-                                                 xlabel="Peak-adjusted log₂(exceedance probability)", ylabel="𝑦₀/𝐿", title="$(label_target(target_r,sdm)), $(scalestr), $(title_suffixes[i])", 
-                                                 titlefont=:regular, xgridvisible=false, ygridvisible=false,
-                                                 xscale=log2, xticks=(ccdf_levels[i_thresh_cquantile:end], string.(-i_thresh_cquantile:-1:-Nlev))
-                                                )
-                                            for i=1:2
-                                           ]
-                            colargs = Dict(:colormap=>Reverse(:roma), :colorrange=>(i_thresh_cquantile,length(ccdf_levels)))
-
-                            for ax = (axag,axcoast)
-                                for i_lev = 1:Nlev_exc
-                                    #lines!(ax, thresh_cquantile.*ccdfs_pot_valid[:,i_lev], ytgts; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=(:dash,:dense))
-                                    vlines!(ax, ccdf_levels[i_thresh_cquantile+i_lev-1]; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=(:dash,:dense))
-                                end
-                            end
-                            epsilon = ccdf_levels[end]/2
-                            for i_lev = 1:Nlev_exc
-                                lines!(axag, 
-                                       max.(epsilon, 
-                                             ccdf_levels[i_thresh_cquantile+i_lev-1]
-                                             .*ccdfs_pot_ancgen[:,i_lev]
-                                             ./ccdfs_pot_valid[:,i_lev], 
-                                            ),
-                                        ytgts; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=:solid
-                                      )
-                                lines!(axcoast, 
-                                       max.(epsilon, 
-                                            ccdf_levels[i_thresh_cquantile+i_lev-1]
-                                            .*[potccdfmixs[dst][rsp][mc][i_ytgt,i_lev,idx_mcobj[i_ytgt],i_scl] for i_ytgt=1:Nytgt]
-                                            ./(thresh_cquantile.*ccdfs_pot_valid[:,i_lev])
-                                           ),
-                                       ytgts; color=i_lev+i_thresh_cquantile-1, colargs..., linestyle=:solid)
-                            end
-                            for ax = (axag,axcoast)
-                                xlims!(ax, epsilon/2, thresh_cquantile*1.01)
-                            end
-                            linkxaxes!(axag, axcoast)
-                            save(joinpath(resultdir,"ccdfs_pot_coast_$(dst)_$(rsp)_$(mc)_$(i_scl)_min$(fdivname)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
-                        end
-                    end
-                end
-            end
+            save(joinpath(resultdir,"phdgm_ast_contcorr_$(dst)_$(rsp)_$(i_scl)_$(mc).png"), fig)
         end
     end
 end
