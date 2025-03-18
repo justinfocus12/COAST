@@ -58,6 +58,8 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
     Rs,Ws = (zeros(Npert+1) for _=1:2)
     U = vcat(zeros(Float64, (1,2)), collect(transpose(coast.pert_seq_qmc[:,1:Npert])))
     mixcrits,ccdfs,pdfs,ilts = (Dict{String,Dict}() for _=1:4)
+    mcdiff = zeros(Float64,Nleadtime-1)
+    mc_locmax_flag = zeros(Bool, Nleadtime)
     for dst = ["b"]
         mixcrits[dst] = Dict{String,Dict}()
         ilts[dst] = Dict{String,Dict}()
@@ -114,7 +116,19 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                                 ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1,first_inceedance-1))
                                 #ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
                             elseif mc in ["ei","ent"]
-                                ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][:,i_anc,i_scl])
+                                # Find first local maximum
+                                mcdiff .= diff(mixcrits[dst][rsp][mc][1:Nleadtime,i_anc,i_scl])
+                                mc_locmax_flag[2:end-1] .= (mcdiff[1:end-1] .> 0) .& (mcdiff[2:end] .< 0)
+                                mc_locmax_flag[1] = (mcdiff[1] < 0)
+                                mc_locmax_flag[end] = (mcdiff[end] > 0)
+                                #@infiltrate #any(mc_locmax_flag)
+                                if false && any(mc_locmax_flag)
+                                    ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = findfirst(mc_locmax_flag)
+                                else
+                                
+
+                                    ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:Nleadtime,i_anc,i_scl])
+                                end
                             else
                                 error()
                             end
@@ -202,6 +216,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     levels_mid = 0.5 .* (levels[1:end-1] .+ levels[2:end])
     levels_exc = levels[i_thresh_cquantile:end]
     levels_exc_mid = 0.5 .* (levels_exc[1:end-1] .+ levels_exc[2:end])
+    i_level_highest_shortdns = findlast(levels_exc .< maximum(Rccdf_ancgen_seplon))
     dlev = diff(levels)
     Nlev = length(levels)
     Nanc = length(coast.ancestors)
@@ -286,11 +301,13 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                         pdfmixs[dst][rsp][mc][est][Nlev, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]] .= -ccdfmixs[dst][rsp][mc][est][Nlev,1:Nboot+1,1:Nmcv,1:Nscales[dst]] ./ (levels[Nlev]-levels[Nlev-1])
                     end
                     # Penalize 
+                    idx_lev = collect(range(i_thresh_cquantile,i_level_highest_shortdns; step=1)) 
                     for fdivname = fdivnames
                         for est = ["mix","pool"]
                             for i_mcval = 1:length(mixobjs[mc])
                                 @assert maximum(abs.(1 .- [ccdfmixs[dst][rsp][mc][est][i_thresh_cquantile,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1]])) < 1e-6
-                                fdivs[dst][rsp][mc][est][fdivname][i_boot,i_mcval,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][est][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon, levels_exc, levels_exc, fdivname)
+                                # Only integrte up to the maximum achieve by short DNS 
+                                fdivs[dst][rsp][mc][est][fdivname][i_boot,i_mcval,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][est][idx_lev,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1:length(idx_lev)], levels_exc[1:length(idx_lev)], levels_exc[1:length(idx_lev)], fdivname)
                             end
                         end
                     end

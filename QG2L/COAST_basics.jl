@@ -985,15 +985,17 @@ function plot_contour_dispersion_distribution(
      fdivnames,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
-    globcorr,contcorr,contsymdiff = JLD2.jldopen(contour_dispersion_filename, "r") do f
-        return f["globcorr"],f["contcorr"],f["contsymdiff"]
+    globcorr,contcorr,contsymdiff,globlyap,contlyap = JLD2.jldopen(contour_dispersion_filename, "r") do f
+        return f["globcorr"],f["contcorr"],f["contsymdiff"],f["globlyap"],f["contlyap"]
     end
     Nt,Nleadtime,Ndsc,Nanc = size(globcorr) # Ndesc here is per-leadtime
     for i_anc = idx_anc_2plot
-        fig = Figure(size=(600,400))
-        ylabels = [@sprintf("σ⁻¹(%s)", mixcrit_labels["globcorr"]), @sprintf("σ⁻¹(%s)", mixcrit_labels["contcorr"])]
+        fig = Figure(size=(600,600))
+        ylabels_corr = [@sprintf("σ⁻¹(%s)", mixcrit_labels[corrkey]) for corrkey=["globcorr","contcorr"]]
+        ylabels_lyap = [@sprintf("(½)∂ₜlog(1−%s)", mixcrit_labels[corrkey]) for corrkey=["globcorr","contcorr"]]
         lout = fig[1,1] = GridLayout()
-        ax_globcorr,ax_contcorr, = [Axis(lout[i,1]; xlabel="𝑡 − 𝑡* (𝑡* = $(@sprintf("%.0f", coast.anc_tRmax[i_anc]/sdm.tu)))", ylabel=ylabels[i], yscale=identity, xgridvisible=false, ygridvisible=false) for i=1:2]
+        ax_globcorr,ax_contcorr, = [Axis(lout[i_row,1]; xlabel="𝑡 − 𝑡* (𝑡* = $(@sprintf("%.0f", coast.anc_tRmax[i_anc]/sdm.tu)))", ylabel=ylabels_corr[i], yscale=identity, xgridvisible=false, ygridvisible=false) for (i,i_row) in enumerate([1,3])]
+        ax_globlyap,ax_contlyap, = [Axis(lout[i_row,1]; xlabel="𝑡 − 𝑡* (𝑡* = $(@sprintf("%.0f", coast.anc_tRmax[i_anc]/sdm.tu)))", ylabel=ylabels_lyap[i], yscale=identity, xgridvisible=false, ygridvisible=false) for (i,i_row) in enumerate([2,4])]
         tgrid_ph = (collect(1:1:Nt) .- cfg.lead_time_max) .* sdm.tu
         for i_leadtime = collect(2:8:Nleadtime)
             leadtime = leadtimes[i_leadtime]
@@ -1001,14 +1003,20 @@ function plot_contour_dispersion_distribution(
             for i_dsc = 1:Ndsc
                 lines!(ax_globcorr,tgrid_ph[tidx],transcorr.((globcorr[tidx,i_leadtime,i_dsc,i_anc])); color=:tomato)
                 lines!(ax_contcorr,tgrid_ph[tidx],transcorr.((contcorr[tidx,i_leadtime,i_dsc,i_anc])); color=:tomato)
+                lines!(ax_globlyap,tgrid_ph[tidx],globlyap[tidx,i_leadtime,i_dsc,i_anc]; color=:tomato)
+                lines!(ax_contlyap,tgrid_ph[tidx],contlyap[tidx,i_leadtime,i_dsc,i_anc]; color=:tomato)
             end
         end
         for (i_leadtime,leadtime) in enumerate(leadtimes)
             tidx = (cfg.lead_time_max-leadtime+2):1:Nt
             lines!(ax_globcorr, tgrid_ph[tidx], transcorr.((SB.mean(globcorr[:,i_leadtime,:,i_anc]; dims=2)[tidx,1])); color=:black)
             lines!(ax_contcorr, tgrid_ph[tidx], transcorr.((SB.mean(contcorr[:,i_leadtime,:,i_anc]; dims=2)[tidx,1])); color=:black)
+            lines!(ax_globlyap, tgrid_ph[tidx], ((SB.mean(globlyap[:,i_leadtime,:,i_anc]; dims=2)[tidx,1])); color=:black)
+            lines!(ax_contlyap, tgrid_ph[tidx], ((SB.mean(contlyap[:,i_leadtime,:,i_anc]; dims=2)[tidx,1])); color=:black)
             hlines!(ax_globcorr, 0.0; color=:gray, alpha=0.25, linestyle=(:dash,:dense))
             hlines!(ax_contcorr, 0.0; color=:gray, alpha=0.25, linestyle=(:dash,:dense))
+            hlines!(ax_globlyap, 0.0; color=:gray, alpha=0.25, linestyle=(:dash,:dense))
+            hlines!(ax_contlyap, 0.0; color=:gray, alpha=0.25, linestyle=(:dash,:dense))
         end
         save(joinpath(figdir,"corrs_anc$(i_anc).png"), fig)
     end
@@ -1063,7 +1071,7 @@ function compute_contour_dispersion(
     #Ndsc_per_leadtime = div(cfg.num_perts_max, Nleadtime)
     Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nanc)
     # Various notions of similarity based on contours
-    globcorr,contsymdiff,contcorr,= (zeros(Float64, (Nt, Nleadtime, Ndsc_per_leadtime, Nanc)) for _=1:3)
+    globcorr,contsymdiff,contcorr, = (zeros(Float64, (Nt, Nleadtime, Ndsc_per_leadtime, Nanc)) for _=1:3)
     size_pre = zeros(Int64, 4)
 
     if ispath(contour_dispersion_filename) && !overwrite_correlations
@@ -1110,9 +1118,7 @@ function compute_contour_dispersion(
         for (i_leadtime,leadtime) in enumerate(leadtimes)
             print("$(i_leadtime), ")
             idx_dsc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
-            it1 = cfg.lead_time_max - leadtime
             for i_dsc = size_pre[3]+1:Ndsc_per_leadtime
-                @infiltrate
                 # Compute the intermediates for the descendant
                 dsc = dscs[idx_dsc[i_dsc]]
                 conc1fun!(cxd,dsc)
@@ -1141,10 +1147,20 @@ function compute_contour_dispersion(
         println()
     end
 
+    # Compute (quasi-)Lyapunov exponents 
+    globlyap,contlyap, = (zeros(Float64, (Nt,Nleadtime,Ndsc_per_leadtime,Nanc)) for _=1:2)
+    for i_leadtime = 1:Nleadtime
+        tidx = collect(range(cfg.lead_time_max-leadtimes[i_leadtime]+3, Nt; step=1))
+        globlyap[tidx[2:end],i_leadtime,:,:] .= diff(log1p.(-globcorr[tidx,i_leadtime,:,:]); dims=1) ./ sdm.tu ./ 2
+        contlyap[tidx[2:end],i_leadtime,:,:] .= diff(log1p.(-contcorr[tidx,i_leadtime,:,:]); dims=1) ./ sdm.tu ./ 2
+    end
+            
     JLD2.jldopen(contour_dispersion_filename, "w") do f
         f["globcorr"] = globcorr
         f["contcorr"] = contcorr
         f["contsymdiff"] = contsymdiff
+        f["globlyap"] = globlyap
+        f["contlyap"] = contlyap
     end
     #@infiltrate
 end

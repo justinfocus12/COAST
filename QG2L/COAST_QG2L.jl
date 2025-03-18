@@ -39,22 +39,22 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_pertop" =>                                    0,
                              "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
-                             "plot_dns_objective_stats" =>                       1,
+                             "plot_dns_objective_stats" =>                       0,
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
                              "compute_contour_dispersion" =>                     0,
                              "plot_contour_dispersion_distribution" =>           0,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
-                             "plot_objective" =>                                 1, 
+                             "plot_objective" =>                                 0, 
                              "evaluate_mixing_criteria" =>                       1,
-                             "plot_conditional_pdfs" =>                          1,
-                             "plot_mixcrits_overlay" =>                          1,
+                             "plot_conditional_pdfs" =>                          0,
+                             "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        1,
                              "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    1,
-                             "plot_composite_contours" =>                        1,
+                             "plot_composite_contours" =>                        0,
                              # Danger zone 
-                             "remove_pngs" =>                                    1,
+                             "remove_pngs" =>                                    0,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -1089,8 +1089,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         fdivs,fdivs_ancgen_valid,iltmixs,mixcrits = JLD2.jldopen(joinpath(resultdir,"ccdfs_combined.jld2"),"r") do f
             return f["fdivs"],f["fdivs_ancgen_valid"],f["iltmixs"],f["mixcrits"]
         end
-        fdivs2plot = ["qrmse",] #"tv","chi2","kl"]
-        fdivlabels = ["𝐿²",] #"TV","χ²","KL"]
+        fdivs2plot = ["chi2","kl","qrmse",] #"tv","chi2","kl"]
+        fdivlabels = ["χ²","KL","𝐿²",] #"TV","χ²","KL"]
         i_boot = 1
         est = "mix"
         for dst = ["b"]
@@ -1112,6 +1112,12 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         end
                         hmmean = heatmap!(axmean, -sdm.tu.*leadtimes, distn_scales[dst], mcmean; colormap=Reverse(:deep), colorscale=identity)
                         cbarmean = Colorbar(loutmean[1,2], hmmean, vertical=true)
+                        # Plot all the arg-maxima
+                        ilts_mcbest = iltmixs[dst][rsp][mc][1,1:Nanc,1:length(distn_scales[dst])]
+                        for (i_scl,scl) in enumerate(distn_scales[dst])
+                            iltcounts = SB.countmap(ilts_mcbest[:,i_scl])
+                            scatter!(axmean, -sdm.tu.*collect(keys(iltcounts)), scl.*ones(length(iltcounts)); color=:black, marker=:cross, markersize=20 .* collect(values(iltcounts)))
+                        end
                         save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(mc)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                     end
                     # TODO heat map of leadtime as a function of probability
@@ -1163,7 +1169,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 
 # TODO augment META with composites, lead times displays etc
 
@@ -1176,7 +1182,7 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
-        idx_expt = (vec([5,6,7] .+ [0,1]'.*11))[1:1]
+        idx_expt = (vec([5,6,7] .+ [0,1]'.*11))
         #idx_expt = [9,20]
     end
 end
