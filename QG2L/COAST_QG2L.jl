@@ -1093,6 +1093,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         fdivlabels = ["χ²","KL","𝐿²",] #"TV","χ²","KL"]
         i_boot = 1
         est = "mix"
+        mc = "ent"
         for dst = ["b"]
             for rsp = ["e"]
                 # Plot the entropy as a 2D phase plot: both its mean and its variance (not just the proportion of time it's optimal)
@@ -1116,7 +1117,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         ilts_mcbest = iltmixs[dst][rsp][mc][1,1:Nanc,1:length(distn_scales[dst])]
                         for (i_scl,scl) in enumerate(distn_scales[dst])
                             iltcounts = SB.countmap(ilts_mcbest[:,i_scl])
-                            scatter!(axmean, -sdm.tu.*collect(keys(iltcounts)), scl.*ones(length(iltcounts)); color=:black, marker=:cross, markersize=20 .* collect(values(iltcounts)))
+                            scatter!(axmean, -sdm.tu.*leadtimes[collect(keys(iltcounts))], scl.*ones(length(iltcounts)); color=:black, marker='O', markersize=60 .* collect(values(iltcounts))./Nanc)
                         end
                         save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(mc)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                     end
@@ -1125,6 +1126,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
                 if todosub["fdiv_heatmap"]
                     for (i_fdivname,fdivname) in enumerate(fdivs2plot)
+                        # TODO put a circle on each grid cell, with the size proportional to the fraction of ancestors at which that lead time was the optimizer of entropy 
+
                         # globcorr and contcorr as the independent variable
                         for corrkey = ["globcorr","contcorr"]
                             fig = Figure(size=(500,400))
@@ -1160,7 +1163,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
             end
         end
     end
-
     @show resultdir
     return
 end

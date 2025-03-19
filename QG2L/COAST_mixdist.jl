@@ -119,15 +119,18 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                                 # Find first local maximum
                                 mcdiff .= diff(mixcrits[dst][rsp][mc][1:Nleadtime,i_anc,i_scl])
                                 mc_locmax_flag[2:end-1] .= (mcdiff[1:end-1] .> 0) .& (mcdiff[2:end] .< 0)
-                                mc_locmax_flag[1] = (mcdiff[1] < 0)
-                                mc_locmax_flag[end] = (mcdiff[end] > 0)
+                                mc_locmax_flag[1] = false #(mcdiff[1] < 0)
+                                mc_locmax_flag[end] = false #(mcdiff[end] > 0)
                                 #@infiltrate #any(mc_locmax_flag)
+                                # Could combine many different kinds of conditions for optimality and local maxima 
+                                # If an
                                 if false && any(mc_locmax_flag)
                                     ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = findfirst(mc_locmax_flag)
                                 else
                                 
+                                    ilt_upper_bound = findlast(sdm.tu .* leadtimes .< 1/thresh_cquantile)
 
-                                    ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:Nleadtime,i_anc,i_scl])
+                                    ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:ilt_upper_bound,i_anc,i_scl])
                                 end
                             else
                                 error()
