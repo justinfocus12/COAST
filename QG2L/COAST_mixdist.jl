@@ -74,9 +74,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
             for mc = keys(mixobjs)
                 mixcrits[dst][rsp][mc] = zeros(Float64, (Nleadtime,Nanc,Nscales[dst]))
                 ilts[dst][rsp][mc] = zeros(Int64, (length(mixobjs[mc]),Nanc,Nscales[dst]))
-                if length(mixobjs[mc]) == 1
-                    iltcounts[dst][rsp][mc] = zeros(Int64, (Nleadtime,Nscales[dst]))
-                end
+                iltcounts[dst][rsp][mc] = zeros(Int64, (length(mixobjs[mc]),Nleadtime,Nscales[dst]))
             end
         end
     end
@@ -129,7 +127,6 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                                 mc_locmax_flag[ilt_upper_bound] = false #(mcdiff[end] > 0)
                                 #@infiltrate #any(mc_locmax_flag)
                                 # Could combine many different kinds of conditions for optimality and local maxima 
-                                # If an
                                 if any(mc_locmax_flag[1:ilt_upper_bound])
 
                                     idx_locmax = findall(mc_locmax_flag[1:ilt_upper_bound])
@@ -139,10 +136,14 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
 
                                     ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:ilt_upper_bound,i_anc,i_scl])
                                 end
-                                iltcounts[dst][rsp][mc][ilts[dst][rsp][mc][i_mcval,i_anc,i_scl],i_scl] += 1
                             else
                                 error()
                             end
+                            iltcounts[dst][rsp][mc][
+                                                    i_mcval,
+                                                    ilts[dst][rsp][mc][i_mcval,i_anc,i_scl],
+                                                    i_scl
+                                                   ] += 1
                         end
                     end
                 end

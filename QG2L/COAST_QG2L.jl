@@ -1135,7 +1135,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         # Plot all the arg-maxima
                         if mc in ["ent","ei"]
                             for (i_scl,scl) in enumerate(distn_scales[dst])
-                                scatter!(axmean, -sdm.tu.*leadtimes, scl.*ones(Nleadtime); color=:black, marker='O', markersize=60 .* iltcounts[dst][rsp][mc][:,i_scl] ./ Nanc)
+                                scatter!(axmean, -sdm.tu.*leadtimes, scl.*ones(Nleadtime); color=:black, marker='O', markersize=60 .* iltcounts[dst][rsp][mc][1,:,i_scl] ./ Nanc)
                             end
                         end
                         save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(mc)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
