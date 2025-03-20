@@ -574,12 +574,13 @@ end
 
 
 function fdiv_fun_ccdf(ccdf1, ccdf2, levels1, levels2, fdivname)
+    # second argument should be interpreted as ground truth 
     pmf1 = ccdf2pmf(ccdf1)
     pmf2 = ccdf2pmf(ccdf2)
     if fdivname == "chi2"
         return chi2div_fun(pmf1,pmf2)
     elseif fdivname == "kl"
-        return kldiv_fun(pmf1,pmf2)
+        return kldiv_fun(pmf2,pmf1)
     elseif fdivname == "tv"
         return tvdist_fun(pmf1,pmf2)
     elseif fdivname == "qrmse"
@@ -617,20 +618,17 @@ end
 
 
 function kldiv_fun(pmf1, pmf2)
-    # q is the reference measure 
-    if any((pmf1 .!= 0) .& (pmf2 .== 0))
-        @show pdf1,pdf2
+    # pmf2 is the reference measure 
+    # should measure mean (under pmf2) surprise when trying to represent it with pmf1
+    if any((pmf1 .== 0) .& (pmf2 .!= 0))
+        @show pmf1,pmf2
         println("Warning, not abs cont in KL")
+        @infiltrate
         error()
+        #return Inf
     end
-    idx = findall((pmf1 .>= 0) .& (pmf2 .> 0))
-    # HACK replace with relative error
-    hacky = false
-    if hacky
-        kl = sum(abs.(pmf1[idx] .- pmf2[idx])./pmf2[idx])
-    else
-        kl = sum(xlogx.(pmf1[idx]) .- pmf1[idx] .* log.(pmf2[idx]))
-    end
+    idx = findall((pmf2 .>= 0) .& (pmf1 .> 0))
+    kl = sum(xlogx.(pmf2[idx]) .- pmf2[idx] .* log.(pmf1[idx]))
     if kl < 0
         @show pmf1,sum(pmf1)
         @show pmf2,sum(pmf2)

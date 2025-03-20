@@ -57,21 +57,26 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
     Npert = div(cfg.num_perts_max, Nleadtime)
     Rs,Ws = (zeros(Npert+1) for _=1:2)
     U = vcat(zeros(Float64, (1,2)), collect(transpose(coast.pert_seq_qmc[:,1:Npert])))
-    mixcrits,ccdfs,pdfs,ilts = (Dict{String,Dict}() for _=1:4)
+    mixcrits,ccdfs,pdfs,ilts,iltcounts = (Dict{String,Dict}() for _=1:5)
     mcdiff = zeros(Float64,Nleadtime-1)
     mc_locmax_flag = zeros(Bool, Nleadtime)
     for dst = ["b"]
         mixcrits[dst] = Dict{String,Dict}()
         ilts[dst] = Dict{String,Dict}()
+        iltcounts[dst] = Dict{String,Dict}()
         ccdfs[dst],pdfs[dst] = (Dict{String,Array{Float64}}() for _=1:2)
         for rsp = ["e"]
             mixcrits[dst][rsp] = Dict{String,Array{Float64}}()
             ilts[dst][rsp] = Dict{String,Array{Int64}}()
+            iltcounts[dst][rsp] = Dict{String,Array{Int64}}()
             ccdfs[dst][rsp] = zeros(Float64, (Nlev,Nleadtime,Nanc,Nscales[dst]))
             pdfs[dst][rsp] = zeros(Float64, (Nlev-1,Nleadtime,Nanc,Nscales[dst]))
             for mc = keys(mixobjs)
                 mixcrits[dst][rsp][mc] = zeros(Float64, (Nleadtime,Nanc,Nscales[dst]))
-                ilts[dst][rsp][mc] = zeros(Float64, (length(mixobjs[mc]),Nanc,Nscales[dst]))
+                ilts[dst][rsp][mc] = zeros(Int64, (length(mixobjs[mc]),Nanc,Nscales[dst]))
+                if length(mixobjs[mc]) == 1
+                    iltcounts[dst][rsp][mc] = zeros(Int64, (Nleadtime,Nscales[dst]))
+                end
             end
         end
     end
@@ -113,25 +118,28 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                             elseif mc in ["r2lin","r2quad","pth","pim","globcorr","contcorr"]
                                 first_inceedance = findfirst(mixcrits[dst][rsp][mc][:,i_anc,i_scl] .<= mcval)
                                 last_exceedance = findlast(mixcrits[dst][rsp][mc][:,i_anc,i_scl] .> mcval)
-                                ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1,first_inceedance-1))
-                                #ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
+                                #ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1,first_inceedance-1))
+                                ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
                             elseif mc in ["ei","ent"]
                                 # Find first local maximum
                                 mcdiff .= diff(mixcrits[dst][rsp][mc][1:Nleadtime,i_anc,i_scl])
                                 mc_locmax_flag[2:end-1] .= (mcdiff[1:end-1] .> 0) .& (mcdiff[2:end] .< 0)
+                                ilt_upper_bound = Nleadtime #findlast(sdm.tu .* leadtimes .< (3/4)/thresh_cquantile)
                                 mc_locmax_flag[1] = false #(mcdiff[1] < 0)
-                                mc_locmax_flag[end] = false #(mcdiff[end] > 0)
+                                mc_locmax_flag[ilt_upper_bound] = false #(mcdiff[end] > 0)
                                 #@infiltrate #any(mc_locmax_flag)
                                 # Could combine many different kinds of conditions for optimality and local maxima 
                                 # If an
-                                if false && any(mc_locmax_flag)
-                                    ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = findfirst(mc_locmax_flag)
+                                if any(mc_locmax_flag[1:ilt_upper_bound])
+
+                                    idx_locmax = findall(mc_locmax_flag[1:ilt_upper_bound])
+                                    ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = idx_locmax[argmax(mixcrits[dst][rsp][mc][idx_locmax,i_anc,i_scl])]
                                 else
                                 
-                                    ilt_upper_bound = findlast(sdm.tu .* leadtimes .< 1/thresh_cquantile)
 
                                     ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:ilt_upper_bound,i_anc,i_scl])
                                 end
+                                iltcounts[dst][rsp][mc][ilts[dst][rsp][mc][i_mcval,i_anc,i_scl],i_scl] += 1
                             else
                                 error()
                             end
@@ -141,11 +149,13 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
             end
         end
     end
+    # Add in the statistics 
     JLD2.jldopen(joinpath(resultdir,"mixcrits_ccdfs_pdfs.jld2"),"w") do f
         f["mixcrits"] = mixcrits
         f["ccdfs"] = ccdfs
         f["pdfs"] = pdfs
         f["ilts"] = ilts
+        f["iltcounts"] = iltcounts
     end
     return mixcrits
 end
@@ -219,9 +229,9 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     levels_mid = 0.5 .* (levels[1:end-1] .+ levels[2:end])
     levels_exc = levels[i_thresh_cquantile:end]
     levels_exc_mid = 0.5 .* (levels_exc[1:end-1] .+ levels_exc[2:end])
-    i_level_highest_shortdns = findlast(levels_exc .< maximum(Rccdf_ancgen_seplon))
     dlev = diff(levels)
     Nlev = length(levels)
+    i_level_highest_shortdns = Nlev #findlast(levels_exc .< maximum(Rccdf_ancgen_seplon))
     Nanc = length(coast.ancestors)
     # Load the various notions of field correlation
     globcorr,contcorr = JLD2.jldopen(joinpath(resultdir,"contour_dispersion.jld2"), "r") do f
@@ -244,8 +254,8 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
         end
     end
 
-    mixcrits,ccdfs,pdfs,iltmixs = JLD2.jldopen(joinpath(resultdir,"mixcrits_ccdfs_pdfs.jld2"),"r") do f
-        return f["mixcrits"],f["ccdfs"],f["pdfs"],f["ilts"]
+    mixcrits,ccdfs,pdfs,iltmixs,iltcounts = JLD2.jldopen(joinpath(resultdir,"mixcrits_ccdfs_pdfs.jld2"),"r") do f
+        return f["mixcrits"],f["ccdfs"],f["pdfs"],f["ilts"],f["iltcounts"]
     end
 
     ccdfmixs,pdfmixs,fdivs = (Dict{String,Dict}() for _=1:3)
@@ -271,6 +281,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
 
     Nmem = EM.get_Nmem(ens)
     Ndsc = Nmem - Nanc
+    idx_lev = collect(range(i_thresh_cquantile,i_level_highest_shortdns; step=1)) 
     Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nanc)
     i_boot = 1
     for dst = ["b"]
@@ -304,12 +315,12 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                         pdfmixs[dst][rsp][mc][est][Nlev, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]] .= -ccdfmixs[dst][rsp][mc][est][Nlev,1:Nboot+1,1:Nmcv,1:Nscales[dst]] ./ (levels[Nlev]-levels[Nlev-1])
                     end
                     # Penalize 
-                    idx_lev = collect(range(i_thresh_cquantile,i_level_highest_shortdns; step=1)) 
                     for fdivname = fdivnames
                         for est = ["mix","pool"]
                             for i_mcval = 1:length(mixobjs[mc])
                                 @assert maximum(abs.(1 .- [ccdfmixs[dst][rsp][mc][est][i_thresh_cquantile,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1]])) < 1e-6
                                 # Only integrte up to the maximum achieve by short DNS 
+                                pmf1,pmf2 = ccdfmixs[dst][rsp][mc][est][idx_lev,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1:length(idx_lev)]
                                 fdivs[dst][rsp][mc][est][fdivname][i_boot,i_mcval,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][est][idx_lev,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1:length(idx_lev)], levels_exc[1:length(idx_lev)], levels_exc[1:length(idx_lev)], fdivname)
                             end
                         end
@@ -320,15 +331,18 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     end
     fdivs_ancgen_valid = Dict()
     for fdivname = fdivnames
-        fdivs_ancgen_valid[fdivname] = mapslices(ccdf->QG2L.fdiv_fun_ccdf(ccdf, ccdf_pot_valid_agglon, levels[i_thresh_cquantile:end], levels[i_thresh_cquantile:end], fdivname), ccdf_pot_ancgen_seplon; dims=1)[1,:]
+
+        fdivs_ancgen_valid[fdivname] = mapslices(ccdf_pot->QG2L.fdiv_fun_ccdf(
+                                                                              ccdf_pot[1:length(idx_lev)], 
+                                                                              ccdf_pot_valid_agglon[1:length(idx_lev)], 
+                                                                              levels[idx_lev], 
+                                                                              levels[idx_lev], 
+                                                                              fdivname
+                                                                         ), 
+                                                 ccdf_pot_ancgen_seplon; dims=1)[1,:]
         #@infiltrate any(isnan.(fdivs_ancgen_valid[fdivname]))
     end
 
-    for filename = readdir(resultdir,join=true)
-        if endswith(filename, "ccdfs_regressed_oldversion.jld2")
-            rm(filename)
-        end
-    end
     JLD2.jldopen(joinpath(resultdir,"ccdfs_combined.jld2"),"w") do f
         # coordinates for parameters of distributions 
         f["levels"] = levels
@@ -344,6 +358,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
         f["fdivs_ancgen_valid"] = fdivs_ancgen_valid
         f["mixcrits"] = mixcrits
         f["iltmixs"] = iltmixs
+        f["iltcounts"] = iltcounts
         f["ccdfmixs"] = ccdfmixs
         f["pdfmixs"] = pdfmixs 
     end

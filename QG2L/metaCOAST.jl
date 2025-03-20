@@ -64,7 +64,7 @@ end
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
                              "plot_mixcrits_ydep" =>             1,
-                             "compile_fdivs" =>                  0,
+                             "compile_fdivs" =>                  1,
                              "plot_fdivs" =>                     1,
                              "plot_ccdfs_latdep" =>              0,
                              # danger zone
@@ -359,17 +359,18 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=4, label="Short DNS\n(90% CI)")
                         # All desired mixing criteria
                         for (i_syncmc,syncmc) in enumerate(syncmcs)
-                            for (est,linestyle) = (("mix",:solid),("pool",(:dot,:dense)))
+                            for (est,marker) = (("mix",:circle),("pool",'O'))
                                 idx_mcobj_best = mapslices(argmin, fdivs[dst][rsp][syncmc][est][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1]
-                                scatterlines!(ax, [fdivs[dst][rsp][syncmc][est][fdivname][i_ytgt,i_boot,idx_mcobj_best[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=mixcrit_colors[syncmc], linestyle=linestyle, label="Optimal $(mixcrit_labels[syncmc])")
+                                scatter!(ax, [fdivs[dst][rsp][syncmc][est][fdivname][i_ytgt,i_boot,idx_mcobj_best[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=mixcrit_colors[syncmc], marker=marker, label="Optimal $(mixcrit_labels[syncmc])")
                                 # Max-entropy
                                 #lines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=:red, linewidth=3, label=mixobj_labels["ent"][1], alpha=0.5)
                                 # Max-EI 
                             end
                         end
-                        for (est,linestyle) = (("mix",:solid),("pool",(:dot,:dense)))
-                            scatterlines!(ax, fdivs[dst][rsp]["ei"][est][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ei"], linewidth=1, linestyle=linestyle, label=mixobj_labels["ei"][1], alpha=1.0)
-                            scatterlines!(ax, fdivs[dst][rsp]["ent"][est][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ent"], linewidth=1, linestyle=linestyle, label=mixobj_labels["ent"][1], alpha=1.0)
+                        for (est,marker) = (("mix",:circle),("pool",'O'))
+                            scatter!(ax, fdivs[dst][rsp]["ei"][est][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ei"], label=mixobj_labels["ei"][1], alpha=1.0, marker=marker)
+                            scatter!(ax, fdivs[dst][rsp]["ent"][est][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ent"], label=mixobj_labels["ent"][1], alpha=1.0, marker=marker)
+                            # TODO put error bars 
                         end
                         lout[1,1] = Legend(fig, ax; labelsize=10, framevisible=false, merge=true)
                         colsize!(lout, 2, Relative(4/5))
@@ -394,11 +395,9 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         est = "mix"
         for (fdivname,fdivlabel) = (("chi2","χ²"),("kl","KL"),("qrmse","𝐿²"),)
             for i_scl = scales2plot
-                (pim_of_ast,contcorr_of_ast,fdiv_of_ast,mc_of_ast) = (zeros(Float64, (Nleadtime,Nytgt)) for _=1:4)
+                (pim_of_ast,contcorr_of_ast,fdiv_of_ast,mc_of_ast,iltfrac_of_ast) = (zeros(Float64, (Nleadtime,Nytgt)) for _=1:5)
                 (ast_of_contcorr,fdiv_of_contcorr,mc_of_contcorr) = (zeros(Float64, (Nmcs["contcorr"],Nytgt)) for _=1:3)
-                (ast_maxmc_min,ast_maxmc_max) = (zeros(Float64, Nytgt) for _=1:2)
                 (contcorr_maxmc_min,contcorr_maxmc_max) = (zeros(Float64,Nytgt) for _=1:2)
-                (ast_maxmc_min,ast_maxmc_max,contcorr_maxmc_min,contcorr_maxmc_max) = (zeros(Float64, Nytgt) for _=1:4)
                 (ast_of_pim,fdiv_of_pim,mc_of_pim) = (zeros(Float64, (Nmcs["pim"],Nytgt)) for _=1:3)
                 (idx_ast_best,idx_contcorr_best) = (mapslices(argmin, fdivs[dst][rsp][syncmc][est][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1] for syncmc=("lt","contcorr"))
                 for (i_ytgt,ytgt) in enumerate(ytgts)
@@ -409,8 +408,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         pim_of_ast[:,i_ytgt] .= SB.mean(f["mixcrits"][dst][rsp]["pim"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
                         mc_of_ast[:,i_ytgt] .= SB.mean(f["mixcrits"][dst][rsp][mc][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
                         fdiv_of_ast[:,i_ytgt] .= (f["fdivs"][dst][rsp]["lt"][est][fdivname][i_boot,1:Nleadtime,i_scl])
-                        ast_maxmc_min[i_ytgt],ast_maxmc_max[i_ytgt] = (leadtimes[i_maxmc] for i_maxmc=extrema(f["iltmixs"][dst][rsp][mc][1,1:Nancy,i_scl]))
-                        contcorr_maxmc_min[i_ytgt],contcorr_maxmc_max[i_ytgt] = extrema(f["mixcrits"][dst][rsp]["contcorr"][f["iltmixs"][dst][rsp][mc][1,1:Nancy,i_scl],1:Nancy,i_scl])
+                        iltfrac_of_ast[:,i_ytgt] .= f["iltcounts"][dst][rsp]["ent"][:,i_scl]./Nancy
                         # pim as independent variable
                         ilts = f["iltmixs"][dst][rsp]["pim"][1:Nmcs["pim"],1:Nancy,i_scl]
                         ast_of_pim[:,i_ytgt] .= sdm.tu.*SB.mean(leadtimes[ilts]; dims=2)[:,1]
@@ -488,9 +486,12 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(fdiv_of_ast; dims=1); colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
                 co1 = contour!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast; dims=1); levels=range(mcrange...; length=7), colormap=:Reds, labels=false)
                 scatter!(ax1, -sdm.tu.*leadtimes[idx_ast_best], ytgts; color=:black)
-                scatter!(ax1, -sdm.tu.*leadtimes[idx_maxmc_ast], ytgts; color=:red, marker=:xcross)
-                scatter!(ax1, -sdm.tu.*ast_maxmc_min, ytgts; color=:red, marker=:ltriangle)
-                scatter!(ax1, -sdm.tu.*ast_maxmc_max, ytgts; color=:red, marker=:rtriangle)
+                for (i_ytgt,ytgt) in enumerate(ytgts)
+                    scatter!(ax1, -sdm.tu.*leadtimes, ytgt.*ones(Float64,Nleadtime); marker='O', markersize=60 .* iltfrac_of_ast[:,i_ytgt], color=:red)
+                end
+                #scatter!(ax1, -sdm.tu.*leadtimes[idx_maxmc_ast], ytgts; color=:red, marker=:xcross)
+                #scatter!(ax1, -sdm.tu.*ast_maxmc_min, ytgts; color=:red, marker=:ltriangle)
+                #scatter!(ax1, -sdm.tu.*ast_maxmc_max, ytgts; color=:red, marker=:rtriangle)
                 #lines!(ax1, -sdm.tu.*ast_softbest, ytgts; color=:black, linewidth=2, linestyle=(:dash,:dense))
                 #co1pim = contour!(ax1, -leadtimes.*sdm.tu, ytgts, reverse(pim_of_ast; dims=1); color=:black, linestyle=(:dot,:dense), labels=false)
                 cbar1 = Colorbar(lout[2,1], hm1; vertical=false, label="$(errlabel) (iso-$(mixcrit_labels["lt"]))", cbarargs...)
@@ -498,9 +499,6 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 hm2 = heatmap!(ax2, transcorr.(mixobjs["contcorr"]), ytgts, fdiv_of_contcorr; colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv) 
                 co2 = contour!(ax2, transcorr.(mixobjs["contcorr"]), ytgts, mc_of_contcorr; levels=range(mcrange...; length=7), colormap=:Reds, labels=false) 
                 scatter!(ax2, transcorr.(mixobjs["contcorr"][idx_contcorr_best]), ytgts; color=:black)
-                scatter!(ax2, transcorr.(mixobjs["contcorr"][idx_maxmc_contcorr]), ytgts; color=:red, marker=:xcross)
-                scatter!(ax2, transcorr.(contcorr_maxmc_min), ytgts; color=:red, marker=:ltriangle)
-                scatter!(ax2, transcorr.(contcorr_maxmc_max), ytgts; color=:red, marker=:rtriangle)
                 cbar2 = Colorbar(lout[2,2], hm2; vertical=false, label="$(errlabel) (iso-$(mixcrit_labels["contcorr"])", cbarargs...)
                 rowgap!(lout, 1, 0)
                 rowgap!(lout, 2, 5)

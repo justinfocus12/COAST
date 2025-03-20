@@ -43,18 +43,18 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
                              "compute_contour_dispersion" =>                     0,
-                             "plot_contour_dispersion_distribution" =>           0,
+                             "plot_contour_dispersion_distribution" =>           1,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
-                             "plot_objective" =>                                 0, 
                              "evaluate_mixing_criteria" =>                       1,
-                             "plot_conditional_pdfs" =>                          0,
-                             "plot_mixcrits_overlay" =>                          0,
+                             "plot_objective" =>                                 1, 
+                             "plot_conditional_pdfs" =>                          1,
+                             "plot_mixcrits_overlay" =>                          1,
                              "mix_COAST_distributions" =>                        1,
                              "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    1,
-                             "plot_composite_contours" =>                        0,
+                             "plot_composite_contours" =>                        1,
                              # Danger zone 
-                             "remove_pngs" =>                                    0,
+                             "remove_pngs" =>                                    1,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -136,7 +136,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
     if todo["remove_pngs"]
         for filename = readdir(figdir, join=true)
-            if endswith(filename,"png") #&& (startswith(filename,"compcont"))
+            revised_figure_substrings = ["conditionalpdf","objectives_anc","nodesc","contours_anc","corrs_anc","linquad"]
+            if endswith(filename,"png") && any(occursin.(revised_figure_substrings,filename))
                 rm(filename)
             end
         end
@@ -486,8 +487,10 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     # --------------------- Decide on a subset of ancestors to display ---------------
     #
     ancorder = sortperm(coast.anc_Rmax; rev=true)
-    idx_anc_strat = sort(unique(ancorder[range(1,min(12,Nanc); step=1)]))
-    idx_anc_strat = intersect(1:Nanc, idx_anc_strat)[1:min(4,length(idx_anc_strat))]
+    idx_anc_strat_Rmax = ancorder[round.(Int, range(1, Nanc; length=4))]
+    # Choose ancestors based on other criteria
+    #idx_anc_strat = sort(unique(ancorder[range(1,min(12,Nanc); step=1)]))
+    #idx_anc_strat = intersect(1:Nanc, idx_anc_strat)[1:min(4,length(idx_anc_strat))]
     # ---------------------------------------------------------------------------------
     #
 
@@ -495,9 +498,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     if todo["compute_contour_dispersion"]
         dns_stats_filename = joinpath(resultdir_dns, "moments_mssk_conc.jld2")
         compute_contour_dispersion(coast, ens, cfg, sdm, cop, pertop, dns_stats_filename, contour_dispersion_filename,thresh)
-    end
-    if todo["plot_contour_dispersion_distribution"]
-        plot_contour_dispersion_distribution(coast, ens, cfg, sdm, cop, pertop, contour_dispersion_filename, idx_anc_strat, figdir)
     end
 
 
@@ -525,6 +525,23 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         end
     end
         
+    if todo["evaluate_mixing_criteria"]
+        println("About to evaluate mixing criteria")
+        evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir)
+        println("finished evaluating mixing criteria")
+    end
+
+    # ------- Select ancestors to stratify on dispersion speed ---------
+    iltmixs = JLD2.jldopen(joinpath(resultdir,"mixcrits_ccdfs_pdfs.jld2"),"r") do f
+        return f["ilts"]
+    end
+    ancorder_ltmix_ent = sortperm(iltmixs["b"]["e"]["ent"][1,:,div(length(distn_scales["b"]),2)])
+    idx_anc_strat_ent = ancorder_ltmix_ent[round.(Int, range(1, Nanc; length=4))]
+    # ---------------------------------------------------
+
+    if todo["plot_contour_dispersion_distribution"]
+        plot_contour_dispersion_distribution(coast, ens, cfg, sdm, cop, pertop, contour_dispersion_filename, idx_anc_strat_ent, figdir)
+    end
 
     if todo["plot_objective"]
         rxystr = @sprintf("%.3f",cfg.target_ryPerL*sdm.Ly)
@@ -533,7 +550,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                     "plot_spaghetti" =>              1,
                                     "plot_response" =>               1,
                                    )
-        @show idx_anc_strat
 
         regcoefs_filename = joinpath(resultdir,"regression_coefs.jld2")
         coefs_linear,residmse_linear,rsquared_linear,coefs_quadratic,residmse_quadratic,rsquared_quadratic,hessian_eigvals,hessian_eigvecs = JLD2.jldopen(regcoefs_filename, "r") do f
@@ -549,7 +565,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                    )
         end
 
-        Threads.@threads for i_anc = idx_anc_strat
+        Threads.@threads for i_anc = idx_anc_strat_ent
             if todosub["plot_spaghetti"]
                 plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thresh, figdir)
             end
@@ -565,14 +581,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                    )
             end
         end
-    end
-
-
-
-    if todo["evaluate_mixing_criteria"]
-        println("About to evaluate mixing criteria")
-        evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir)
-        println("finished evaluating mixing criteria")
     end
 
     if todo["plot_conditional_pdfs"]
@@ -592,7 +600,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         ylims = (thresh, max(max_score, levels[end]))
         dst = "b"
         rsp = "e"
-        for i_anc = idx_anc_strat
+        for i_anc = idx_anc_strat_ent
             xlims = maximum(
                             maximum(pdfs[dst][rsp][i_thresh_cquantile:Nlev-1,:,i_anc,:]./ccdfs[dst][rsp][i_thresh_cquantile:i_thresh_cquantile,:,i_anc,:]; dims=1)[1,:,:] 
                            ) .* [-0.05, 1.05] .* thresh_cquantile
@@ -649,7 +657,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         scatterlines!(ax, -leadtimes.*sdm.tu, mixcrits[dst][rsp][mc][:,i_anc,i_scl]; colargs...)
                     end
                     if mc in ["ent","ei"]
-                        vlines!(ax, -leadtimes[iltmixs[dst][rsp][mc][1,i_anc,i_scl]]*sdm.tu; colargs...)
+                        vlines!(ax, -leadtimes[iltmixs[dst][rsp][mc][1,i_anc,i_scl]]*sdm.tu; colargs...,linewidth=5*(1 - (i_scl-1)/length(distn_scales[dst])))
                     end
                 end
                 xlims!(ax, -(cfg.lead_time_max+0.5*cfg.lead_time_inc)*sdm.tu, -(cfg.lead_time_min-0.5*cfg.lead_time_inc)*sdm.tu)
@@ -864,16 +872,26 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             
                         end
                         fdiv_ancgen_valid_pt,fdiv_ancgen_valid_lo,fdiv_ancgen_valid_hi = let
-                            fdav = filter(!isnan, fdivs_ancgen_valid[fdivname]) 
+                            fdav = filter(isfinite, fdivs_ancgen_valid[fdivname]) 
                             (SB.mean(fdav), SB.quantile(fdav, 0.05), SB.quantile(fdav, 0.95))
                         end
                         fdivstr_ancgen = @sprintf("%.1E\n(%.2E, %.2E)",fdiv_ancgen_valid_pt, fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi)
                         dnspot = thresh_cquantile.*ccdf_pot_valid_pt
                         # -------------- Plot --------------
-                        fig = Figure(size=(1000,500))
+                        fig = Figure(size=(1200,500))
                         lout = fig[1,1] = GridLayout()
                         ax1 = Axis(lout[1,2]; xscale=log10, xlabel="CCDF", ylabel="Severity 𝑅*", title="$(label_target(cfg,sdm,distn_scales[dst][i_scl]))\nThreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlefont=:regular, xgridvisible=false, ygridvisible=false)
                         ax2 = Axis(lout[1,3]; xscale=log10, xlabel="CCDF/CCDF(DNS)", ylabel="Severity 𝑅*", titlefont=:regular, ylabelvisible=false, xgridvisible=false, ygridvisible=false)
+                        ax3 = Axis(lout[1,4]; xscale=log10, xlabel=fdivlabel)
+                        barplot!(
+                                 ax3, 
+                                 1:length(mcs2mix), 
+                                 [fdivs_opt[mc]["mix"] for mc=mcs2mix],
+                                 ;
+                                 color=[mixcrit_colors[mc] for mc=mcs2mix],
+                                 direction=:x,
+                                )
+                        vlines!(ax3, fdiv_ancgen_valid_pt; color=:black)
                         # GPD
                         lines!(ax1, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2])))
                         lines!(ax2, clipccdfratio.(ccdf_gpd./dnspot), levels_exc; color=:gray, alpha=0.5, linewidth=3)
@@ -891,8 +909,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             end
                         end
                         lout[1,1] = Legend(fig, ax1; framevisible=true, rowgap=8, merge=true)
-                        colsize!(lout, 2, Relative(1/2))
-                        colsize!(lout, 3, Relative(1/4))
+                        colsize!(lout, 2, Relative(500/1200))
+                        colsize!(lout, 3, Relative(250/1200))
+                        colsize!(lout, 4, Relative(200/1200))
                         for ax = (ax1,ax2)
                             ylims!(ax, 1.1*levels[i_thresh_cquantile]-0.1*levels[i_thresh_cquantile+1], 1.1*levels[end]-0.1*levels[end-1])
                         end
@@ -944,7 +963,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         i_mode_sf = 1
         support_radius = pertop.sf_pert_amplitudes_max[i_mode_sf]
         desc_weights = QG2L.bump_density(coast.pert_seq_qmc[:,1:cfg.num_perts_max]', distn_scales[dst][i_scl], support_radius)
-        for i_anc = idx_anc_strat
+        for i_anc = idx_anc_strat_ent
             i_leadtime = round(Int, Nleadtime*2/5) 
             figfile = joinpath(figdir,"contours_anc$(i_anc).png")
             plot_contours_1family(coast, ens, i_anc, desc_weights, i_leadtime, cfg, thresh, sdm, cop, pertop, contour_dispersion_filename, figfile)
@@ -981,7 +1000,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             "heatflux" => (f -> QG2L.obs_fun_heatflux_hist(f, sdm, cop)[:,:,1,:]),
                             "v_bt" => (f -> sum(QG2L.obs_fun_meridional_velocity_hist(f, sdm, cop), dims=3)[:,:,1,:]),
                            )
-        Threads.@threads for i_anc = idx_anc_strat
+        for i_anc = idx_anc_strat_ent
             anc = coast.ancestors[i_anc]
             tgrid = collect(range(round(Int, ens.trajs[anc].tphinit/sdm.tu), ens.trajs[ancs].tfin; step=1))
             descendants = Graphs.outneighbors(ens.famtree, anc)
@@ -1086,8 +1105,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
          time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
          i_thresh_cquantile,adjust_ccdf_per_ancestor
         ) = expt_config_COAST_analysis(cfg,pertop)
-        fdivs,fdivs_ancgen_valid,iltmixs,mixcrits = JLD2.jldopen(joinpath(resultdir,"ccdfs_combined.jld2"),"r") do f
-            return f["fdivs"],f["fdivs_ancgen_valid"],f["iltmixs"],f["mixcrits"]
+        fdivs,fdivs_ancgen_valid,iltmixs,iltcounts,mixcrits = JLD2.jldopen(joinpath(resultdir,"ccdfs_combined.jld2"),"r") do f
+            return f["fdivs"],f["fdivs_ancgen_valid"],f["iltmixs"],f["iltcounts"],f["mixcrits"]
         end
         fdivs2plot = ["chi2","kl","qrmse",] #"tv","chi2","kl"]
         fdivlabels = ["χ²","KL","𝐿²",] #"TV","χ²","KL"]
@@ -1114,14 +1133,13 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         hmmean = heatmap!(axmean, -sdm.tu.*leadtimes, distn_scales[dst], mcmean; colormap=Reverse(:deep), colorscale=identity)
                         cbarmean = Colorbar(loutmean[1,2], hmmean, vertical=true)
                         # Plot all the arg-maxima
-                        ilts_mcbest = iltmixs[dst][rsp][mc][1,1:Nanc,1:length(distn_scales[dst])]
-                        for (i_scl,scl) in enumerate(distn_scales[dst])
-                            iltcounts = SB.countmap(ilts_mcbest[:,i_scl])
-                            scatter!(axmean, -sdm.tu.*leadtimes[collect(keys(iltcounts))], scl.*ones(length(iltcounts)); color=:black, marker='O', markersize=60 .* collect(values(iltcounts))./Nanc)
+                        if mc in ["ent","ei"]
+                            for (i_scl,scl) in enumerate(distn_scales[dst])
+                                scatter!(axmean, -sdm.tu.*leadtimes, scl.*ones(Nleadtime); color=:black, marker='O', markersize=60 .* iltcounts[dst][rsp][mc][:,i_scl] ./ Nanc)
+                            end
                         end
                         save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(mc)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                     end
-                    # TODO heat map of leadtime as a function of probability
                 end
 
                 if todosub["fdiv_heatmap"]
@@ -1171,8 +1189,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
-
+i_proc = 2
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])

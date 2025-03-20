@@ -811,8 +811,11 @@ function expt_config_COAST_analysis(cfg,pertop)
                          # TODO add expected exceedance over threshold (tee or eet or ete)
                         )
     mcs = collect(keys(mixcrit_labels))
-    mccolorlist = cgrad(:tab10, length(mcs); categorical=true).colors #CairoMakie.Colors.HSV.(range(0, 360, length(mcs)), 50, 50)
-    mixcrit_colors = Dict(mcs[i]=>mccolorlist[i] for i=1:length(mcs))
+    #mccolorlist = CairoMakie.Colors.HSV.(range(0, 360, length(mcs)), 50, 50)
+    #mccolorlist = cgrad(:Dark2_8, length(mcs); categorical=true).colors 
+    mcs2mix = ["lt","globcorr","contcorr","ei","ent"]
+    mccolorlist = categorical_colors(:rainbow, length(mcs2mix)) #length(mcs)) 
+    mixcrit_colors = Dict(mc=>mccolorlist[i_mc] for (i_mc,mc) in enumerate(mcs2mix))
     i_mode_sf = 1
     Rmin,Rmax = pertop.sf_pert_amplitudes_min[i_mode_sf],pertop.sf_pert_amplitudes_max[i_mode_sf]
     distn_scales = Dict(
