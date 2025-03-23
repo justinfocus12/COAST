@@ -733,7 +733,11 @@ end
 
 
 function paramsets()
-    target_yPerLs = collect(range(0, 1; length=17)[4:14]) #1/2 .+ [-1/4,-1/8,0,1/8,1/4][1:3]
+    # full: 
+    # target_yPerLs = collect(range(0, 1; length=33)[6:28])
+    # Previously done:
+    # target_yPerLs = collect(range(0, 1; length=17)[4:14])
+    target_yPerLs = collect(range(0, 1; length=33)[6:2:28]) #1/2 .+ [-1/4,-1/8,0,1/8,1/4][1:3]
     target_rs = (1/32) .* sqrt.([1.0, 4.0])
     return target_yPerLs, target_rs
 end

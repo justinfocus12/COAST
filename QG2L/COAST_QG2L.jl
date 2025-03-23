@@ -40,11 +40,12 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
-                             "anchor" =>                                         0,
-                             "sail" =>                                           0, 
-                             "compute_contour_dispersion" =>                     0,
+                             "use_backups" =>                                    1,
+                             "anchor" =>                                         1,
+                             "sail" =>                                           1, 
+                             "compute_contour_dispersion" =>                     1,
                              "plot_contour_dispersion_distribution" =>           1,
-                             "regress_lead_dependent_risk_polynomial" =>         0, 
+                             "regress_lead_dependent_risk_polynomial" =>         1, 
                              "evaluate_mixing_criteria" =>                       1,
                              "plot_objective" =>                                 1, 
                              "plot_conditional_pdfs" =>                          1,
@@ -54,7 +55,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "mixture_COAST_phase_diagram" =>                    1,
                              "plot_composite_contours" =>                        1,
                              # Danger zone 
-                             "remove_pngs" =>                                    1,
+                             "remove_pngs" =>                                    0,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -158,6 +159,13 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         end
         cp(rngfile_COAST_backup, rngfile_COAST, force=true)
     end
+
+    if todo["use_backups"]
+        cp(coastfile_COAST_backup, coastfile_COAST, force=true)
+        cp(rngfile_COAST_backup, rngfile_COAST, force=true)
+        cp(ensfile_COAST_backup, ensfile_COAST, force=true)
+    end
+
 
     ensfile_dns = joinpath(ensdir_dns, "ens.jld2")
 
@@ -779,7 +787,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                    )
              end
             )
-        println("loaded ccdfs_regressed")
+        println("loaded ccdfs_combined")
         #@infiltrate
         levels_exc = levels[i_thresh_cquantile:end]
         levels_exc_mid = (levels_exc[1:end-1] .+ levels_exc[2:end]) ./ 2
@@ -938,7 +946,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
          fdivs,fdivs_ancgen_valid,
          mixcrits,iltmixs,
          ccdfmixs,pdfmixs,
-        ) = (JLD2.jldopen(joinpath(resultdir,"ccdfs_regressed_accpa$(Int(adjust_ccdf_per_ancestor)).jld2"),"r") do f
+        ) = (JLD2.jldopen(joinpath(resultdir,"ccdfs_combined.jld2"),"r") do f
                  # coordinates for parameters of distributions 
                  return (
                     f["levels"],# levels
@@ -1189,7 +1197,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])
@@ -1201,8 +1209,8 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
-        idx_expt = (vec([5,6,7] .+ [0,1]'.*11))
-        #idx_expt = [9,20]
+        #idx_expt = (vec([5,6,7] .+ [0,1]'.*11))
+        idx_expt = [4]
     end
 end
 
