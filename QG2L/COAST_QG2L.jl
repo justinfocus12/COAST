@@ -40,7 +40,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
-                             "use_backups" =>                                    1,
+                             "use_backups" =>                                    0,
                              "anchor" =>                                         1,
                              "sail" =>                                           1, 
                              "compute_contour_dispersion" =>                     1,
@@ -55,7 +55,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "mixture_COAST_phase_diagram" =>                    1,
                              "plot_composite_contours" =>                        1,
                              # Danger zone 
-                             "remove_pngs" =>                                    0,
+                             "remove_pngs" =>                                    1,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -1210,7 +1210,7 @@ else
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
         #idx_expt = (vec([5,6,7] .+ [0,1]'.*11))
-        idx_expt = [4]
+        idx_expt = [5]
     end
 end
 

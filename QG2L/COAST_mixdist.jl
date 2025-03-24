@@ -82,6 +82,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
         Rs[1] = coast.anc_Rmax[i_anc]
         for (i_leadtime,leadtime) in enumerate(leadtimes)
             idx_dsc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
+            @infiltrate
             Rs[2:Npert+1] .= coast.desc_Rmax[i_anc][idx_dsc]
             for dst = ["b"]
                 for rsp = ["e"]
