@@ -64,9 +64,9 @@ end
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
                              "plot_mixcrits_ydep" =>             1,
-                             "compile_fdivs" =>                  1,
+                             "compile_fdivs" =>                  0,
                              "plot_fdivs" =>                     1,
-                             "plot_ccdfs_latdep" =>              0,
+                             "plot_ccdfs_latdep" =>              1,
                              # danger zone
                              "remove_pngs" =>                    0,
                              # defunct/hibernating
@@ -117,7 +117,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
      i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfgs[1],pertop)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
-    scales2plot = [1,4,8,12]
+    scales2plot = collect(1:1:15) #[1,4,8,12]
     threshstr = @sprintf("thrt%d", round(Int, 1/thresh_cquantile))
     for (i_y,y) in enumerate(ytgts)
         cfgstr = strrep_ConfigCOAST(cfgs[i_y])
@@ -329,7 +329,6 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         end
     end
 
-    #IFT.@infiltrate
     #
 
     if todo["plot_fdivs"]
@@ -351,7 +350,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     for i_scl = scales2plot
                         scalestr = @sprintf("Scale %.3f", distn_scales[dst][i_scl])
                         syncmcs = ["lt","contcorr","globcorr"]
-                        fig = Figure(size=(600,400))
+                        fig = Figure(size=(450,400))
                         lout = fig[1,1] = GridLayout()
                         ax = Axis(lout[1,2], xlabel=fdivlabels[fdivname], ylabel="𝑦₀/𝐿", title="$(label_target(target_r,sdm)), $(scalestr)\nthreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlevisible=true, titlefont=:regular, xscale=log10, xgridvisible=false, ygridvisible=false)
                         # Short simulation
@@ -359,7 +358,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=4, label="Short DNS\n(90% CI)")
                         # All desired mixing criteria
                         for (i_syncmc,syncmc) in enumerate(syncmcs)
-                            for (est,marker) = (("mix",:circle),("pool",'O'))
+                            for (est,marker) = (("mix",:xcross),("pool",'O'))
                                 idx_mcobj_best = mapslices(argmin, fdivs[dst][rsp][syncmc][est][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1]
                                 scatter!(ax, [fdivs[dst][rsp][syncmc][est][fdivname][i_ytgt,i_boot,idx_mcobj_best[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=mixcrit_colors[syncmc], marker=marker, label="Optimal $(mixcrit_labels[syncmc])")
                                 # Max-entropy
@@ -367,13 +366,15 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                                 # Max-EI 
                             end
                         end
-                        for (est,marker) = (("mix",:circle),("pool",'O'))
+                        xlims!(ax, minimum(fdivs_ancgen_valid_lo)/10^1.5, maximum(fdivs_ancgen_valid_hi)*1.1)
+                        for (est,marker) = (("mix",:xcross),("pool",'O'))
                             scatter!(ax, fdivs[dst][rsp]["ei"][est][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ei"], label=mixobj_labels["ei"][1], alpha=1.0, marker=marker)
                             scatter!(ax, fdivs[dst][rsp]["ent"][est][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ent"], label=mixobj_labels["ent"][1], alpha=1.0, marker=marker)
                             # TODO put error bars 
                         end
                         lout[1,1] = Legend(fig, ax; labelsize=10, framevisible=false, merge=true)
-                        colsize!(lout, 2, Relative(4/5))
+                        colsize!(lout, 2, Relative(3/5))
+                        colgap!(lout, 1, 0)
 
                         save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl).png"), fig)
                         # TODO Do a parallel figure bit with leadtime and committor as the independent variables, fdiv as the dependent variable 9just a slice of the phdgms from the one-latitude cases)
@@ -392,139 +393,125 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         rsp = "e"
         i_boot = 1
         mc = "ent" # this is the privileged mixing criterion on which to optimize 
+        i_mcval = 1 # because we're optimizing it
         est = "mix"
         for (fdivname,fdivlabel) = (("chi2","χ²"),("kl","KL"),("qrmse","𝐿²"),)
+            (
+             fdiv_of_ast,
+             contcorr_of_ast,mc_of_ast,
+             iltfrac_mc_of_ast,
+            ) = (
+                 zeros(Float64, (Nleadtime,Nytgt,Nscales[dst])) for _=1:4
+                )
+            (
+             fdiv_of_contcorr,ast_of_contcorr,mc_of_contcorr,#iltfrac_mc_of_contcorr
+            ) = (
+                 zeros(Float64, (Nmcs["contcorr"],Nytgt,Nscales[dst])) for _=1:3
+                )
+            ilt_best_of_ast = zeros(Int64, (Nytgt,Nscales[dst]))
             for i_scl = scales2plot
-                (
-                 fdiv_of_ast,
-                 contcorr_of_ast,mc_of_ast,
-                 iltfrac_contcorr_of_ast,iltfrac_mc_of_ast,
-                ) = (
-                     zeros(Float64, (Nleadtime,Nytgt)) for _=1:5
-                    )
-                ilt_best_of_ast = zeros(Int64, Nytgt)
                 for (i_ytgt,ytgt) in enumerate(ytgts)
                     JLD2.jldopen(joinpath(exptdirs_COAST[i_ytgt],"results","ccdfs_combined.jld2"),"r") do f
                         Nancy = size(f["mixcrits"][dst][rsp]["lt"],2)
                         # AST as independent variable
-                        contcorr_of_ast[:,i_ytgt] .= SB.mean(f["mixcrits"][dst][rsp]["contcorr"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
-                        mc_of_ast[:,i_ytgt] .= SB.mean(f["mixcrits"][dst][rsp][mc][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
-                        fdiv_of_ast[:,i_ytgt] .= (f["fdivs"][dst][rsp]["lt"][est][fdivname][i_boot,1:Nleadtime,i_scl])
-                        ilt_best_of_ast[i_ytgt] = argmin(fdiv_of_ast[:,i_ytgt])
+                        contcorr_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["mixcrits"][dst][rsp]["contcorr"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
+                        mc_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["mixcrits"][dst][rsp][mc][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
+                        fdiv_of_ast[:,i_ytgt,i_scl] .= (f["fdivs"][dst][rsp]["lt"][est][fdivname][i_boot,1:Nleadtime,i_scl])
+                        ilt_best_of_ast[i_ytgt,i_scl] = argmin(fdiv_of_ast[:,i_ytgt,i_scl])
 
-                        iltfrac_mc_of_ast[:,i_ytgt] .= f["iltcounts"][dst][rsp][mc][:,i_scl]./Nancy
+                        iltfrac_mc_of_ast[:,i_ytgt,i_scl] .= f["iltcounts"][dst][rsp][mc][i_mcval,:,i_scl]./Nancy
                                                
                         # contcorr as independent variable
                         ilts = f["iltmixs"][dst][rsp]["contcorr"][1:Nmcs["contcorr"],1:Nancy,i_scl]
-                        ast_of_contcorr[:,i_ytgt] .= sdm.tu.*SB.mean(leadtimes[ilts]; dims=2)[:,1]
-                        fdiv_of_contcorr[:,i_ytgt] .= (f["fdivs"][dst][rsp]["contcorr"][est][fdivname][i_boot,1:Nmcs["contcorr"],i_scl])
-                        i_contcorr_best = argmin(fdiv_of_contcorr[:,i_ytgt])
-                        for i_leadtime = 1:Nleadtime
-                            iltfrac_contcorr_of_ast[i_leadtime,i_ytgt] += sum(ilts[i_contcorr_best,:] .== i_leadtime) / Nancy
+                        ast_of_contcorr[:,i_ytgt,i_scl] .= sdm.tu.*SB.mean(leadtimes[ilts]; dims=2)[:,1]
+                        fdiv_of_contcorr[:,i_ytgt,i_scl] .= (f["fdivs"][dst][rsp]["contcorr"][est][fdivname][i_boot,1:Nmcs["contcorr"],i_scl])
+                        for i_contcorr = 1:Nmcs["contcorr"]
+                            mc_of_contcorr[i_contcorr,i_ytgt,i_scl] = SB.mean([f["mixcrits"][dst][rsp][mc][ilts[i_contcorr,i_anc],i_anc,i_scl] for i_anc=1:Nancy])
                         end
+                        i_contcorr_best = argmin(fdiv_of_contcorr[:,i_ytgt,i_scl])
                     end
                 end
-                # --------------- Show fdiv as a function of (AST) -----------
-                #
-                #
-                colormap = :deep
-                normalize_by_latitude = false
-                logscale_flag = false #(mc != "ent")
-                if logscale_flag
-                    for arr = (
-                               fdiv_of_ast,fdiv_of_contcorr,fdiv_of_pim,
-                               mc_of_ast,mc_of_contcorr,mc_of_pim
-                              )
-                        arr .= log10.(arr)
-                    end
-                    if normalize_by_latitude
-                        errlabel = "log($(fdivlabel)/max $(fdivlabel)|y)"
-                        mclabel = "log($(mixcrit_labels[mc])/max $(mixcrit_labels[mc])|y)"
-                    else
-                        errlabel = "log₁₀($(fdivlabel))"
-                        mclabel = "log₁₀($(mixcrit_labels[mc]))"
-                    end
-                else
-                    errlabel = fdivlabel
-                    mclabel = mixcrit_labels[mc]
+            end
+            colormap = :YlGnBu_9
+            normalize_by_latitude = false
+            logscale_flag = true #(mc != "ent")
+            if logscale_flag
+                for arr = (
+                           fdiv_of_ast,fdiv_of_contcorr,
+                           mc_of_ast,mc_of_contcorr,
+                          )
+                    arr .= log10.(arr)
                 end
-                colorscale = identity
-                fdivrange = [minimum(minimum.([fdiv_of_ast,fdiv_of_contcorr,fdiv_of_pim])),maximum(maximum.([fdiv_of_ast,fdiv_of_contcorr,fdiv_of_pim]))]
-                mcrange = (minimum(minimum.([mc_of_ast,mc_of_contcorr,mc_of_pim])),maximum(maximum.([mc_of_ast,mc_of_contcorr,mc_of_pim])))
                 if normalize_by_latitude
-                    for arr = (
-                               fdiv_of_ast,fdiv_of_contcorr,fdiv_of_pim,
-                               mc_of_ast,mc_of_contcorr,mc_of_pim
-                              )
-                        arr .= (arr .- minimum(arr; dims=1)) ./ (maximum(arr; dims=1) .- minimum(arr; dims=1))
-                    end
-                    colorrange_fdiv = (0,1)
-                    colorrange_mc = (0,1)
+                    errlabel = "log($(fdivlabel)/max $(fdivlabel)|y)"
+                    mclabel = "log($(mixcrit_labels[mc])/max $(mixcrit_labels[mc])|y)"
                 else
-                    colorrange_fdiv = fdivrange
-                    colorrange_mc = mcrange
+                    errlabel = "log₁₀($(fdivlabel))"
+                    mclabel = "log₁₀($(mixcrit_labels[mc]))"
                 end
-
-
-                fig = Figure(size=(400,350))
+            else
+                errlabel = fdivlabel
+                mclabel = mixcrit_labels[mc]
+            end
+            colorscale = identity
+            fdivrange = [minimum(minimum.([fdiv_of_ast,fdiv_of_contcorr,])),maximum(maximum.([fdiv_of_ast,fdiv_of_contcorr,]))]
+            mcrange = (minimum(minimum.([mc_of_ast,mc_of_contcorr,])),maximum(maximum.([mc_of_ast,mc_of_contcorr,])))
+            if normalize_by_latitude
+                for arr = (
+                           fdiv_of_ast,fdiv_of_contcorr,
+                           mc_of_ast,mc_of_contcorr,
+                          )
+                    arr .= (arr .- minimum(arr; dims=1)) ./ (maximum(arr; dims=1) .- minimum(arr; dims=1))
+                end
+                colorrange_fdiv = (0,1)
+                colorrange_mc = (0,1)
+            else
+                colorrange_fdiv = fdivrange
+                colorrange_mc = mcrange
+            end
+            for i_scl = scales2plot
+                fig = Figure(size=(200,350))
                 lout = fig[1,1] = GridLayout()
-                axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6)
-                cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :valign=>:bottom, :size=>6)
+                axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6, :titlesize=>10)
+                cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :size=>6)
                 threshcquantstr = @sprintf("%.2E",thresh_cquantile)
-                toplabel = "$(label_target(target_r, sdm)), scale $(distn_scales[dst][i_scl]), threshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))=$(threshcquantstr)"
-                lab = Label(lout[1,1:2], toplabel, padding=(0.0,0.0,0.0,0.0), valign=:center, halign=:center, fontsize=8, font=:regular)
-                ax1 = Axis(lout[3,1]; xlabel="−AST", ylabel="𝑦₀/𝐿", title="", axargs...)
+                title = @sprintf("%s; %s, 𝑠=%.2f", errlabel, label_target(target_r, sdm), distn_scales[dst][i_scl])
+                ax1 = Axis(lout[2,1]; xlabel="−AST", ylabel="𝑦₀/𝐿", title="", axargs...)
                 axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
-                ax2 = Axis(lout[3,2]; xlabel=@sprintf("σ⁻¹(%s)", mixcrit_labels["contcorr"]), ylabel="𝑦₀/𝐿", title="", axargs...)
                 leadtime_bounds = tuple((-sdm.tu .* [1.5*leadtimes[end]-0.5*leadtimes[end-1], 1.5*leadtimes[1]-0.5*leadtimes[2]])...)
                 # First heatmap: overlay optimal-entropy leadtime distribution on fdiv
-                hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(fdiv_of_ast; dims=1); colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
-                co1 = contour!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast; dims=1); levels=range(mcrange...; length=7), colormap=:Reds, labels=false)
-                scatter!(ax1, -sdm.tu.*leadtimes[ilt_best_of_ast], ytgts; color=:black)
+                hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(fdiv_of_ast[:,:,i_scl]; dims=1); colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
+                co1 = contour!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast[:,:,i_scl]; dims=1); levels=range(mcrange...; length=7), colormap=:Reds, labels=false)
+                scatter!(ax1, -sdm.tu.*leadtimes[ilt_best_of_ast[:,i_scl]], ytgts; color=:black, marker=:cross)
+                scatter!(ax1, -sdm.tu.*leadtimes[ilt_best_of_ast[:,i_scl]], ytgts; color=:black, marker=:cross)
                 for (i_ytgt,ytgt) in enumerate(ytgts)
-                    scatter!(ax1, -sdm.tu.*leadtimes, ytgt.*ones(Float64,Nleadtime); marker='O', markersize=60 .* iltfrac_mc_of_ast[:,i_ytgt], color=:red)
+                    scatter!(ax1, -sdm.tu.*leadtimes, ytgt.*ones(Float64,Nleadtime); marker='O', markersize=60 .* iltfrac_mc_of_ast[:,i_ytgt,i_scl], color=:red)
                 end
-                cbar1 = Colorbar(lout[2,1], hm1; vertical=false, label="$(errlabel) (iso-$(mixcrit_labels["lt"]))", cbarargs...)
-                # Second heatmap: overlay optimal-contcorr leadtime distribution on fdiv
-                hm2 = heatmap!(ax2, -sdm.tu.*reverse(leadtimes), ytgts, reverse(fdiv_of_ast; dims=1); colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv) 
-                co2 = contour!(ax2, -sdm.tu.*reverse(leadtimes), ytgts, reverse(contcorr_of_ast; dims=1); levels=range(transcorr.(mixobjs["contcorr"][[1,end]])...; length=7), colormap=:Reds, labels=false) 
-                scatter!(ax1, -sdm.tu.*leadtimes[ilt_best_of_ast], ytgts; color=:black)
-                for (i_ytgt,ytgt) in enumerate(ytgts)
-                    scatter!(ax2, -sdm.tu.*leadtimes, ytgt.*ones(Float64,Nleadtime); marker='O', marersize=60 .* iltfrac_contcorr_of_ast[:,i_ytgt], color=:red)
-                end
-                cbar2 = Colorbar(lout[2,2], hm2; vertical=false, label="$(errlabel) (iso-$(mixcrit_labels["contcorr"])", cbarargs...)
-                rowgap!(lout, 1, 0)
-                rowgap!(lout, 2, 5)
-                colgap!(lout, 1, 0)
-
+                cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label=title, cbarargs...)
+                rowgap!(lout, 1, 5)
                 rowsize!(lout, 1, Relative(1/9))
-                #rowsize!(lout, 2, Relative(2/9))
-                rowsize!(lout, 3, Relative(2/3))
 
                 resize_to_layout!(fig)
                 save(joinpath(resultdir,"phdgm_ast_contcorr_$(dst)_$(rsp)_$(i_scl)_$(fdivname).png"), fig)
 
                 # --------------- Show EI as a function of (AST,contcorr) -----------
-                fig = Figure(size=(400,350), )
+                fig = Figure(size=(200,350), )
                 lout = fig[1,1] = GridLayout()
-                idx_maxei_ast,idx_maxei_contcorr = (mapslices(argmax, mcindep; dims=1)[1,:] for mcindep=(mc_of_ast,mc_of_contcorr))
                 axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6)
                 cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :valign=>:bottom)
-                toplabel = "$(label_target(target_r, sdm)), scale $(distn_scales[dst][i_scl]), threshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))=$(threshcquantstr)"
-                Label(lout[1,1:2], toplabel, padding=(0.0,0.0,0.0,0.0), valign=:center, halign=:center, fontsize=8, font=:regular)
+                toplabel = "$(label_target(target_r, sdm)), scale $(distn_scales[dst][i_scl]),\nthresh. exc. prob. $(powerofhalfstring(i_thresh_cquantile))=$(threshcquantstr)"
+                Label(lout[1,1], toplabel, padding=(0.0,0.0,0.0,0.0), valign=:center, halign=:center, fontsize=8, font=:regular)
                 ax1 = Axis(lout[3,1]; xlabel="−AST", ylabel="𝑦₀/𝐿", title="", axargs...)
                 axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
                 ax2 = Axis(lout[3,2]; xlabel=@sprintf("σ⁻¹(%s)", mixcrit_labels["contcorr"]), ylabel="𝑦₀/𝐿", title="", axargs...)
                 threshcquantstr = @sprintf("%.2E",thresh_cquantile)
                 leadtime_bounds = tuple((-sdm.tu .* [1.5*leadtimes[end]-0.5*leadtimes[end-1], 1.5*leadtimes[1]-0.5*leadtimes[2]])...)
                 # First heatmap: AST as independent variable
-                hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast; dims=1); colormap=Reverse(colormap), colorscale=colorscale, colorrange=colorrange_mc)
-                scatterlines!(ax1, -sdm.tu.*leadtimes[idx_maxei_ast], ytgts; color=:black, linewidth=2)
+                hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast[:,:,i_scl]; dims=1); colormap=Reverse(colormap), colorscale=colorscale, colorrange=colorrange_mc)
                 #lines!(ax1, -sdm.tu.*ast_softmaxei, ytgts; color=:black, linewidth=2, linestyle=(:dash,:dense))
                 cbar1 = Colorbar(lout[2,1], hm1; vertical=false, label="$(mclabel) (iso-$(mixcrit_labels["lt"]))", cbarargs...)
                 # Second heatmap: contcorr as independent variable
-                hm2 = heatmap!(ax2, transcorr.(mixobjs["contcorr"]), ytgts, mc_of_contcorr; colormap=Reverse(colormap), colorscale=colorscale, colorrange=colorrange_mc) 
-                scatterlines!(ax2, transcorr.(mixobjs["contcorr"][idx_maxei_contcorr]), ytgts; color=:black, linewidth=2)
+                hm2 = heatmap!(ax2, transcorr.(mixobjs["contcorr"]), ytgts, mc_of_contcorr[:,:,i_scl]; colormap=Reverse(colormap), colorscale=colorscale, colorrange=colorrange_mc) 
                 #lines!(ax2, transcontcorr_softmaxei, ytgts; color=:black, linewidth=2, linestyle=(:dash,:dense))
                 cbar2 = Colorbar(lout[2,2], hm2; vertical=false, label="$(mclabel) (iso-$(mixcrit_labels["contcorr"]))", cbarargs...)
                 #rowsize!(lout, 0, Relative(1/8))
@@ -536,7 +523,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 # rowsize!(lout, 2, Relative(2/9)) # TODO understand why uncommenting this line messes up all the proportions
                 rowsize!(lout, 3, Relative(2/3))
                 resize_to_layout!(fig)
-                @infiltrate !(all(isfinite.(mc_of_ast)) && all(isfinite.(mc_of_contcorr)))
+                @assert (all(isfinite.(mc_of_ast)) && all(isfinite.(mc_of_contcorr)))
                 save(joinpath(resultdir,"phdgm_ast_contcorr_$(dst)_$(rsp)_$(i_scl)_$(mc).png"), fig)
             end
         end

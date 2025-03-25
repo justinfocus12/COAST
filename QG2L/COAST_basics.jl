@@ -690,9 +690,13 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain)
     return label
 end
 
-function label_target(target_ryPerL::Float64, sdm::QG2L.SpaceDomain)
+function label_target(target_ryPerL::Float64, sdm::QG2L.SpaceDomain, short::Bool=true)
     rxystr = @sprintf("(%d/%d)𝐿",round(Int,target_ryPerL*sdm.Ny),sdm.Ny)
-    label = "Box radius $(rxystr)"
+    if short
+        label = "ℓ=$(rxystr)"
+    else
+        label = "Box radius $(rxystr)"
+    end
     return label
 end
 

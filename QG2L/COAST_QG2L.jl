@@ -41,21 +41,21 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
                              "use_backups" =>                                    0,
-                             "anchor" =>                                         1,
-                             "sail" =>                                           1, 
-                             "compute_contour_dispersion" =>                     1,
-                             "plot_contour_dispersion_distribution" =>           1,
-                             "regress_lead_dependent_risk_polynomial" =>         1, 
-                             "evaluate_mixing_criteria" =>                       1,
-                             "plot_objective" =>                                 1, 
-                             "plot_conditional_pdfs" =>                          1,
-                             "plot_mixcrits_overlay" =>                          1,
-                             "mix_COAST_distributions" =>                        1,
-                             "plot_COAST_mixture" =>                             1,
-                             "mixture_COAST_phase_diagram" =>                    1,
-                             "plot_composite_contours" =>                        1,
+                             "anchor" =>                                         0,
+                             "sail" =>                                           0, 
+                             "compute_contour_dispersion" =>                     0,
+                             "plot_contour_dispersion_distribution" =>           0,
+                             "regress_lead_dependent_risk_polynomial" =>         0, 
+                             "evaluate_mixing_criteria" =>                       0,
+                             "plot_objective" =>                                 0, 
+                             "plot_conditional_pdfs" =>                          0,
+                             "plot_mixcrits_overlay" =>                          0,
+                             "mix_COAST_distributions" =>                        0,
+                             "plot_COAST_mixture" =>                             0,
+                             "mixture_COAST_phase_diagram" =>                    0,
+                             "plot_composite_contours" =>                        0,
                              # Danger zone 
-                             "remove_pngs" =>                                    1,
+                             "remove_pngs" =>                                    0,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -1197,7 +1197,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])
