@@ -675,8 +675,8 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, scale::Float64, r
 end
 
 function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, scale::Float64)
-    scalestr = @sprintf("%.3f", scale)
-    label = "$(label_target(cfg,sdm)), scale $(scalestr)"
+    scalestr = @sprintf("%.2f", scale)
+    label = "$(label_target(cfg,sdm)), 𝑠=$(scalestr)"
     return label
 end
 
@@ -686,7 +686,7 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain)
     xN = round(Int, cfg.target_xPerL*N)
     ryN = round(Int, cfg.target_ryPerL*N)
     rxN = round(Int, cfg.target_ryPerL*N)
-    label = "𝑦₀ = ($yN/$N)𝐿, box radius ($ryN/$N)𝐿"
+    label = "𝑦₀ = ($yN/$N)𝐿, ℓ = ($ryN/$N)𝐿"
     return label
 end
 

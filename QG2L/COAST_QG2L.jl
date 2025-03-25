@@ -51,7 +51,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        0,
-                             "plot_COAST_mixture" =>                             0,
+                             "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
@@ -873,9 +873,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                 ccdfs_opt[mc][est] = ccdfmixs[dst][rsp][mc][est][:,i_boot,imcs_opt[mc][est],i_scl]
                             end
                             if mc in ["globcorr","contcorr","lt"]
-                                labels_opt[mc] = "$(mixcrit_labels[mc]) = $(mcstrs_opt[mc]["mix"]) / $(mcstrs_opt[mc]["pool"])\n$(fdivlabel) = $(fdivstrs_opt[mc]["mix"]) / $(fdivstrs_opt[mc]["pool"])"
+                                labels_opt[mc] = "$(mixcrit_labels[mc])\n=$(mcstrs_opt[mc]["mix"]) / $(mcstrs_opt[mc]["pool"])" #\n$(fdivlabel) = $(fdivstrs_opt[mc]["mix"]) / $(fdivstrs_opt[mc]["pool"])"
                             else
-                                labels_opt[mc] = "max $(mixcrit_labels[mc]) \n$(fdivlabel) = $(fdivstrs_opt[mc]["mix"]) / $(fdivstrs_opt[mc]["pool"])"
+                                labels_opt[mc] = "max $(mixcrit_labels[mc])" # \n$(fdivlabel) = $(fdivstrs_opt[mc]["mix"]) / $(fdivstrs_opt[mc]["pool"])"
                             end
                             
                         end
@@ -886,20 +886,24 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         fdivstr_ancgen = @sprintf("%.1E\n(%.2E, %.2E)",fdiv_ancgen_valid_pt, fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi)
                         dnspot = thresh_cquantile.*ccdf_pot_valid_pt
                         # -------------- Plot --------------
-                        fig = Figure(size=(1200,500))
+                        fig = Figure(size=(900,400))
                         lout = fig[1,1] = GridLayout()
-                        ax1 = Axis(lout[1,2]; xscale=log10, xlabel="CCDF", ylabel="Severity 𝑅*", title="$(label_target(cfg,sdm,distn_scales[dst][i_scl]))\nThreshold exc. prob. $(powerofhalfstring(i_thresh_cquantile))", titlefont=:regular, xgridvisible=false, ygridvisible=false)
-                        ax2 = Axis(lout[1,3]; xscale=log10, xlabel="CCDF/CCDF(DNS)", ylabel="Severity 𝑅*", titlefont=:regular, ylabelvisible=false, xgridvisible=false, ygridvisible=false)
-                        ax3 = Axis(lout[1,4]; xscale=log10, xlabel=fdivlabel)
+                        ax1 = Axis(lout[1,1]; xscale=log10, xlabel="CCDF", ylabel="Severity 𝑅*", title="$(label_target(cfg,sdm,distn_scales[dst][i_scl])), μ[$(powerofhalfstring(i_thresh_cquantile))]", titlefont=:regular, xgridvisible=false, ygridvisible=false)
+                        ax2 = Axis(lout[1,2]; xscale=log10, xlabel="CCDF/CCDF(DNS)", ylabel="Severity 𝑅*", titlefont=:regular, ylabelvisible=false, xgridvisible=false, ygridvisible=false)
+                        ax3 = Axis(
+                                   lout[1,3]; xscale=log10, xlabel=fdivlabel, 
+                                   yticks = (1:(length(mcs2mix)+1), vcat("Short DNS",[labels_opt[mc] for mc=mcs2mix])),
+                                   xgridvisible=false, ygridvisible=false, yticklabelalign=(:right,:center), 
+                                  )
                         barplot!(
                                  ax3, 
-                                 1:length(mcs2mix), 
-                                 [fdivs_opt[mc]["mix"] for mc=mcs2mix],
+                                 1:(length(mcs2mix)+1), 
+                                 vcat(fdiv_ancgen_valid_pt, [fdivs_opt[mc]["mix"] for mc=mcs2mix]),
                                  ;
-                                 color=[mixcrit_colors[mc] for mc=mcs2mix],
+                                 color=vcat(:black, [mixcrit_colors[mc] for mc=mcs2mix]),
                                  direction=:x,
                                 )
-                        vlines!(ax3, fdiv_ancgen_valid_pt; color=:black)
+                        #vlines!(ax3, fdiv_ancgen_valid_pt; color=:black)
                         # GPD
                         lines!(ax1, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2])))
                         lines!(ax2, clipccdfratio.(ccdf_gpd./dnspot), levels_exc; color=:gray, alpha=0.5, linewidth=3)
@@ -916,10 +920,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                 scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end]./dnspot), levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=:star6)
                             end
                         end
-                        lout[1,1] = Legend(fig, ax1; framevisible=true, rowgap=8, merge=true)
-                        colsize!(lout, 2, Relative(500/1200))
-                        colsize!(lout, 3, Relative(250/1200))
-                        colsize!(lout, 4, Relative(200/1200))
+                        #lout[1,1] = Legend(fig, ax1; framevisible=true, rowgap=8, merge=true)
+                        #
+                        colsize!(lout, 1, Relative(500/1200))
+                        colsize!(lout, 2, Relative(400/1200))
+                        #colsize!(lout, 3, Relative(200/1200))
                         for ax = (ax1,ax2)
                             ylims!(ax, 1.1*levels[i_thresh_cquantile]-0.1*levels[i_thresh_cquantile+1], 1.1*levels[end]-0.1*levels[end-1])
                         end
@@ -1197,7 +1202,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])
@@ -1209,8 +1214,8 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
-        #idx_expt = (vec([5,6,7] .+ [0,1]'.*11))
-        idx_expt = [5]
+        idx_expt = (vec([9,15] .+ [0,1]'.*23))
+        #idx_expt = [5]
     end
 end
 
