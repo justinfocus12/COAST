@@ -19,7 +19,7 @@ function sigmoid_shifted_scaled(z::Float64, c0::Float64)
     return c
 end
 
-function transcorr(x::Float64, fwd::Bool,; c0=0.1)
+function transcorr(x::Float64, fwd::Bool,; c0=0.01)
     # c denotes correlation (0 <= c <= 1)
     # z denotes transformed correlation (-infty < z < infty)
     if fwd # 
@@ -44,14 +44,13 @@ function plot_transcorr(figdir)
     ax = Axis(lout[1,1], xlabel="σ⁻¹(ρ; 𝑐₀)", ylabel="Correlation ρ", xgridvisible=false, ygridvisible=false)
     hlines!(ax, [0, 1]; color=:grey79)
     vlines!(ax, 0; color=:grey79)
-    c0s = [0.05,0.1,0.2]
+    c0s = [0.005,0.01,0.05,0.1]
     tofcs = hcat((transcorr.(c, c0) for c0=c0s)...)
     z = collect(range(extrema(tofcs)...; length=200))
     sofzs = hcat((sigmoid_shifted_scaled.(z, c0) for c0=c0s)...)
-    colors = [:green, :black, :purple]
     for (i_c0,c0) in enumerate(c0s)
-        colargs = Dict(:color=>colors[i_c0])
-        lines!(ax, tofcs[:,i_c0], c; colargs..., label=@sprintf("𝑐₀ = %.2f", c0))
+        colargs = Dict(:colormap=>:darkrainbow, :color=>i_c0, :colorrange=>(1,length(c0s)))
+        lines!(ax, tofcs[:,i_c0], c; colargs..., label=@sprintf("𝑐₀ = %.3f", c0))
         lines!(ax, z, sofzs[:,i_c0]; linestyle=(:dash,:dense), colargs...)
 
     end

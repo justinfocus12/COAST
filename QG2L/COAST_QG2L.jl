@@ -35,7 +35,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     todo = Dict{String,Bool}(
                              "upgrade_ensemble" =>                               0,
                              "update_paths" =>                                   0,
-                             "plot_transcorr" =>                                 0,
+                             "plot_transcorr" =>                                 1,
                              "plot_pertop" =>                                    0,
                              "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
@@ -46,14 +46,14 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "compute_contour_dispersion" =>                     0,
                              "plot_contour_dispersion_distribution" =>           0,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
-                             "evaluate_mixing_criteria" =>                       0,
-                             "plot_objective" =>                                 0, 
-                             "plot_conditional_pdfs" =>                          0,
-                             "plot_mixcrits_overlay" =>                          0,
-                             "mix_COAST_distributions" =>                        0,
+                             "evaluate_mixing_criteria" =>                       1,
+                             "plot_objective" =>                                 1, 
+                             "plot_conditional_pdfs" =>                          1,
+                             "plot_mixcrits_overlay" =>                          1,
+                             "mix_COAST_distributions" =>                        1,
                              "plot_COAST_mixture" =>                             1,
-                             "mixture_COAST_phase_diagram" =>                    0,
-                             "plot_composite_contours" =>                        0,
+                             "mixture_COAST_phase_diagram" =>                    1,
+                             "plot_composite_contours" =>                        1,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
                              # vestigial or hibernating
@@ -311,9 +311,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         # TODO do some plotting and quantify the difference between ancgen and valid (train and test?) distributions 
         fig = Figure()
         lout = fig[1,1] = GridLayout()
-        axpdf = Axis(lout[1,1], ylabel="Box mean 𝑐", xlabel="PDF", xscale=log10, xgridvisible=false, ygridvisible=false)
-        axccdf = Axis(lout[1,2], ylabel="Box mean 𝑐", xlabel="CCDF", xscale=log10, xgridvisible=false, ygridvisible=false)
-        Label(lout[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,15.0,5.0), valign=:bottom, halign=:left, fontsize=12)
+        axpdf = Axis(lout[1,1], ylabel="Intensity 𝑅", xlabel="PDF", xscale=log10, xgridvisible=false, ygridvisible=false, xlabelsize=15, ylabelsize=15, xticklabelsize=12, yticklabelsize=12)
+        axccdf = Axis(lout[1,2], ylabel="Intensity 𝑅", xlabel="CCDF", xscale=log10, xgridvisible=false, ygridvisible=false, ylabelvisible=false, xlabelsize=15, ylabelsize=15, xticklabelsize=12, yticklabelsize=12)
+        Label(lout[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,15.0,5.0), valign=:top, halign=:left, fontsize=18)
         bin_edges = collect(range(0,1,200))
         bin_centers = (bin_edges[2:end] .+ bin_edges[1:end-1]) ./ 2
         levels = Rccdf_valid_agglon
@@ -336,18 +336,19 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
         # PDF
         confint = 0.9
+        shortcolor = :firebrick
         #lines!(axpdf, thresh_cquantile.*clippdf.(Dists.pdf.(GPD, levels_exc_mid)), levels_exc_mid, color=:gray, linewidth=3, alpha=0.5)
-        lines!(axpdf, zero2nan(SB.mean(pdfs_ancgen; dims=2)[:,1]), bin_centers; color=:orange, linewidth=2, linestyle=(:dash,:dense), label="Short DNS ($(round(Int,confint*100))% CI)")
+        lines!(axpdf, zero2nan(SB.mean(pdfs_ancgen; dims=2)[:,1]), bin_centers; color=shortcolor, linewidth=2, linestyle=(:dash,:dense), label="Short DNS ($(round(Int,confint*100))% CI)")
         lines!(axpdf, pdf_valid_agglon, bin_centers; color=:black, linewidth=2, linestyle=(:dash,:dense), label="Long DNS ($(round(Int,confint*100))% CI)")
         for level = (levels[1],levels[end])
             hlines!(axpdf, level; color=:gray, linewidth=1, alpha=0.5)
         end
         # CCDF
-        lines!(axccdf, thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc)), levels_exc, color=:gray, linewidth=3, alpha=0.5, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)\nThresh. exc. prob. %s", thresh, gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2]), powerofhalfstring(i_thresh_cquantile)))
+        lines!(axccdf, thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc)), levels_exc, color=:gray, linewidth=3, alpha=0.5, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)\nThreshold μ[%s]", thresh, gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2]), powerofhalfstring(i_thresh_cquantile)))
         lines!(axccdf, ccdf_levels, zero2nan(SB.mean(Rccdf_valid_seplon; dims=2)[:,1]); color=:black, linewidth=2, linestyle=(:dash,:dense))
         scatterlines!(axccdf, thresh_cquantile.*zero2nan(SB.mean(ccdf_pot_valid_seplon, ; dims=2)[:,1]), levels[i_thresh_cquantile:end]; color=:black, marker=:star6, label="Long DNS,\npeaks over threshold")
-        lines!(axccdf, ccdf_levels, zero2nan(Rccdf_ancgen_seplon[:,1]); color=:orange, linewidth=2, linestyle=(:dash,:dense))
-        scatterlines!(axccdf, thresh_cquantile.*zero2nan(ccdf_pot_ancgen_seplon[:,1]), levels[i_thresh_cquantile:end]; color=:orange, marker=:star6, label="Short DNS,\npeaks over threshold")
+        lines!(axccdf, ccdf_levels, zero2nan(Rccdf_ancgen_seplon[:,1]); color=shortcolor, linewidth=2, linestyle=(:dash,:dense))
+        scatterlines!(axccdf, thresh_cquantile.*zero2nan(ccdf_pot_ancgen_seplon[:,1]), levels[i_thresh_cquantile:end]; color=shortcolor, marker=:star6, label="Short DNS,\npeaks over threshold")
         vlines!(axccdf, thresh_cquantile; color=:gray, alpha=0.5)
         hlines!(axccdf, thresh; color=:gray, alpha=0.5)
         #lines!(axccdf, zero2nan(Rccdf_valid_agglon), ccdf_levels; color=:gray, alpha=0.5, linewidth=3)
@@ -355,11 +356,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
             qancgen = zero2nan(QG2L.quantile_sliced(pdfs_ancgen, q, 2)[:,1])
             qvalid = zero2nan(QG2L.quantile_sliced(pdfs_valid, q, 2)[:,1])
             lines!(axpdf, zero2nan(QG2L.quantile_sliced(pdfs_valid, q, 2)[:,1]), bin_centers; color=:black, linestyle=(:dot,:dense))
-            lines!(axpdf, qancgen, bin_centers; color=:orange, linestyle=(:dot,:dense))
+            lines!(axpdf, qancgen, bin_centers; color=shortcolor, linestyle=(:dot,:dense))
             qancgen = zero2nan(QG2L.quantile_sliced(Rccdf_ancgen_seplon, q, 2)[:,1])
             qvalid = zero2nan(QG2L.quantile_sliced(Rccdf_valid_seplon, q, 2)[:,1])
             lines!(axccdf, ccdf_levels, qvalid; color=:black, linestyle=(:dot,:dense))
-            lines!(axccdf, ccdf_levels, qancgen; color=:orange, linestyle=(:dot,:dense))
+            lines!(axccdf, ccdf_levels, qancgen; color=shortcolor, linestyle=(:dot,:dense))
             println("For q = $(q), qancgen = ")
             display(qancgen')
             ccancgen = thresh_cquantile.*zero2nan(QG2L.quantile_sliced(ccdf_pot_ancgen_seplon, q, 2)[:,1])
@@ -367,8 +368,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
             #scatter!(axccdf, ccancgen, levels[i_thresh_cquantile:end]; color=:black, marker=:xcross)
             #scatter!(axccdf, ccvalid, levels[i_thresh_cquantile:end]; color=:orange, marker=:xcross)
         end
-        axislegend(axpdf; position=:lb, framevisible=true, labelsize=10)
-        axislegend(axccdf; position=:lb, framevisible=true, labelsize=10)
+        axislegend(axpdf; position=:lb, framevisible=true, labelsize=15)
+        axislegend(axccdf; position=:lb, framevisible=true, labelsize=15)
 
         ylims!(axpdf, 0.0, 1.0)
         ylims!(axccdf, levels[1], levels[end])
