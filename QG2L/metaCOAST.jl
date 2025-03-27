@@ -434,11 +434,10 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         icc_best_of_contcorr[i_ytgt,i_scl] = argmin(fdiv_of_contcorr[:,i_ytgt,i_scl])
                         for i_anc = 1:Nancy
                             i_leadtime_mcmax = f["iltmixs"][dst][rsp][mc][i_mcval,i_anc,i_scl]
-                            contcorr_mcmax = f["mixcrits"][dst][rsp]["contcorr"][i_leadtime_mcmax]
+                            contcorr_mcmax = f["mixcrits"][dst][rsp]["contcorr"][i_leadtime_mcmax,i_anc,i_scl]
                             i_contcorr_mcmax = (f["mixobjs"]["contcorr"][end] >= contcorr_mcmax ? findfirst(f["mixobjs"]["contcorr"] .>= contcorr_mcmax) : Nmcs["contcorr"])
                             iccfrac_mc_of_contcorr[i_contcorr_mcmax,i_ytgt,i_scl] += 1/Nancy
                         end
-                        @infiltrate
                     end
                 end
             end

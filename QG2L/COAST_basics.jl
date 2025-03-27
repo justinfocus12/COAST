@@ -33,8 +33,8 @@ function transcorr(x::Float64, fwd::Bool,; c0=0.01)
     end
 end
 
-transcorr(x::Float64, c0::Float64=0.1) = transcorr(x, true; c0=c0)
-invtranscorr(x::Float64, c0::Float64=0.1) = transcorr(x, false; c0=c0)
+transcorr(x::Float64, c0::Float64=0.01) = transcorr(x, true; c0=c0)
+invtranscorr(x::Float64, c0::Float64=0.01) = transcorr(x, false; c0=c0)
 
 
 function plot_transcorr(figdir)
