@@ -41,19 +41,19 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
                              "use_backups" =>                                    0,
-                             "anchor" =>                                         0,
-                             "sail" =>                                           0, 
-                             "compute_contour_dispersion" =>                     0,
-                             "plot_contour_dispersion_distribution" =>           0,
-                             "regress_lead_dependent_risk_polynomial" =>         0, 
+                             "anchor" =>                                         1,
+                             "sail" =>                                           1, 
+                             "compute_contour_dispersion" =>                     1,
+                             "plot_contour_dispersion_distribution" =>           1,
+                             "regress_lead_dependent_risk_polynomial" =>         1, 
                              "evaluate_mixing_criteria" =>                       1,
-                             "plot_objective" =>                                 0, 
-                             "plot_conditional_pdfs" =>                          0,
-                             "plot_mixcrits_overlay" =>                          0,
-                             "mix_COAST_distributions" =>                        0,
-                             "plot_COAST_mixture" =>                             0,
-                             "mixture_COAST_phase_diagram" =>                    0,
-                             "plot_composite_contours" =>                        0,
+                             "plot_objective" =>                                 1, 
+                             "plot_conditional_pdfs" =>                          1,
+                             "plot_mixcrits_overlay" =>                          1,
+                             "mix_COAST_distributions" =>                        1,
+                             "plot_COAST_mixture" =>                             1,
+                             "mixture_COAST_phase_diagram" =>                    1,
+                             "plot_composite_contours" =>                        1,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
                              # vestigial or hibernating
@@ -740,7 +740,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                 rowgap!(lout, i_mc, 0)
             end
         end
-        axs[1].title = "$(label_target(cfg, sdm))\nThresh. exc. prob. $(powerofhalfstring(i_thresh_cquantile))"
+        axs[1].title = "$(label_target(cfg, sdm)), μ[$(powerofhalfstring(i_thresh_cquantile))]"
         #lout[Nmc+1,1] = Legend(fig, axs[Nmc]; framevisible=false, labelsize=15)
         #rowsize!(lout, Nmc+1, Relative(1/(3*Nmc)))
 
@@ -755,7 +755,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         println("Finished mixing")
     end
     if todo["plot_COAST_mixture"]
-        println("Aabout to plot COAST mixtures")
+        println("About to plot COAST mixtures")
 
         ytgtstr = @sprintf("%.2f", cfg.target_yPerL*sdm.Ly)
         rxystr = @sprintf("%.3f", cfg.target_ryPerL*sdm.Ly)
@@ -896,31 +896,36 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                    yticks = (1:(length(mcs2mix)+1), vcat("Short DNS",[labels_opt[mc] for mc=mcs2mix])),
                                    xgridvisible=false, ygridvisible=false, yticklabelalign=(:right,:center), 
                                   )
-                        barplot!(
-                                 ax3, 
-                                 1:(length(mcs2mix)+1), 
-                                 vcat(fdiv_ancgen_valid_pt, [fdivs_opt[mc]["mix"] for mc=mcs2mix]),
-                                 ;
-                                 color=vcat(:black, [mixcrit_colors[mc] for mc=mcs2mix]),
-                                 direction=:x,
-                                )
+                        scatter!(ax3, fdiv_ancgen_valid_pt, 1; color=:black, marker=:circle, markersize=12)
+                        for (est,marker) = (("mix",:xcross),("pool",'O'))
+                            scatter!(ax3, [fdivs_opt[mc][est] for mc=mcs2mix], 2:(length(mcs2mix)+1); color=[mixcrit_colors[mc] for mc=mcs2mix], marker=marker, markersize=12)
+                        end
+                        #barplot!(
+                        #         ax3, 
+                        #         1:(length(mcs2mix)+1), 
+                        #         vcat(fdiv_ancgen_valid_pt, [fdivs_opt[mc]["mix"] for mc=mcs2mix]),
+                        #         ;
+                        #         color=vcat(:black, [mixcrit_colors[mc] for mc=mcs2mix]),
+                        #         direction=:x,
+                        #        )
                         #vlines!(ax3, fdiv_ancgen_valid_pt; color=:black)
                         # GPD
                         lines!(ax1, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2])))
                         lines!(ax2, clipccdfratio.(ccdf_gpd./dnspot), levels_exc; color=:gray, alpha=0.5, linewidth=3)
-                        # DNS 
-                        lines!(ax1, dnspot, levels_exc; linewidth=2, color=:black, linestyle=(:dash,:dense), label="Long DNS")
-                        lines!(ax2, clipccdfratio.(dnspot./dnspot), levels_exc; linewidth=2, color=:black, linestyle=(:dash,:dense))
-                        # Ancestor run 
-                        colargs = Dict(:color=>:black,)
-                        scatterlines!(ax1, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; linewidth=2, colargs..., marker=:star6, label="Short DNS\n$(fdivlabel) = $(fdivstr_ancgen)")
-                        scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; linewidth=2, colargs...)
+                        # Mixed 
                         for mc = mcs2mix
-                            for (est,linestyle) in (("mix",:solid),("pool",(:dot,:dense)))
-                                scatterlines!(ax1, thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end], levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=:star6, label=labels_opt[mc], linewidth=2)
-                                scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end]./dnspot), levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=:star6)
+                            for (est,linestyle,marker) in (("mix",:solid,:xcross),("pool",(:dot,:dense),'O'))
+                                scatterlines!(ax1, thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end], levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, label=labels_opt[mc], linewidth=1.5, )
+                                scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end]./dnspot), levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, linewidth=1.5)
                             end
                         end
+                        # DNS 
+                        lines!(ax1, dnspot, levels_exc; linewidth=3, color=:black, linestyle=(:dash,:dense), label="Long DNS")
+                        lines!(ax2, clipccdfratio.(dnspot./dnspot), levels_exc; linewidth=3, color=:black, linestyle=(:dash,:dense))
+                        # Ancestor run 
+                        colargs = Dict(:color=>:black,)
+                        scatterlines!(ax1, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; linewidth=3, colargs..., marker=:circle, label="Short DNS\n$(fdivlabel) = $(fdivstr_ancgen)")
+                        scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; marker=:circle, linewidth=3, colargs...)
                         #lout[1,1] = Legend(fig, ax1; framevisible=true, rowgap=8, merge=true)
                         #
                         colsize!(lout, 1, Relative(500/1200))
@@ -1110,7 +1115,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         todosub = Dict{String,Bool}(
                                     "mcmean_heatmap" =>             1,
                                     "fdiv_heatmap" =>               1,
-                                    "phdgm_slices" =>               1,
                                    )
         (
          leadtimes,r2threshes,dsts,rsps,mixobjs,
@@ -1124,10 +1128,12 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         end
         fdivs2plot = ["chi2","kl","qrmse",] #"tv","chi2","kl"]
         fdivlabels = ["χ²","KL","𝐿²",] #"TV","χ²","KL"]
+        Nmcs = Dict(mc=>length(mixobjs[mc]) for mc=keys(mixobjs))
         i_boot = 1
         est = "mix"
         mc = "ent"
         for dst = ["b"]
+            Nscales = length(distn_scales[dst])
             for rsp = ["e"]
                 # Plot the entropy as a 2D phase plot: both its mean and its variance (not just the proportion of time it's optimal)
                 if todosub["mcmean_heatmap"]
@@ -1175,7 +1181,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             end
                             hm = heatmap!(ax, transcorr.(mixobjs[corrkey]), distn_scales[dst], fdivs[dst][rsp][corrkey][est][fdivname][i_boot,:,:]; colormap=:deep, colorscale=log10)
                             cbar = Colorbar(lout[1,2], hm, vertical=true)
-                            co = contour!(ax, transcorr.(mixobjs[corrkey]), distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*collect(range(extrema(ltmean)...; length=10)), color=:black, labels=true)
+                            co = contour!(ax, transcorr.(mixobjs[corrkey]), distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*round.(Int, leadtimes[1:round(Int,Nleadtime/7):Nleadtime]), color=:black, labels=true)
                             save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_syn$(corrkey)_$(est).png"), fig)
                         end
                         # --------------- AST as the independent variable ------------
@@ -1183,6 +1189,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         lout = fig[1,1] = GridLayout()
                         ax = Axis(lout[1,1], xlabel="−AST", ylabel="Scale", title="$(fdivlabels[i_fdivname]), $(label_target(cfg,sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular) 
                         hm = heatmap!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["lt"][est][fdivname][i_boot,:,:]; dims=1); colormap=:deep, colorscale=log10)
+                        levels_contcorr = transcorr.(mixobjs["contcorr"][1:round(Int,Nmcs["contcorr"]/7):Nmcs["contcorr"]])
+                        co = contour!(ax, -sdm.tu.*reverse(leadtimes), distn_scales[dst], reverse(SB.mean(transcorr.(mixcrits[dst][rsp]["contcorr"]); dims=2)[1:Nleadtime,1,1:Nscales]; dims=1); levels=levels_contcorr, color=:black, labels=true)
                         cbar = Colorbar(lout[1,2], hm, vertical=true)
                         levels_pth = collect(range(mixobjs["pth"][[1,end]]..., length=12))
                         levels_pim = collect(range(mixobjs["pim"][[1,end]]..., length=12))
@@ -1203,7 +1211,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])

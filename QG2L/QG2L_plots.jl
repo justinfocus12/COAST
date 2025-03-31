@@ -522,7 +522,7 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, fco
     topo_zonal_mean = vec(SB.mean(cop.topography[:,:,2], dims=1))
     lblargs[:xticklabelrotation] = pi/2
     lblargs[:ylabelvisible] = lblargs[:yticklabelsvisible] = false
-    xtickfun(f) = range(minimum(f),maximum(f), 3)
+    xtickfun(f) = (maximum(f)-minimum(f) == 0 ? [-1.0,0.0,1.0] : range(minimum(f),maximum(f), 3))
     ax = Axis(lout[1,3]; title="Topo.", lblargs..., xticks=xtickfun(topo_zonal_mean))
     lines!(ax, topo_zonal_mean, sdm.ygrid, color=:black)
     for (i_mom,mom_name) = zip(1:1:4, ("Mean","Std. Dev.","Skew.","Kurt."))

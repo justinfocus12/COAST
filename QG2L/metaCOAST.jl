@@ -63,12 +63,12 @@ end
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
-                             "plot_mixcrits_ydep" =>             1,
+                             "plot_mixcrits_ydep" =>             0,
                              "compile_fdivs" =>                  0,
-                             "plot_fdivs" =>                     1,
+                             "plot_fdivs" =>                     0,
                              "plot_ccdfs_latdep" =>              1,
                              # danger zone
-                             "remove_pngs" =>                    1,
+                             "remove_pngs" =>                    0,
                              # defunct/hibernating
                              "print_simtimes" =>                 0,
                              "plot_pot_ccdfs_latdep" =>          0,
@@ -180,25 +180,29 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         ytickvalues = ytgts[3:6:Nytgt]
         yticklabels = [@sprintf("%d/%d", round(Int, sdm.Ny*ytgt), sdm.Ny) for ytgt=ytickvalues]
         axargs = Dict(:titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>pi/2, :xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :titlesize=>15, :ylabel=>"𝑦₀/𝐿", :yticks=>(ytickvalues, yticklabels))
-        axtopo = Axis(lout[1,1]; xlabel="ℎ(𝑦₀)", title="Topo.", titlefont=:regular, titlevisible=false, limits=(extrema(topo_zonal_mean)..., ylims...), axargs...)
+        topolims = (minimum(topo_zonal_mean) == maximum(topo_zonal_mean) ? [-1,1] : extrema(topo_zonal_mean))
+        axtopo = Axis(lout[1,1]; xlabel="ℎ(𝑦₀)", title="Topo.", titlefont=:regular, titlevisible=false, limits=(topolims..., ylims...), axargs...)
         axmean = Axis(lout[1,2]; xlabel="⟨𝑅⟩ − 𝑦₀/𝐿",ylabel="𝑦₀/𝐿", ylabelvisible=false, yticklabelsvisible=false, title="Mean", titlevisible=false, limits=(extrema(vcat(Rmean_ancgen.-Rccdf_rough,Rmean_valid.-Rccdf_rough).*1.25)..., ylims...), axargs...)
-        axquants = Axis(lout[1,3]; xlabel="μ[(½)ᵏ] − ⟨𝑅⟩\n𝑘∈{1,...,15}", ylabelvisible=false, yticklabelsvisible=false, title="(½)ᵏ-complementary\nquantiles, 𝑘∈{1,...,15}", titlevisible=false, limits=(extrema(Rccdfs_valid.-Rmean_valid')...,ylims...), axargs...)
+        axquants = Axis(lout[1,3]; xlabel="μ[(½)ᵏ] − 𝑦₀/𝐿\n𝑘∈{1,...,15}", ylabelvisible=false, yticklabelsvisible=false, title="(½)ᵏ-complementary\nquantiles, 𝑘∈{1,...,15}", titlevisible=false, limits=(extrema(Rccdfs_valid.-Rccdf_rough')...,ylims...), axargs...)
         #axquantyders = Axis(lout[1,4], xlabel="Δ(𝑅-⟨𝑅⟩)/Δ⟨𝑅⟩", ylabel="𝑦₀/𝐿", xgridvisible=false, ygridvisible=false, ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=pi/2, title="Relative 𝑦-gradients", titlefont=:regular, limits=(0,2,ylims...))
         toplabel = "Intensities 𝑅, $(label_target(target_r,sdm))"
         Label(lout[1,2:3,Top()], toplabel, padding=(5.0,5.0,5.0,5.0), valign=:center, halign=:left, fontsize=15, font=:regular)
         lines!(axtopo, topo_zonal_mean, sdm.ygrid./sdm.Ly; color=:black)
-        lines!(axmean, Rmean_valid .- Rccdf_rough, ytgts; color=:black, linestyle=(:dash,:dense), label="Long DNS")
-        lines!(axmean, Rmean_ancgen .- Rccdf_rough, ytgts; color=:black, linestyle=:solid, label="Short DNS")
+        for (ax,color) = ((axmean,:grey60),(axquants,:grey60))
+            lines!(ax, Rmean_valid .- Rccdf_rough, ytgts; color=color, linestyle=(:dash,:dense), label="Long DNS")
+            lines!(ax, Rmean_ancgen .- Rccdf_rough, ytgts; color=color, linestyle=:solid, label="Short DNS")
+        end
         ytgts_mid = (ytgts[2:end] .+ ytgts[1:end-1])./2
+        # For quantiles, subtract off either the mean or the rough trend 
         for i_cl = reverse(1:length(ccdf_levels))
             cl = ccdf_levels[i_cl]
-            lines!(axquants, Rccdfs_valid[i_cl,:].-Rmean_valid, ytgts; linewidth=2, linestyle=(:dash,:dense), color=i_cl, colargs..., label="Long DNS")
-            lines!(axquants, Rccdfs_ancgen[i_cl,:].-Rmean_ancgen, ytgts; linewidth=1, linestyle=:solid, color=i_cl, colargs..., label="Short DNS")
+            lines!(axquants, Rccdfs_valid[i_cl,:].-Rccdf_rough, ytgts; linewidth=2, linestyle=(:dash,:dense), color=i_cl, colargs..., label="Long DNS")
+            lines!(axquants, Rccdfs_ancgen[i_cl,:].-Rccdf_rough, ytgts; linewidth=1, linestyle=:solid, color=i_cl, colargs..., label="Short DNS")
             #lines!(axquantyders, diff(Rccdfs_valid[i_cl,:])./diff(Rmean_valid), ytgts_mid; linewidth=2, linestyle=(:dash,:dense), color=i_cl, colargs..., label="Long DNS")
             #lines!(axquantyders, diff(Rccdfs_ancgen[i_cl,:] .- Rmean_valid)./diff(Rmean_valid), ytgts_mid; linewidth=1, linestyle=:solid, color=i_cl, colargs..., label="Short DNS")
         end
-        lines!(axquants, 1 .- Rmean_valid, ytgts; color=:grey60, linewidth=2, linestyle=(:dash,:dense))
-        lines!(axquants, 0 .- Rmean_valid, ytgts; color=:grey60, linewidth=2, linestyle=(:dash,:dense))
+        lines!(axquants, 1 .- Rccdf_rough, ytgts; color=:grey60, linewidth=2, linestyle=(:dash,:dense))
+        lines!(axquants, 0 .- Rccdf_rough, ytgts; color=:grey60, linewidth=2, linestyle=(:dash,:dense))
         #vlines!(axquantyders, -1; color=:grey79, linewidth=3)
         #lout[2,:] = Legend(fig, axquants, "Exceedance probabilities (½)ᵏ, k ∈ {1,...,15}"; framevisible=true, titlefont=:regular, titlehalign=:left, merge=true, linecolor=:black, nbanks=2, labelsize=10, titlesize=10)
         axislegend(axmean, ; merge=true, linecolor=:black, framevisible=false, titlefont=:regular, labelsize=8)
@@ -219,7 +223,8 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         ytickvalues = ytgts[3:6:Nytgt]
         yticklabels = [@sprintf("%d/%d", round(Int, sdm.Ny*ytgt), sdm.Ny) for ytgt=ytickvalues]
         axargs = Dict(:titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>pi/2, :xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :titlesize=>15, :ylabel=>"𝑦₀/𝐿", :yticks=>(ytickvalues, yticklabels))
-        axtopo = Axis(lout[1,1],xlabel="ℎ(𝑦₀)"; axargs..., title="Topo.", limits=(extrema(topo_zonal_mean)..., ylims...))
+        topolims = (minimum(topo_zonal_mean) == maximum(topo_zonal_mean) ? [-1,1] : extrema(topo_zonal_mean))
+        axtopo = Axis(lout[1,1],xlabel="ℎ(𝑦₀)"; axargs..., title="Topo.", limits=(topolims..., ylims...))
         axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
         axstd = Axis(lout[1,2]; xlabel="Std. Dev.", axargs..., limits=(0, maximum(mssk[:,2])*1.01, ylims...))
         axscale = Axis(lout[1,3]; xlabel="GPD scale σ", axargs..., limits=(0,maximum(gpd_scale_valid)*1.01,ylims...))
@@ -328,15 +333,15 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             f["fdivs"] = fdivs
             f["fdivs_ancgen_valid"] = fdivs_ancgen_valid
         end
-    else
-        fdivs,fdivs_ancgen_valid = JLD2.jldopen(joinpath(resultdir,"fdivs.jld2"),"r") do f
-            return f["fdivs"],f["fdivs_ancgen_valid"]
-        end
     end
 
     #
 
     if todo["plot_fdivs"]
+
+        fdivs,fdivs_ancgen_valid = JLD2.jldopen(joinpath(resultdir,"fdivs.jld2"),"r") do f
+            return f["fdivs"],f["fdivs_ancgen_valid"]
+        end
 
         dsts = ("b",)
         rsps = ("e",)

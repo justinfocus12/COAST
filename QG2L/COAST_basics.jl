@@ -92,7 +92,7 @@ function ConfigCOAST(
         peak_prebuffer_time_ph::Float64 = 30.0,
         dtRmax_max_ph::Float64 = 40.0,
         num_init_conds_max::Int64 = 32,
-        num_perts_max_per_lead_time::Int64 = 15,
+        num_perts_max_per_lead_time::Int64 = 21,
         target_field::String = "conc1",
         target_xPerL::Float64 = 0.5,
         target_rxPerL::Float64 = 1/64,

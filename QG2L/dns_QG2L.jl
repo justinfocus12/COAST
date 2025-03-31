@@ -71,16 +71,16 @@ end
 
 function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_setup=false, overwrite_ensemble=false)
     todo = Dict(
-                "integrate" =>                      1,
-                "compute_moments" =>                1,
-                "plot_moment_map" =>                1,
-                "compute_rough_quantiles" =>        1,
-                "compute_global_histograms" =>      1,
-                "compute_extrema" =>                1,
-                "plot_energy" =>                    1,
+                "integrate" =>                      0,
+                "compute_moments" =>                0,
+                "plot_moment_map" =>                0,
+                "compute_global_histograms" =>      0,
+                "compute_extrema" =>                0,
+                "plot_energy" =>                    0,
                 "plot_hovmoller" =>                 1, 
                 "animate" =>                        1,
                 # ---------- defunct ---------
+                "compute_rough_quantiles" =>        0,
                 "compute_local_GPD_params" =>       0,
                 "plot_GPD_param_map" =>             0,
                )
@@ -471,6 +471,7 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
                 return f["mssk_xall"]
             end
 
+            #@infiltrate
             fig = Figure(size=(2000,1000))
             for iz = 1:2
                 lout = fig[iz,1] = GridLayout()

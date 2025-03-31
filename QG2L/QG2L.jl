@@ -43,6 +43,7 @@ function expt_config(; i_expt=nothing)
     @show cartinds
     if isnothing(i_expt) | (i_expt == 0)
         ci_expt = CartesianIndex(3,2,1)
+        #ci_expt = CartesianIndex(1,2,1)
     else
         ci_expt = cartinds[i_expt]
     end
