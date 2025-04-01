@@ -40,7 +40,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
-                             "use_backups" =>                                    0,
+                             "use_backups" =>                                    1,
                              "anchor" =>                                         1,
                              "sail" =>                                           1, 
                              "compute_contour_dispersion" =>                     1,
@@ -55,7 +55,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "mixture_COAST_phase_diagram" =>                    1,
                              "plot_composite_contours" =>                        1,
                              # Danger zone 
-                             "remove_pngs" =>                                    0,
+                             "remove_pngs" =>                                    1,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -1185,6 +1185,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_syn$(corrkey)_$(est).png"), fig)
                         end
                         # --------------- AST as the independent variable ------------
+                        @infiltrate
                         fig = Figure(size=(500,400))
                         lout = fig[1,1] = GridLayout()
                         ax = Axis(lout[1,1], xlabel="−AST", ylabel="Scale", title="$(fdivlabels[i_fdivname]), $(label_target(cfg,sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular) 
@@ -1223,8 +1224,8 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [1,2]
     elseif "COAST" == all_procedures[i_proc]
-        idx_expt = (vec([9,15] .+ [0,1]'.*23))
-        #idx_expt = [5]
+        #idx_expt = (vec([9,15] .+ [0,1]'.*23))
+        idx_expt = [15]
     end
 end
 

@@ -106,6 +106,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                 end
             end
         end
+        ilt_upper_bound = Nleadtime #findlast(leadtimes .<= cfg.dtRmax_max)
         for dst = ["b"]
             for rsp = ["e"]
                 for i_scl = 1:Nscales[dst]
@@ -114,20 +115,20 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                             if "lt" == mc
                                 ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = i_mcval
                             elseif mc in ["r2lin","r2quad","pth","pim","globcorr","contcorr"]
-                                first_inceedance = findfirst(mixcrits[dst][rsp][mc][:,i_anc,i_scl] .<= mcval)
-                                last_exceedance = findlast(mixcrits[dst][rsp][mc][:,i_anc,i_scl] .> mcval)
+                                first_inceedance = findfirst(mixcrits[dst][rsp][mc][1:ilt_upper_bound,i_anc,i_scl] .<= mcval)
+                                last_exceedance = findlast(mixcrits[dst][rsp][mc][1:ilt_upper_bound,i_anc,i_scl] .> mcval)
                                 #ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1,first_inceedance-1))
                                 ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = (isnothing(last_exceedance) ? 1 : last_exceedance)
                             elseif mc in ["ei","ent"]
                                 # Find first local maximum
                                 mcdiff .= diff(mixcrits[dst][rsp][mc][1:Nleadtime,i_anc,i_scl])
                                 mc_locmax_flag[2:end-1] .= (mcdiff[1:end-1] .> 0) .& (mcdiff[2:end] .< 0)
-                                ilt_upper_bound = Nleadtime #findlast(sdm.tu .* leadtimes .< (3/4)/thresh_cquantile)
+                                #ilt_upper_bound = Nleadtime #findlast(sdm.tu .* leadtimes .< (3/4)/thresh_cquantile)
                                 mc_locmax_flag[1] = false #(mcdiff[1] < 0)
-                                mc_locmax_flag[ilt_upper_bound] = false #(mcdiff[end] > 0)
+                                mc_locmax_flag[min(Nleadtime,ilt_upper_bound+1):Nleadtime] .= false #(mcdiff[end] > 0)
                                 #@infiltrate #any(mc_locmax_flag)
                                 # Could combine many different kinds of conditions for optimality and local maxima 
-                                if any(mc_locmax_flag[1:ilt_upper_bound])
+                                if false && any(mc_locmax_flag[1:ilt_upper_bound])
 
                                     idx_locmax = findall(mc_locmax_flag[1:ilt_upper_bound])
                                     ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = idx_locmax[argmax(mixcrits[dst][rsp][mc][idx_locmax,i_anc,i_scl])]

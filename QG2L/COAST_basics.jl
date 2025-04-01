@@ -90,7 +90,7 @@ function ConfigCOAST(
         lead_time_inc_ph::Float64 = 2.0, 
         follow_time_ph::Float64 = 20.0,
         peak_prebuffer_time_ph::Float64 = 30.0,
-        dtRmax_max_ph::Float64 = 40.0,
+        dtRmax_max_ph::Float64 = 30.0, # if this is any longer than peak_prebuffer_time_ph, the peak isn't guaranteed the largest anymore 
         num_init_conds_max::Int64 = 32,
         num_perts_max_per_lead_time::Int64 = 21,
         target_field::String = "conc1",
@@ -774,6 +774,7 @@ function expt_config_COAST_analysis(cfg,pertop)
     # Parameterize both the input distributions and the response types 
     distns = ("b",) # bump, uniform, gaussian; also add noises in uniform and Gaussian form 
     rsps = ("e","1","2") # empirical, linear model, quadratic model
+    ilt_upper_bound = findlast(leadtimes .<= cfg.dtRmax_max)
     mixobjs = Dict(
                    "lt"=>leadtimes, 
                    "r2lin"=>r2threshes, 
@@ -804,7 +805,7 @@ function expt_config_COAST_analysis(cfg,pertop)
                          #"went"=>"WEntropy",
                         )
     mixobj_labels = Dict(
-                         "lt"=>["AST = $(lt2str(lt))" for lt=leadtimes],
+                         "lt"=>["AST = $(lt2str(lt))" for lt=mixobjs["lt"]],
                          "r2lin"=>["𝑅² (linear) = $(lt2str(r2))" for r2=r2threshes],
                          "r2quad"=>["𝑅² (quadratic) = $(lt2str(r2))" for r2=r2threshes],
                          "ei"=>["max $(mixcrit_labels["ei"])"],
