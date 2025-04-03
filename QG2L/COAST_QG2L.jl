@@ -40,11 +40,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
-                             "use_backups" =>                                    1,
-                             "anchor" =>                                         1,
-                             "sail" =>                                           1, 
-                             "compute_contour_dispersion" =>                     1,
-                             "plot_contour_dispersion_distribution" =>           1,
+                             "use_backups" =>                                    0,
+                             "anchor" =>                                         0,
+                             "sail" =>                                           0, 
+                             "compute_contour_dispersion" =>                     0,
+                             "plot_contour_dispersion_distribution" =>           0,
                              "regress_lead_dependent_risk_polynomial" =>         1, 
                              "evaluate_mixing_criteria" =>                       1,
                              "plot_objective" =>                                 1, 
@@ -55,7 +55,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "mixture_COAST_phase_diagram" =>                    1,
                              "plot_composite_contours" =>                        1,
                              # Danger zone 
-                             "remove_pngs" =>                                    1,
+                             "remove_pngs" =>                                    0,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -556,8 +556,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         rxystr = @sprintf("%.3f",cfg.target_ryPerL*sdm.Ly)
         ytgtstr = @sprintf("%.2f",cfg.target_yPerL*sdm.Ly)
         todosub = Dict{String,Bool}(
-                                    "plot_spaghetti" =>              1,
-                                    "plot_response" =>               1,
+                                    "plot_spaghetti" =>                 1,
+                                    "plot_response" =>                  1,
+                                    "plot_response_fixpert_varytime" => 1,
                                    )
 
         regcoefs_filename = joinpath(resultdir,"regression_coefs.jld2")
@@ -589,6 +590,33 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     figdir
                    )
             end
+            if todosub["plot_response_fixpert_varytime"]
+                Nperts2plot = 6
+                fig = Figure(size=(400,100*Nperts2plot))
+                lout = fig[1,1] = GridLayout()
+                axs = [Axis(lout[i_pert,1], xlabel="-AST", ylabel="𝑅") for i_pert=1:Nperts2plot]
+                Rmaxoflt = zeros(Float64, Nleadtime)
+                traj_anc = ens.trajs[i_anc]
+                t_anc = floor(Int, traj_anc.tphinit/sdm.tu)+1:1:traj_anc.tfin
+                itRmax = coast.anc_tRmax[i_anc]-t_anc[1]-1
+                for i_pert = 1:Nperts2plot
+                    ax = axs[i_pert]
+                    for (i_leadtime,leadtime) in enumerate(leadtimes) # = 1:Nleadtime
+                        idx_dsc = desc_by_leadtime(coast,i_anc,leadtime,sdm)
+                        #Rmaxoflt[i_leadtime] = coast.desc_Rmax[i_anc][idx_dsc[i_pert]] #[i_leadtime]
+                        Rmaxoflt[i_leadtime] = coast.desc_Roft[i_anc][idx_dsc[i_pert]][itRmax] #[i_leadtime]
+                    end
+                    lines!(ax, -reverse(leadtimes.*sdm.tu), Rmaxoflt; color=:black)
+                    hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linestyle=(:dash,:dense))
+                    for i_pert = 1:Nperts2plot-1
+                        rowgap!(lout, i_pert, 0)
+                        ax.xlabelvisible = ax.xticklabelsvisible = false
+                    end
+                end
+                save(joinpath(figdir,"response_fixpert_varytime_anc$(i_anc).png"), fig)
+
+            end
+
         end
     end
 
@@ -1212,7 +1240,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])
@@ -1222,10 +1250,10 @@ if length(ARGS) > 0
     end
 else
     if "metaCOAST" == all_procedures[i_proc]
-        idx_expt = [1,2]
+        idx_expt = [1,]
     elseif "COAST" == all_procedures[i_proc]
-        #idx_expt = (vec([9,15] .+ [0,1]'.*23))
-        idx_expt = [15]
+        idx_expt = (vec([9,15] .+ [0,1]'.*23))[1:2]
+        #idx_expt = [15]
     end
 end
 

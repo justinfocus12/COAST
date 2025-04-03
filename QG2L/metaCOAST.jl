@@ -63,12 +63,12 @@ end
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
-                             "plot_mixcrits_ydep" =>             0,
-                             "compile_fdivs" =>                  0,
-                             "plot_fdivs" =>                     0,
+                             "plot_mixcrits_ydep" =>             1,
+                             "compile_fdivs" =>                  1,
+                             "plot_fdivs" =>                     1,
                              "plot_ccdfs_latdep" =>              1,
                              # danger zone
-                             "remove_pngs" =>                    0,
+                             "remove_pngs" =>                    1,
                              # defunct/hibernating
                              "print_simtimes" =>                 0,
                              "plot_pot_ccdfs_latdep" =>          0,
@@ -454,9 +454,9 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     end
                 end
             end
-            colormap = :YlGnBu_9
-            normalize_by_latitude = false
-            logscale_flag = true #(mc != "ent")
+            colormap = Reverse(:bwr) #:YlGnBu_9
+            normalize_by_latitude = true
+            logscale_flag = false #(mc != "ent")
             if logscale_flag
                 for arr = (
                            fdiv_of_ast,fdiv_of_contcorr,
@@ -518,9 +518,9 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 ax1 = Axis(lout[2,1]; xlabel="−AST", axargs...)
                 # First heatmap: overlay optimal-entropy leadtime distribution on fdiv
                 hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(fdiv_of_ast[:,:,i_scl]; dims=1); colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
-                co1 = contour!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast[:,:,i_scl]; dims=1); levels=range(mcrange...; length=7), colormap=:Reds, labels=false)
+                co1 = contour!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast[:,:,i_scl]; dims=1); levels=range(mcrange...; length=7), color=:black, labels=false)
                 for (i_ytgt,ytgt) in enumerate(ytgts)
-                    scatter!(ax1, -sdm.tu.*leadtimes, ytgt.*ones(Float64,Nleadtime); marker='O', markersize=60 .* iltfrac_mc_of_ast[:,i_ytgt,i_scl], color=:red)
+                    scatter!(ax1, -sdm.tu.*leadtimes, ytgt.*ones(Float64,Nleadtime); marker='O', markersize=60 .* iltfrac_mc_of_ast[:,i_ytgt,i_scl], color=:black)
                 end
                 cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label=title, cbarargs...)
                 rowgap!(lout, 1, 5)
@@ -542,9 +542,9 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
                 # First heatmap: overlay optimal-entropy leadtime distribution on fdiv
                 hm1 = heatmap!(ax1, transcorr.(mixobjs["contcorr"]), ytgts, fdiv_of_contcorr[:,:,i_scl]; colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
-                co1 = contour!(ax1, transcorr.(mixobjs["contcorr"]), ytgts, mc_of_contcorr[:,:,i_scl]; levels=range(mcrange...; length=7), colormap=:Reds, labels=false)
+                co1 = contour!(ax1, transcorr.(mixobjs["contcorr"]), ytgts, mc_of_contcorr[:,:,i_scl]; levels=range(mcrange...; length=7), color=:cyan, labels=false)
                 for (i_ytgt,ytgt) in enumerate(ytgts)
-                    scatter!(ax1, transcorr.(mixobjs["contcorr"]), ytgt.*ones(Float64,Nmcs["contcorr"]); marker='O', markersize=60 .* iccfrac_mc_of_contcorr[:,i_ytgt,i_scl], color=:red)
+                    scatter!(ax1, transcorr.(mixobjs["contcorr"]), ytgt.*ones(Float64,Nmcs["contcorr"]); marker='O', markersize=60 .* iccfrac_mc_of_contcorr[:,i_ytgt,i_scl], color=:black)
                 end
                 cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label=title, cbarargs...)
                 rowgap!(lout, 1, 5)

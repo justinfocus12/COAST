@@ -90,7 +90,7 @@ function ConfigCOAST(
         lead_time_inc_ph::Float64 = 2.0, 
         follow_time_ph::Float64 = 20.0,
         peak_prebuffer_time_ph::Float64 = 30.0,
-        dtRmax_max_ph::Float64 = 30.0, # if this is any longer than peak_prebuffer_time_ph, the peak isn't guaranteed the largest anymore 
+        dtRmax_max_ph::Float64 = 5.0, # if this is any longer than peak_prebuffer_time_ph, the peak isn't guaranteed the largest anymore 
         num_init_conds_max::Int64 = 32,
         num_perts_max_per_lead_time::Int64 = 21,
         target_field::String = "conc1",

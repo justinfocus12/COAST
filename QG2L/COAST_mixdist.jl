@@ -54,9 +54,16 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
     end
     thresh = Rccdf_valid_agglon[i_thresh_cquantile] 
     # Pre-allocate some arrays for samples and weights 
+    U_interp = vcat(zeros(Float64, (1,2)), collect(transpose(coast.pert_seq_qmc))) #[:,1:Npert])))
+    i_mode_sf = 1
+    Amin,Amax = pertop.sf_pert_amplitudes_min[i_mode_sf], pertop.sf_pert_amplitudes_max[i_mode_sf]
+    X_interp = sqrt.(Amin^2 .* (1-U[:,1]) .+ Amax^2 .* U[:,1]) .* vcat(cos.(2pi.*U[:,2]), sin.(2pi.*U[:,2]))
+
+    Nterp = size(U_interp,1) - 1
+    Rs_interp,Ws_interp = (zeros(Nterp+1) for _=1:2)
     Npert = div(cfg.num_perts_max, Nleadtime)
-    Rs,Ws = (zeros(Npert+1) for _=1:2)
-    U = vcat(zeros(Float64, (1,2)), collect(transpose(coast.pert_seq_qmc[:,1:Npert])))
+    U = U_interp[1:Npert+1,:]
+    Rs,Ws = (zeros(Npert+1) for _=1:2) # these are only the sampled perturbations 
     mixcrits,ccdfs,pdfs,ilts,iltcounts = (Dict{String,Dict}() for _=1:5)
     mcdiff = zeros(Float64,Nleadtime-1)
     mc_locmax_flag = zeros(Bool, Nleadtime)
@@ -65,7 +72,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
         ilts[dst] = Dict{String,Dict}()
         iltcounts[dst] = Dict{String,Dict}()
         ccdfs[dst],pdfs[dst] = (Dict{String,Array{Float64}}() for _=1:2)
-        for rsp = ["e"]
+        for rsp = ["2","e"]
             mixcrits[dst][rsp] = Dict{String,Array{Float64}}()
             ilts[dst][rsp] = Dict{String,Array{Int64}}()
             iltcounts[dst][rsp] = Dict{String,Array{Int64}}()
@@ -84,24 +91,39 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
             idx_dsc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
             Rs[2:Npert+1] .= coast.desc_Rmax[i_anc][idx_dsc]
             for dst = ["b"]
-                for rsp = ["e"]
+                for rsp = ["2","e"]
                     for i_scl = 1:Nscales[dst]
                         Ws .= QG2L.bump_density(U, distn_scales[dst][i_scl], support_radius)
                         mixcrits[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = leadtimes[i_leadtime]
-                        mixcrits[dst][rsp]["pth"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs, Ws, thresh)
-                        mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs, Ws, Rs[1])
-                        #mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_samples(Rs, Ws, thresh)
-                        mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = QG2L.expected_improvement_samples(Rs, Ws, Rs[1])
-                        # For correlations, the averaging weight depends on the scale, so these two aren't totally independent
-                        mixcrits[dst][rsp]["globcorr"][i_leadtime,i_anc,i_scl] = SB.mean(globcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws[2:Npert+1]))
-                        mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws[2:Npert+1]))
-                        mixcrits[dst][rsp]["r2lin"][i_leadtime,i_anc,i_scl] = r2lin[i_leadtime,i_anc]
-                        mixcrits[dst][rsp]["r2quad"][i_leadtime,i_anc,i_scl] = r2quad[i_leadtime,i_anc]
-                        QG2L.ccdf_gridded_from_samples!(
-                                                        @view(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),@view(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),
-                                                        Rs, Ws, levels
-                                                       ) 
-                        mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdfs[dst][rsp][i_thresh_cquantile:Nlev,i_leadtime,i_anc,i_scl]; normalize=false)
+                        if "e" == rsp
+                            mixcrits[dst][rsp]["pth"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs, Ws, thresh)
+                            mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs, Ws, Rs[1])
+                            mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = QG2L.expected_improvement_samples(Rs, Ws, Rs[1])
+                            mixcrits[dst][rsp]["globcorr"][i_leadtime,i_anc,i_scl] = SB.mean(globcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws[2:Npert+1]))
+                            mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws[2:Npert+1]))
+                            mixcrits[dst][rsp]["r2lin"][i_leadtime,i_anc,i_scl] = r2lin[i_leadtime,i_anc]
+                            mixcrits[dst][rsp]["r2quad"][i_leadtime,i_anc,i_scl] = r2quad[i_leadtime,i_anc]
+                            QG2L.ccdf_gridded_from_samples!(
+                                                            @view(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),@view(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),
+                                                            Rs, Ws, levels
+                                                           ) 
+                            mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdfs[dst][rsp][i_thresh_cquantile:Nlev,i_leadtime,i_anc,i_scl]; normalize=false)
+                        elseif "2" == rsp
+                            Ws_interp .= QG2L.bump_density(U_interp, distn_scales[dst][i_scl], support_radius)
+                            Rs_interp[2:Nterp+1] .= QG2L.quadratic_model_2d(X_interp[2:Nterp+1,:], coefsquad[:,i_leadtime,i_anc])
+                            mixcrits[dst][rsp]["pth"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs_interp, Ws_interp, thresh)
+                            mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs_interp, Ws_interp, Rs_interp[1])
+                            mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = QG2L.expected_improvement_samples(Rs_interp, Ws_interp, Rs_interp[1])
+                            mixcrits[dst][rsp]["globcorr"][i_leadtime,i_anc,i_scl] = SB.mean(globcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws_interp[2:Npert+1]))
+                            mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws_interp[2:Npert+1]))
+                            mixcrits[dst][rsp]["r2lin"][i_leadtime,i_anc,i_scl] = r2lin[i_leadtime,i_anc]
+                            mixcrits[dst][rsp]["r2quad"][i_leadtime,i_anc,i_scl] = r2quad[i_leadtime,i_anc]
+                            QG2L.ccdf_gridded_from_samples!(
+                                                            @view(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),@view(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),
+                                                            Rs_interp, Ws_interp, levels
+                                                           ) 
+                            mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdfs[dst][rsp][i_thresh_cquantile:Nlev,i_leadtime,i_anc,i_scl]; normalize=false)
+                        end
                     end
                 end
             end
@@ -128,15 +150,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                                 mc_locmax_flag[min(Nleadtime,ilt_upper_bound+1):Nleadtime] .= false #(mcdiff[end] > 0)
                                 #@infiltrate #any(mc_locmax_flag)
                                 # Could combine many different kinds of conditions for optimality and local maxima 
-                                if false && any(mc_locmax_flag[1:ilt_upper_bound])
-
-                                    idx_locmax = findall(mc_locmax_flag[1:ilt_upper_bound])
-                                    ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = idx_locmax[argmax(mixcrits[dst][rsp][mc][idx_locmax,i_anc,i_scl])]
-                                else
-                                
-
-                                    ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:ilt_upper_bound,i_anc,i_scl])
-                                end
+                                ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = argmax(mixcrits[dst][rsp][mc][1:ilt_upper_bound,i_anc,i_scl])
                             else
                                 error()
                             end

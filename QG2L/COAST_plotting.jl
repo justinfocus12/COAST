@@ -103,7 +103,8 @@ function plot_objective_response_linquad(
     Rmin = minimum([minimum(coast.anc_Roft[i_anc]) for i_anc=1:Nanc])
     obj_label,short_obj_label = label_objective(cfg)
 
-    idx_leadtimes2plot = reverse(unique(clamp.(round.(Int, length(leadtimes).*[1/20, 1/5, 2/5, 3/5]), 1, length(leadtimes))))
+    #idx_leadtimes2plot = reverse(unique(clamp.(round.(Int, length(leadtimes).*[1/20, 1/5, 2/5, 3/5]), 1, length(leadtimes))))
+    idx_leadtimes2plot = collect(1:1:6)
     Nleadtimes2plot = length(idx_leadtimes2plot)
     fig = Figure(size=(150*Nleadtimes2plot,150*(2+0.5)))
     i_mode_sf = 1
