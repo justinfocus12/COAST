@@ -45,7 +45,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "sail" =>                                           0, 
                              "compute_contour_dispersion" =>                     0,
                              "plot_contour_dispersion_distribution" =>           0,
-                             "regress_lead_dependent_risk_polynomial" =>         1, 
+                             "regress_lead_dependent_risk_polynomial" =>         0, 
                              "evaluate_mixing_criteria" =>                       1,
                              "plot_objective" =>                                 1, 
                              "plot_conditional_pdfs" =>                          1,
@@ -53,9 +53,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "mix_COAST_distributions" =>                        1,
                              "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    1,
-                             "plot_composite_contours" =>                        1,
+                             "plot_composite_contours" =>                        0,
                              # Danger zone 
-                             "remove_pngs" =>                                    0,
+                             "remove_pngs" =>                                    1,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -575,7 +575,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                    )
         end
 
-        Threads.@threads for i_anc = idx_anc_strat_ent
+        for i_anc = idx_anc_strat_ent
             if todosub["plot_spaghetti"]
                 plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thresh, figdir)
             end
@@ -636,82 +636,83 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         pdf_pot_valid_seplon = -diff(ccdf_pot_valid_seplon; dims=1) ./ diff(levels_exc)
         ylims = (thresh, max(max_score, levels[end]))
         dst = "b"
-        rsp = "e"
-        for i_anc = idx_anc_strat_ent
-            xlims = maximum(
-                            maximum(pdfs[dst][rsp][i_thresh_cquantile:Nlev-1,:,i_anc,:]./ccdfs[dst][rsp][i_thresh_cquantile:i_thresh_cquantile,:,i_anc,:]; dims=1)[1,:,:] 
-                           ) .* [-0.05, 1.05] .* thresh_cquantile
+        for rsp = ["2","e"]
+            for i_anc = idx_anc_strat_ent
+                xlims = maximum(
+                                maximum(pdfs[dst][rsp][i_thresh_cquantile:Nlev-1,:,i_anc,:]./ccdfs[dst][rsp][i_thresh_cquantile:i_thresh_cquantile,:,i_anc,:]; dims=1)[1,:,:] 
+                               ) .* [-0.05, 1.05] .* thresh_cquantile
 
-            t0str = @sprintf("%d", coast.anc_tRmax[i_anc])
-            fig = Figure(size=(200*length(idx_leadtimes2plot),100*(3+length(mixcrits2plot))))
-            lout = fig[1,1] = GridLayout()
-            lout_pdfs = lout[1,1] = GridLayout()
-            lout_mixcrits = lout[2,1] = GridLayout()
-            i_col = 0
-            for i_leadtime = idx_leadtimes2plot
-                leadtime = leadtimes[i_leadtime]
-                i_col += 1
-                ltstr = @sprintf("−%d",leadtime*sdm.tu)
-                if i_col == 1
-                    ltstr = "−AST = $(ltstr)"
-                end
-                lblargs = Dict(:ylabelvisible=>(i_col==1), :yticklabelsvisible=>(i_col==1), :xlabelvisible=>false, :xticklabelsvisible=>true, :ylabelsize=>15, :xlabelsize=>20, :title=>ltstr, :xgridvisible=>false, :ygridvisible=>false, :titlealign=>:right, :titlefont=>:regular, :xticklabelrotation=>-pi/2)
-                ax = Axis(lout_pdfs[1,i_col]; xlabel="PDF", ylabel="Severity 𝑅*", lblargs...)
-                for (i_scl,scl) in enumerate(distn_scales[dst])
-                    # TODO turn into a bar plot 
-                    pth = ccdfs[dst][rsp][i_thresh_cquantile,i_leadtime,i_anc,i_scl]
+                t0str = @sprintf("%d", coast.anc_tRmax[i_anc])
+                fig = Figure(size=(200*length(idx_leadtimes2plot),100*(3+length(mixcrits2plot))))
+                lout = fig[1,1] = GridLayout()
+                lout_pdfs = lout[1,1] = GridLayout()
+                lout_mixcrits = lout[2,1] = GridLayout()
+                i_col = 0
+                for i_leadtime = idx_leadtimes2plot
+                    leadtime = leadtimes[i_leadtime]
+                    i_col += 1
+                    ltstr = @sprintf("−%d",leadtime*sdm.tu)
+                    if i_col == 1
+                        ltstr = "−AST = $(ltstr)"
+                    end
+                    lblargs = Dict(:ylabelvisible=>(i_col==1), :yticklabelsvisible=>(i_col==1), :xlabelvisible=>false, :xticklabelsvisible=>true, :ylabelsize=>15, :xlabelsize=>20, :title=>ltstr, :xgridvisible=>false, :ygridvisible=>false, :titlealign=>:right, :titlefont=>:regular, :xticklabelrotation=>-pi/2)
+                    ax = Axis(lout_pdfs[1,i_col]; xlabel="PDF", ylabel="Severity 𝑅*", lblargs...)
+                    for (i_scl,scl) in enumerate(distn_scales[dst])
+                        # TODO turn into a bar plot 
+                        pth = ccdfs[dst][rsp][i_thresh_cquantile,i_leadtime,i_anc,i_scl]
+                        scatterlines!(ax, 
+                                pdfs[dst][rsp][i_thresh_cquantile:Nlev-1,i_leadtime, i_anc, i_scl] .* (thresh_cquantile/pth), 
+                                levels_exc_mid, 
+                                ;
+                                color=i_scl,colorrange=(0,length(distn_scales[dst])), 
+                                colormap=:RdYlBu_4, marker=:star6
+                               )
+                    end
                     scatterlines!(ax, 
-                            pdfs[dst][rsp][i_thresh_cquantile:Nlev-1,i_leadtime, i_anc, i_scl] .* (thresh_cquantile/pth), 
-                            levels_exc_mid, 
-                            ;
-                            color=i_scl,colorrange=(0,length(distn_scales[dst])), 
-                            colormap=:RdYlBu_4, marker=:star6
-                           )
+                            thresh_cquantile.*pdf_pot_valid_agglon, 
+                            levels_exc_mid,
+                            ; 
+                            color=:black, linestyle=:solid, marker=:star6,)
+                    hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linewidth=1.0)
+                    idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
+                    scatterlines!(ax, sum([.2,.8].*xlims).*ones(Float64, length(idx_desc)), coast.desc_Rmax[i_anc][idx_desc]; color=:firebrick, markersize=10)
+                    ylims!(ax, ylims...)
+                    xlims!(ax, xlims...)
                 end
-                scatterlines!(ax, 
-                        thresh_cquantile.*pdf_pot_valid_agglon, 
-                        levels_exc_mid,
-                        ; 
-                        color=:black, linestyle=:solid, marker=:star6,)
-                hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linewidth=1.0)
-                idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
-                scatterlines!(ax, sum([.2,.8].*xlims).*ones(Float64, length(idx_desc)), coast.desc_Rmax[i_anc][idx_desc]; color=:firebrick, markersize=10)
-                ylims!(ax, ylims...)
-                xlims!(ax, xlims...)
-            end
-            Label(lout_pdfs[1,:,Bottom()], "PDF", padding=(0,10,0,25), valign=:bottom, fontsize=16)
-            for (i_mc,mc) in enumerate(mixcrits2plot)
-                ax = Axis(lout_mixcrits[i_mc,1]; ylabel=mixcrit_labels[mc], ylabelvisible=true, ylabelrotation=0, titlefont=:regular, xlabel="−AST (𝑡*=$(t0str))", xlabelvisible=(i_mc==length(mixcrits2plot)), xticklabelsvisible=(i_mc==length(mixcrits2plot)), xlabelsize=20, ylabelsize=15, xgridvisible=false, ygridvisible=false)
-                for (i_scl,scl) in enumerate(distn_scales[dst])
-                    if mc in ["globcorr","contcorr"]
-                        colargs = Dict(:color=>i_scl,:colormap=>:RdYlBu_4,:colorrange=>(0,length(distn_scales[dst])))
-                        scatterlines!(ax, -leadtimes.*sdm.tu, transcorr.(mixcrits[dst][rsp][mc][:,i_anc,i_scl]); colargs...)
-                        hlines!(ax, transcorr(1-(3/8)^2); color=:gray, alpha=0.25, linewidth=2, linestyle=(:dash,:dense))
-                        ax.ylabel = @sprintf("σ⁻¹(%s)", mixcrit_labels[mc])
+                Label(lout_pdfs[1,:,Bottom()], "PDF", padding=(0,10,0,25), valign=:bottom, fontsize=16)
+                for (i_mc,mc) in enumerate(mixcrits2plot)
+                    ax = Axis(lout_mixcrits[i_mc,1]; ylabel=mixcrit_labels[mc], ylabelvisible=true, ylabelrotation=0, titlefont=:regular, xlabel="−AST (𝑡*=$(t0str))", xlabelvisible=(i_mc==length(mixcrits2plot)), xticklabelsvisible=(i_mc==length(mixcrits2plot)), xlabelsize=20, ylabelsize=15, xgridvisible=false, ygridvisible=false)
+                    for (i_scl,scl) in enumerate(distn_scales[dst])
+                        if mc in ["globcorr","contcorr"]
+                            colargs = Dict(:color=>i_scl,:colormap=>:RdYlBu_4,:colorrange=>(0,length(distn_scales[dst])))
+                            scatterlines!(ax, -leadtimes.*sdm.tu, transcorr.(mixcrits[dst][rsp][mc][:,i_anc,i_scl]); colargs...)
+                            hlines!(ax, transcorr(1-(3/8)^2); color=:gray, alpha=0.25, linewidth=2, linestyle=(:dash,:dense))
+                            ax.ylabel = @sprintf("σ⁻¹(%s)", mixcrit_labels[mc])
 
-                    else
-                        colargs = Dict(:color=>i_scl,:colormap=>:RdYlBu_4,:colorrange=>(0,length(distn_scales[dst])))
-                        scatterlines!(ax, -leadtimes.*sdm.tu, mixcrits[dst][rsp][mc][:,i_anc,i_scl]; colargs...)
+                        else
+                            colargs = Dict(:color=>i_scl,:colormap=>:RdYlBu_4,:colorrange=>(0,length(distn_scales[dst])))
+                            scatterlines!(ax, -leadtimes.*sdm.tu, mixcrits[dst][rsp][mc][:,i_anc,i_scl]; colargs...)
+                        end
+                        if mc in ["ent","ei"]
+                            vlines!(ax, -leadtimes[iltmixs[dst][rsp][mc][1,i_anc,i_scl]]*sdm.tu; colargs...,linewidth=5*(1 - (i_scl-1)/length(distn_scales[dst])))
+                        end
                     end
-                    if mc in ["ent","ei"]
-                        vlines!(ax, -leadtimes[iltmixs[dst][rsp][mc][1,i_anc,i_scl]]*sdm.tu; colargs...,linewidth=5*(1 - (i_scl-1)/length(distn_scales[dst])))
+                    xlims!(ax, -(cfg.lead_time_max+0.5*cfg.lead_time_inc)*sdm.tu, -(cfg.lead_time_min-0.5*cfg.lead_time_inc)*sdm.tu)
+                    if mc in ["pth","pim","r2"]
+                        ylims!(ax, -0.05, 1.05)
                     end
                 end
-                xlims!(ax, -(cfg.lead_time_max+0.5*cfg.lead_time_inc)*sdm.tu, -(cfg.lead_time_min-0.5*cfg.lead_time_inc)*sdm.tu)
-                if mc in ["pth","pim","r2"]
-                    ylims!(ax, -0.05, 1.05)
+                rowsize!(lout, 1, 3/(3+length(mixcrits2plot)))
+                for i_row = 1:nrows(lout_mixcrits)-1
+                    rowgap!(lout_mixcrits, i_row, 2.0)
                 end
+                for i_col = 1:ncols(lout_pdfs)-1
+                    colgap!(lout_pdfs, i_col, 0.0)
+                end
+                Label(lout_pdfs[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,20.0,5.0), valign=:bottom, fontsize=20)
+                rowsize!(lout, 1, Relative(1.5/(1.5+length(mixcrits2plot))))
+                save(joinpath(figdir,"conditionalpdfs_$(dst)_$(rsp)_anc$(i_anc).png"), fig)
             end
-            rowsize!(lout, 1, 3/(3+length(mixcrits2plot)))
-            for i_row = 1:nrows(lout_mixcrits)-1
-                rowgap!(lout_mixcrits, i_row, 2.0)
-            end
-            for i_col = 1:ncols(lout_pdfs)-1
-                colgap!(lout_pdfs, i_col, 0.0)
-            end
-            Label(lout_pdfs[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,20.0,5.0), valign=:bottom, fontsize=20)
-            rowsize!(lout, 1, Relative(1.5/(1.5+length(mixcrits2plot))))
-            save(joinpath(figdir,"conditionalpdfs_$(dst)_$(rsp)_anc$(i_anc).png"), fig)
         end
     end
 
@@ -722,57 +723,58 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         mixcrits2plot = ["ei","ent","globcorr","contcorr"] # TODO group them 
         Nmc = length(mixcrits2plot)
         dst = "b"
-        rsp = "e"
-        Nscales = length(distn_scales[dst])
-        fig = Figure(size=(450,150*(Nmc+1)))
-        lout = fig[1,1] = GridLayout()
-        axs = [
-               Axis(lout[i_mc,1]; xlabel="−AST", ylabel=mixcrit_labels[mixcrits2plot[i_mc]], titlefont=:regular, xlabelvisible=(i_mc==Nmc), xticklabelsvisible=(i_mc==Nmc), xlabelsize=15, ylabelsize=15, xticklabelsize=12, yticklabelsize=12, xgridvisible=false, ygridvisible=false) 
-               for i_mc=1:Nmc
-              ]
-        mcmean,mclo,mchi = (zeros(Float64, (Nleadtime,1,Nscales)) for _=1:3)
-        scales2plot = [1,12]
-        for (i_mc,mc) in enumerate(mixcrits2plot)
-            let mcofast = mixcrits[dst][rsp][mc][1:Nleadtime,1:Nanc,1:Nscales] 
-                mcmean .= SB.mean(mcofast; dims=2)
-                mclo .= SB.sum(mcofast .* (mcofast .<= mcmean); dims=2) ./ SB.sum(mcofast .<= mcmean; dims=2)
-                mchi .= SB.sum(mcofast .* (mcofast .>= mcmean); dims=2) ./ SB.sum(mcofast .>= mcmean; dims=2)
-            end
-            ax = axs[i_mc]
-            if mc in ["globcorr","contcorr"]
-                for mcstat = (mcmean,mclo,mchi)
-                    mcstat .= transcorr.(mcstat)
+        for rsp = ["2","e"]
+            Nscales = length(distn_scales[dst])
+            fig = Figure(size=(450,150*(Nmc+1)))
+            lout = fig[1,1] = GridLayout()
+            axs = [
+                   Axis(lout[i_mc,1]; xlabel="−AST", ylabel=mixcrit_labels[mixcrits2plot[i_mc]], titlefont=:regular, xlabelvisible=(i_mc==Nmc), xticklabelsvisible=(i_mc==Nmc), xlabelsize=15, ylabelsize=15, xticklabelsize=12, yticklabelsize=12, xgridvisible=false, ygridvisible=false) 
+                   for i_mc=1:Nmc
+                  ]
+            mcmean,mclo,mchi = (zeros(Float64, (Nleadtime,1,Nscales)) for _=1:3)
+            scales2plot = [1,12]
+            for (i_mc,mc) in enumerate(mixcrits2plot)
+                let mcofast = mixcrits[dst][rsp][mc][1:Nleadtime,1:Nanc,1:Nscales] 
+                    mcmean .= SB.mean(mcofast; dims=2)
+                    mclo .= SB.sum(mcofast .* (mcofast .<= mcmean); dims=2) ./ SB.sum(mcofast .<= mcmean; dims=2)
+                    mchi .= SB.sum(mcofast .* (mcofast .>= mcmean); dims=2) ./ SB.sum(mcofast .>= mcmean; dims=2)
                 end
-                ax.ylabel = "σ⁻¹($(mixcrit_labels[mc]))"
+                ax = axs[i_mc]
+                if mc in ["globcorr","contcorr"]
+                    for mcstat = (mcmean,mclo,mchi)
+                        mcstat .= transcorr.(mcstat)
+                    end
+                    ax.ylabel = "σ⁻¹($(mixcrit_labels[mc]))"
+                end
+                if mc in ["globcorr","contcorr"]
+                    ylims!(ax, transcorr(-0.05), transcorr(1.0))
+                    hlines!(ax, transcorr(0.0); color=:gray, alpha=0.5)
+                end
+                if mc in ["pth","pim","r2"]
+                    ylims!(ax, 0.0, 1.0)
+                end
+                if mc in ["ei","eot","ent"]
+                    ylims!(0.0, maximum(mixcrits[dst][rsp][mc]))
+                end
+                for i_scl = scales2plot
+                    band!(ax, -leadtimes.*sdm.tu, mclo[:,1,i_scl], mchi[:,1,i_scl]; color=:gray, alpha=0.25)
+                end
+                for i_scl = scales2plot
+                    colargs = Dict(:color=>i_scl, :colorrange=>(0,Nscales), :colormap=>:RdYlBu_4)
+                    scatterlines!(ax, -leadtimes.*sdm.tu, mcmean[:,1,i_scl]; colargs..., linewidth=2, label="scale $(@sprintf("%.1f",distn_scales[dst][i_scl]))")
+                    lines!(ax, -leadtimes.*sdm.tu, mclo[:,1,i_scl]; colargs..., linewidth=2, linestyle=(:dash,:dense))
+                    lines!(ax, -leadtimes.*sdm.tu, mchi[:,1,i_scl]; colargs..., linewidth=2, linestyle=(:dash,:dense))
+                end
+                if i_mc < Nmc
+                    rowgap!(lout, i_mc, 0)
+                end
             end
-            if mc in ["globcorr","contcorr"]
-                ylims!(ax, transcorr(-0.05), transcorr(1.0))
-                hlines!(ax, transcorr(0.0); color=:gray, alpha=0.5)
-            end
-            if mc in ["pth","pim","r2"]
-                ylims!(ax, 0.0, 1.0)
-            end
-            if mc in ["ei","eot","ent"]
-                ylims!(0.0, maximum(mixcrits[dst][rsp][mc]))
-            end
-            for i_scl = scales2plot
-                band!(ax, -leadtimes.*sdm.tu, mclo[:,1,i_scl], mchi[:,1,i_scl]; color=:gray, alpha=0.25)
-            end
-            for i_scl = scales2plot
-                colargs = Dict(:color=>i_scl, :colorrange=>(0,Nscales), :colormap=>:RdYlBu_4)
-                scatterlines!(ax, -leadtimes.*sdm.tu, mcmean[:,1,i_scl]; colargs..., linewidth=2, label="scale $(@sprintf("%.1f",distn_scales[dst][i_scl]))")
-                lines!(ax, -leadtimes.*sdm.tu, mclo[:,1,i_scl]; colargs..., linewidth=2, linestyle=(:dash,:dense))
-                lines!(ax, -leadtimes.*sdm.tu, mchi[:,1,i_scl]; colargs..., linewidth=2, linestyle=(:dash,:dense))
-            end
-            if i_mc < Nmc
-                rowgap!(lout, i_mc, 0)
-            end
-        end
-        axs[1].title = "$(label_target(cfg, sdm)), μ[$(powerofhalfstring(i_thresh_cquantile))]"
-        #lout[Nmc+1,1] = Legend(fig, axs[Nmc]; framevisible=false, labelsize=15)
-        #rowsize!(lout, Nmc+1, Relative(1/(3*Nmc)))
+            axs[1].title = "$(label_target(cfg, sdm)), μ[$(powerofhalfstring(i_thresh_cquantile))]"
+            #lout[Nmc+1,1] = Legend(fig, axs[Nmc]; framevisible=false, labelsize=15)
+            #rowsize!(lout, Nmc+1, Relative(1/(3*Nmc)))
 
-        save(joinpath(figdir, "mixcrits_overlay_$(dst)_$(rsp).png"), fig)
+            save(joinpath(figdir, "mixcrits_overlay_$(dst)_$(rsp).png"), fig)
+        end
     end
 
 
@@ -832,7 +834,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
         for dst = ["b"]
             Nscales = length(distn_scales[dst])
-            for rsp = ["e"] #,"2"]
+            for rsp = ["2","e"] #,"2"]
                 if ("g" == dst) && (rsp in ["1+u","2","2+u"])
                     continue
                 end
@@ -1162,7 +1164,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         mc = "ent"
         for dst = ["b"]
             Nscales = length(distn_scales[dst])
-            for rsp = ["e"]
+            for rsp = ["2","e"]
                 # Plot the entropy as a 2D phase plot: both its mean and its variance (not just the proportion of time it's optimal)
                 if todosub["mcmean_heatmap"]
                     # Heatmap of various mixing criteria as a function of AST; below, invert these functions it
@@ -1213,7 +1215,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_syn$(corrkey)_$(est).png"), fig)
                         end
                         # --------------- AST as the independent variable ------------
-                        @infiltrate
                         fig = Figure(size=(500,400))
                         lout = fig[1,1] = GridLayout()
                         ax = Axis(lout[1,1], xlabel="−AST", ylabel="Scale", title="$(fdivlabels[i_fdivname]), $(label_target(cfg,sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular) 
@@ -1240,7 +1241,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])

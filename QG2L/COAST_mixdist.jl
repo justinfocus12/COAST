@@ -57,7 +57,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
     U_interp = vcat(zeros(Float64, (1,2)), collect(transpose(coast.pert_seq_qmc))) #[:,1:Npert])))
     i_mode_sf = 1
     Amin,Amax = pertop.sf_pert_amplitudes_min[i_mode_sf], pertop.sf_pert_amplitudes_max[i_mode_sf]
-    X_interp = sqrt.(Amin^2 .* (1-U[:,1]) .+ Amax^2 .* U[:,1]) .* vcat(cos.(2pi.*U[:,2]), sin.(2pi.*U[:,2]))
+    X_interp = sqrt.(Amin^2 .* (1 .- U_interp[:,1]) .+ Amax^2 .* U_interp[:,1]) .* hcat(cos.(2pi.*U_interp[:,2]), sin.(2pi.*U_interp[:,2]))
 
     Nterp = size(U_interp,1) - 1
     Rs_interp,Ws_interp = (zeros(Nterp+1) for _=1:2)
@@ -86,16 +86,16 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
         end
     end
     for i_anc = 1:Nanc
-        Rs[1] = coast.anc_Rmax[i_anc]
+        Rs[1] = Rs_interp[1] = coast.anc_Rmax[i_anc]
         for (i_leadtime,leadtime) in enumerate(leadtimes)
             idx_dsc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
             Rs[2:Npert+1] .= coast.desc_Rmax[i_anc][idx_dsc]
             for dst = ["b"]
                 for rsp = ["2","e"]
                     for i_scl = 1:Nscales[dst]
-                        Ws .= QG2L.bump_density(U, distn_scales[dst][i_scl], support_radius)
                         mixcrits[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = leadtimes[i_leadtime]
                         if "e" == rsp
+                            Ws .= QG2L.bump_density(U, distn_scales[dst][i_scl], support_radius)
                             mixcrits[dst][rsp]["pth"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs, Ws, thresh)
                             mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs, Ws, Rs[1])
                             mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = QG2L.expected_improvement_samples(Rs, Ws, Rs[1])
@@ -130,7 +130,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
         end
         ilt_upper_bound = Nleadtime #findlast(leadtimes .<= cfg.dtRmax_max)
         for dst = ["b"]
-            for rsp = ["e"]
+            for rsp = ["2","e"]
                 for i_scl = 1:Nscales[dst]
                     for mc = keys(mixobjs)
                         for (i_mcval,mcval) in enumerate(mixobjs[mc])
@@ -277,7 +277,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     ccdfmixs,pdfmixs,fdivs = (Dict{String,Dict}() for _=1:3)
     for dst = ["b"]
         ccdfmixs[dst],pdfmixs[dst],fdivs[dst] = (Dict{String,Dict}() for _=1:3)
-        for rsp = ["e"]
+        for rsp = ["2","e"]
             ccdfmixs[dst][rsp],pdfmixs[dst][rsp],fdivs[dst][rsp] = (Dict{String,Dict}() for _=1:3)
             for mc = keys(mixobjs)
                 ccdfmixs[dst][rsp][mc],pdfmixs[dst][rsp][mc] = (Dict{String,Array{Float64}}() for _=1:2)
@@ -301,7 +301,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nanc)
     i_boot = 1
     for dst = ["b"]
-        for rsp = ["e"]
+        for rsp = ["2","e"]
             for i_scl = 1:length(distn_scales[dst])
                 println("Starting scale $(i_scl)")
                 # Iterate through each mixing objective of each mixing criterion

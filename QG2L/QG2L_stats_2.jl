@@ -682,9 +682,7 @@ function ccdf_gridded_from_samples!(ccdf::AbstractArray{Float64}, pdf::AbstractA
     Nlev = length(levels)
     Nx = length(xs)
     order = sortperm(xs)
-    ws = weights ./ sum(weights)
-    tailsum = reverse(cumsum(reverse(weights)))
-    ws = weights ./ tailsum[1]
+    tailsum = reverse(cumsum(reverse(weights[order])))
     tailsum ./= tailsum[1]
     i_x = 1
     ccdf_prev = 1.0
