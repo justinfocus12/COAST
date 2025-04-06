@@ -74,6 +74,7 @@ end
 
 function plot_objective_response_linquad(
         cfg, sdm, cop, pertop, ens, coast, i_anc, 
+        coefs_zernike, residmse_zernike, rsquared_zernike,
         coefs_linear, residmse_linear, rsquared_linear,
         coefs_quadratic, residmse_quadratic, rsquared_quadratic,
         figdir
@@ -89,6 +90,7 @@ function plot_objective_response_linquad(
 
     color_lin = :cyan
     color_quad = :sienna1
+    color_zern = :purple
     Nleadtime = length(leadtimes)
     Nanc = length(coast.ancestors)
     println("Gonna show phases and responses now")
@@ -104,10 +106,11 @@ function plot_objective_response_linquad(
     obj_label,short_obj_label = label_objective(cfg)
 
     #idx_leadtimes2plot = reverse(unique(clamp.(round.(Int, length(leadtimes).*[1/20, 1/5, 2/5, 3/5]), 1, length(leadtimes))))
-    idx_leadtimes2plot = collect(1:1:6)
+    idx_leadtimes2plot = reverse(collect(round.(Int, range(1, length(leadtimes); length=6))))
     Nleadtimes2plot = length(idx_leadtimes2plot)
     fig = Figure(size=(150*Nleadtimes2plot,150*(2+0.5)))
     i_mode_sf = 1
+    Amin,Amax = pertop.sf_pert_amplitudes_min[i_mode_sf], pertop.sf_pert_amplitudes_max[i_mode_sf]
     @show leadtimes
     lout = fig[1:3,1] = GridLayout()
     lout_2d = lout[1,1] = GridLayout()
@@ -115,10 +118,16 @@ function plot_objective_response_linquad(
     lout_r2 = lout[3,1] = GridLayout()
     scores = vcat(coast.desc_Rmax[i_anc], [coast.anc_Rmax[i_anc]])
     scorerange = maximum(abs.(scores .- coast.anc_Rmax[i_anc])).*[-1,1].+coast.anc_Rmax[i_anc]
-    Amin,Amax = pertop.sf_pert_amplitudes_min[i_mode_sf], pertop.sf_pert_amplitudes_max[i_mode_sf]
     
     i_col = 0
     Rbounds = [minimum(scores),maximum(scores)]
+    Us = vcat(zeros(Float64, (1,2)), collect(transpose(coast.pert_seq_qmc)))
+    amplitudes = sqrt.(
+                       pertop.sf_pert_amplitudes_min[i_mode_sf]^2 * (1 .- Us[:,1]) .+
+                       pertop.sf_pert_amplitudes_max[i_mode_sf]^2 * Us[:,1]
+                    )
+    phases = 2pi .* Us[:,2]
+    Xpert = hcat(amplitudes .* cos.(phases), amplitudes .* sin.(phases))
     for i_leadtime = idx_leadtimes2plot
         i_col += 1
         leadtime = leadtimes[i_leadtime]
@@ -126,6 +135,7 @@ function plot_objective_response_linquad(
         tpstr = @sprintf("%.2f", leadtime*sdm.tu)
         r2_lin_str = @sprintf("%.2f", rsquared_linear[i_leadtime,i_anc])
         r2_quad_str = @sprintf("%.2f", rsquared_quadratic[i_leadtime,i_anc])
+        r2_zern_str = @sprintf("%.2f", rsquared_zernike[i_leadtime,i_anc])
         lblargs = Dict(:xticklabelsize=>7,:xlabelsize=>8,:yticklabelsize=>7,:ylabelsize=>8,:titlesize=>10,:xlabelvisible=>false,:ylabelvisible=>(i_col==1),:xticklabelsvisible=>true, :xticklabelrotation=>pi/2, :yticklabelsvisible=>true, :xgridvisible=>false, :ygridvisible=>false, :titlefont=>:regular, :xticksize=>2.0, :yticksize=>2.0, :xlabelpadding=>1.5, :ylabelpadding=>1.5)
         title_2d = "−$(tpstr)"
         title_1d = "($(r2_lin_str),$(r2_quad_str))"
@@ -137,7 +147,8 @@ function plot_objective_response_linquad(
         ax1d = Axis(lout_1d[1,i_col]; xlabel="Fitted severity", ylabel="Actual severity 𝑅*(ω)", title=title_1d, lblargs..., titlevisible=false, titlealign=:right)
         idx_desc = findall(round.(Int, coast.desc_tphpert[i_anc]./sdm.tu) .== tpert)
         #@infiltrate
-        (Rmax_pred_linear,Rmax_pred_quadratic) = (zeros(Float64, length(idx_desc)) for _=1:2)
+        (Rmax_pred_zernike,Rmax_pred_linear,Rmax_pred_quadratic) = (zeros(Float64, length(idx_desc)) for _=1:3)
+        Rmax_pred_zernike_anc = coefs_zernike[1,i_leadtime,i_anc]
         Rmax_pred_linear_anc = coefs_linear[1,i_leadtime,i_anc]
         Rmax_pred_quadratic_anc = coefs_quadratic[1,i_leadtime,i_anc]
         #  ------------- Contours ---------------------
@@ -145,62 +156,76 @@ function plot_objective_response_linquad(
         p1grid = collect(range(-Amax,Amax; length=Ngrid))
         p2grid = collect(range(-Amax,Amax; length=Ngrid))
         p12grid = hcat(vec(p1grid .* ones((1,Ngrid))), vec(ones(Ngrid) .* p2grid'))
+        response_surface_zernike = reshape(QG2L.zernike_model_2d(p12grid, Amax, coefs_zernike[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
         response_surface_linear = reshape(QG2L.linear_model_2d(p12grid, coefs_linear[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
         response_surface_quadratic = reshape(QG2L.quadratic_model_2d(p12grid, coefs_quadratic[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
-        max_dR = max((maximum(abs.(r.-coast.anc_Rmax[i_anc])) for r=(response_surface_linear, response_surface_quadratic))...)
-        vmin = coast.anc_Rmax[i_anc] - max_dR
+        max_dR = max((maximum(filter(!isnan, (r.-coast.anc_Rmax[i_anc]))) for r=(response_surface_zernike, response_surface_linear, response_surface_quadratic))...)
+        min_dR = min((minimum(filter(!isnan, (r.-coast.anc_Rmax[i_anc]))) for r=(response_surface_zernike, response_surface_linear, response_surface_quadratic))...)
+        vmin = coast.anc_Rmax[i_anc] + min_dR
         vmax = coast.anc_Rmax[i_anc] + max_dR
+
         #vmin = min((minimum(r) for r=(response_surface_linear, response_surface_quadratic))...)
         @show vmin,vmax,coast.anc_Rmax[i_anc]
-        levpos = collect(range(coast.anc_Rmax[i_anc], vmax; length=5)[2:end])
+        levels = sort(vcat(coast.anc_Rmax[i_anc], collect(range(vmin, vmax; length=10))))
+        levpos = levels[levels .> coast.anc_Rmax[i_anc]]
+        levneg = levels[levels .< coast.anc_Rmax[i_anc]]
         lev0 = [coast.anc_Rmax[i_anc]]
-        levneg = collect(range(vmin, coast.anc_Rmax[i_anc]; length=5)[1:end-1])
+        # Contours: Zernike model
+        contour!(ax2d, p1grid, p2grid, response_surface_zernike; levels=levpos, linestyle=:solid, color=color_zern, linewidth=2)
+        contour!(ax2d, p1grid, p2grid, response_surface_zernike; levels=levneg, linestyle=(:dot,:dense), color=color_zern, linewidth=2)
+        contour!(ax2d, p1grid, p2grid, response_surface_zernike; levels=lev0, linestyle=(:dash,:dense), color=color_zern, linewidth=2)
+        # Contours: linear model
         contour!(ax2d, p1grid, p2grid, response_surface_linear; levels=levpos, linestyle=:solid, color=color_lin, linewidth=2)
         contour!(ax2d, p1grid, p2grid, response_surface_linear; levels=levneg, linestyle=(:dot,:dense), color=color_lin, linewidth=2)
         contour!(ax2d, p1grid, p2grid, response_surface_linear; levels=lev0, linestyle=(:dash,:dense), color=color_lin, linewidth=2)
+        # Contours: quadratic model
         contour!(ax2d, p1grid, p2grid, response_surface_quadratic; levels=levpos, linestyle=:solid, color=color_quad, linewidth=2)
         contour!(ax2d, p1grid, p2grid, response_surface_quadratic; levels=levneg, linestyle=(:dot,:dense), color=color_quad, linewidth=2)
         contour!(ax2d, p1grid, p2grid, response_surface_quadratic; levels=lev0, linestyle=(:dash,:dense), color=color_quad, linewidth=2)
         # ---------------------- Points ---------------------------
         scorekwargs = Dict(:color=>:black, :marker=>:star5, :markersize=>6, :alpha=>1.0)
         scatter!(ax2d, 0, 0; scorekwargs...)
+        Us = vcat(zeros(Float64, (1,2)), collect(transpose(coast.pert_seq_qmc)))
+        amplitudes = sqrt.(
+                           pertop.sf_pert_amplitudes_min[i_mode_sf]^2 * (1 .- Us[:,1]) .+
+                           pertop.sf_pert_amplitudes_max[i_mode_sf]^2 * Us[:,1]
+                        )
+        phases = 2pi .* Us[:,2]
+        Xpert = hcat(amplitudes .* cos.(phases), amplitudes .* sin.(phases))
+        Ndesc = length(idx_desc)
         for (i_desc,desc) in enumerate(descendants[idx_desc])
-            pert = QG2L.read_perturbation_sequence(ens.trajs[desc].forcing).perts[1]
-            i_pert_dim = 2*i_mode_sf-1
-            amplitude = sqrt(
-                             Amin^2 * (1-pert[i_pert_dim]) 
-                             + Amax^2 * pert[i_pert_dim]
-                            )
-            phase = 2pi*pert[i_pert_dim+1]
             #@show amplitude,phase*360/(2pi),scores[i_desc]
             scorekwargs[:color] = :black
             gain = coast.desc_Rmax[i_anc][idx_desc[i_desc]] - coast.anc_Rmax[i_anc]
-            scorekwargs[:markersize] = 6 + 16 * 2*abs(gain)/(scorerange[2]-scorerange[1])
+            scorekwargs[:markersize] = 6 + 16 * 1*abs(gain)/(scorerange[2]-scorerange[1])
             scorekwargs[:marker] = (gain > 0 ? :cross : :circle)
-            scatter!(ax2d, amplitude*cos(phase), amplitude*sin(phase); scorekwargs...)
+            scatter!(ax2d, Xpert[i_desc+1,:]...; scorekwargs...)
             # Plot predicted and actual
+            Rmax_pred_zernike[i_desc] = let
+                c = coefs_zernike[:,i_leadtime,i_anc]
+                QG2L.zernike_model_2d(Xpert[i_desc+1:i_desc+2,:], Amax, c)[1]
+            end
             Rmax_pred_linear[i_desc] = let
                 c = coefs_linear[:,i_leadtime,i_anc]
-                p1 = amplitude*cos(phase)
-                p2 = amplitude*sin(phase)
-                QG2L.linear_model_2d([p1 p2], c)[1]
+                QG2L.linear_model_2d(Xpert[i_desc+1:i_desc+2,:], c)[1]
             end
             Rmax_pred_quadratic[i_desc] = let
                 c = coefs_quadratic[:,i_leadtime,i_anc]
-                p1 = amplitude*cos(phase)
-                p2 = amplitude*sin(phase)
-                QG2L.quadratic_model_2d([p1 p2], c)[1]
+                QG2L.quadratic_model_2d(Xpert[i_desc+1:i_desc+2,:], c)[1]
             end
+            scorekwargs[:color] = color_zern
+            scatter!(ax1d, Rmax_pred_zernike[i_desc], coast.desc_Rmax[i_anc][idx_desc[i_desc]]; scorekwargs...)
             scorekwargs[:color] = color_lin
             scatter!(ax1d, Rmax_pred_linear[i_desc], coast.desc_Rmax[i_anc][idx_desc[i_desc]]; scorekwargs...)
             scorekwargs[:color] = color_quad
             scatter!(ax1d, Rmax_pred_quadratic[i_desc], coast.desc_Rmax[i_anc][idx_desc[i_desc]]; scorekwargs...)
         end
+        scatter!(ax1d, Rmax_pred_zernike_anc, coast.anc_Rmax[i_anc]; marker=:star5, color=color_zern)
         scatter!(ax1d, Rmax_pred_linear_anc, coast.anc_Rmax[i_anc]; marker=:star5, color=color_lin)
         scatter!(ax1d, Rmax_pred_quadratic_anc, coast.anc_Rmax[i_anc]; marker=:star5, color=color_quad)
         lines!(ax1d, Rbounds, Rbounds; color=:black, linestyle=(:dash,:dense))
         hlines!(ax1d, coast.anc_Rmax[i_anc]; color=:black, linestyle=(:dash, :dense))
-        scores_lit = vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][idx_desc], Rmax_pred_linear_anc, Rmax_pred_quadratic_anc)
+        scores_lit = vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][idx_desc], Rmax_pred_zernike_anc, Rmax_pred_linear_anc, Rmax_pred_quadratic_anc)
         scoremin_lit,scoremax_lit = extrema(scores_lit)
         inflation = 0.1
         scorebounds_lit = [(1+inflation)*scoremin_lit-inflation*scoremax_lit, (1+inflation)*scoremax_lit-inflation*scoremin_lit]
@@ -214,6 +239,7 @@ function plot_objective_response_linquad(
         colgap!(lout_1d, i_col, 10.0)
     end
     ax_r2 = Axis(lout_r2[1,1], xlabel="−AST (𝑡* = $(t0str))", ylabel="𝑅²", ylabelsize=8, xlabelsize=8, yticklabelsize=7, xticklabelsize=7, xgridvisible=false, ygridvisible=false, yticks=[0.0,0.5,1.0], xticksize=2, yticksize=2, titlefont=:regular)
+    scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_zernike[:,i_anc]; color=color_zern, label="Zern")
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_linear[:,i_anc]; color=color_lin, label="Lin")
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_quadratic[:,i_anc]; color=color_quad, label="Quad")
     hlines!(ax_r2, r2thresh; color=:gray, alpha=0.5)
@@ -222,7 +248,7 @@ function plot_objective_response_linquad(
 
     Label(lout_2d[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,5.0,5.0), valign=:bottom, fontsize=9)
     Label(lout_2d[1,:,Bottom()], "Re{ω}", padding=(0,5,0,18), valign=:bottom, fontsize=8)
-    Label(lout_1d[1,:,Bottom()], "(Linear, quadratic)-fitted severity 𝑅̂*(ω)", padding=(0,5,0,20), valign=:bottom, fontsize=8)
+    Label(lout_1d[1,:,Bottom()], "fitted severity 𝑅̂*(ω)", padding=(0,5,0,20), valign=:bottom, fontsize=8)
     #rowsize!(lout_1d, 1, Relative(14/15))
     #rowsize!(lout_2d, 1, Relative(14/15))
     rowgap!(lout, 1, 4.0)

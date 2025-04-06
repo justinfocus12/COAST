@@ -206,6 +206,7 @@ function compute_GPD_params_from_truncated_gaussian_mixture(means::Vector{Float6
 end
 
 
+
 function quadratic_model_2d(X::Matrix{Float64}, coefs::Vector{Float64})
     @assert size(X,2) == 2 # each column is a feature 
     Y = (
@@ -223,6 +224,46 @@ function quadratic_model_2d_zero_intercept(X::Matrix{Float64}, coefs::Vector{Flo
         )
     return Y
 end
+
+function zernike_regression_2d(X::Matrix{Float64}, Y::Vector{Float64}, support_radius::Float64, nmax::Int64; intercept::Union{Nothing,Float64}=nothing)
+    # TODO figure out how to fix the size of the intercept 
+    jmax = div((nmax+1)*(nmax+2), 2)
+    jmin = 1
+    Npoints = size(X,1)
+    @assert length(Y) == Npoints
+    Rs = sqrt.(sum(X.^2; dims=2))
+    @assert maximum(Rs) <= support_radius
+    A = zeros(Float64, (Npoints, jmax-jmin+1))
+    @assert maximum(Rs) .<= 1
+    for (i,j) in enumerate(jmin:jmax)
+        A[:,i] .= ZP.zernike(ZP.Noll(j),coord=:cartesian).(X[:,1]./support_radius, X[:,2]./support_radius)
+    end
+    if !isnothing(intercept)
+        print("Intercept not supported")
+    end
+    coefs = A \ Y
+    pred = zernike_model_2d(X, support_radius, coefs)
+    resid = Y .- pred
+    mse = SB.mean(resid.^2)
+    rsquared = 1 - mse/SB.var(Y, corrected=false)
+    resid_range = [extrema(resid)...]
+    return coefs,mse,rsquared,resid_range
+end
+
+function zernike_model_2d(X::Matrix{Float64}, support_radius::Float64, coefs::Vector{Float64})
+    jmax = length(coefs)
+    Npoints = size(X, 1)
+    F = zeros(Float64, Npoints)
+    for (i,j) in enumerate(1:jmax)
+        F .+= coefs[i] .* ZP.zernike(ZP.Noll(j), coord=:cartesian).(X[:,1]./support_radius, X[:,2]./support_radius)
+    end
+    # NaN out values outside the unit circle 
+    idx_outside_disc = findall(sum(X.^2; dims=2) .> support_radius^2)
+    F[idx_outside_disc] .= NaN
+    return F 
+end
+
+
 
 function quadratic_regression_2d(X::Matrix{Float64}, Y::Vector{Float64}; intercept::Union{Nothing,Float64}=nothing)
     if isnothing(intercept)

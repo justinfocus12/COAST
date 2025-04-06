@@ -5,6 +5,7 @@ import Printf
 using Printf: @sprintf
 import LinearAlgebra as LA
 import StatsBase as SB
+import ZernikePolynomials as ZP
 import Distributions as Dists
 import Extremes as Ext
 import LsqFit

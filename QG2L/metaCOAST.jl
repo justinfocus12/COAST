@@ -282,7 +282,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     if todo["compile_fdivs"] 
         # Plot the TV achieved by (a) maximizing entropy, and (b) choosing a specific lead time, as a function of latitude. Do this with two vertically stacked plots
         dsts = ("b",)
-        rsps = ("e",)
+        rsps = ("2","e",)
         i_boot = 1
 
         @show Nleadtime
@@ -344,7 +344,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         end
 
         dsts = ("b",)
-        rsps = ("e",)
+        rsps = ("2","e",)
         i_boot = 1
 
         fdivs2plot = ["qrmse","kl","chi2","tv"]
@@ -399,192 +399,194 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
 
     if todo["plot_mixcrits_ydep"]
         dst = "b"
-        rsp = "e"
+        rsps = ("2","e")
         i_boot = 1
         mc = "ent" # this is the privileged mixing criterion on which to optimize 
         i_mcval = 1 # because we're optimizing it
         est = "mix"
         ϵ = 1-(3/8)^2
-        for (fdivname,fdivlabel) = (("chi2","χ²"),("kl","KL"),("qrmse","𝐿²"),)
-            (
-             fdiv_of_ast,
-             contcorr_of_ast,globcorr_of_ast,mc_of_ast,
-             iltfrac_mc_of_ast,
-            ) = (
-                 zeros(Float64, (Nleadtime,Nytgt,Nscales[dst])) for _=1:5
-                )
-            (
-             fdiv_of_contcorr,
-             ast_of_contcorr,mc_of_contcorr,
-             iccfrac_mc_of_contcorr,
-            ) = (
-                 zeros(Float64, (Nmcs["contcorr"],Nytgt,Nscales[dst])) for _=1:4
-                )
-            ilt_best_of_ast = zeros(Int64, (Nytgt,Nscales[dst]))
-            icc_best_of_contcorr = zeros(Int64, (Nytgt,Nscales[dst]))
-            for i_scl = scales2plot
-                for (i_ytgt,ytgt) in enumerate(ytgts)
-                    JLD2.jldopen(joinpath(exptdirs_COAST[i_ytgt],"results","ccdfs_combined.jld2"),"r") do f
-                        Nancy = size(f["mixcrits"][dst][rsp]["lt"],2)
-                        # AST as independent variable
-                        contcorr_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["mixcrits"][dst][rsp]["contcorr"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
-                        globcorr_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["mixcrits"][dst][rsp]["globcorr"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
-                        mc_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["mixcrits"][dst][rsp][mc][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
-                        fdiv_of_ast[:,i_ytgt,i_scl] .= (f["fdivs"][dst][rsp]["lt"][est][fdivname][i_boot,1:Nleadtime,i_scl])
-                        ilt_best_of_ast[i_ytgt,i_scl] = argmin(fdiv_of_ast[:,i_ytgt,i_scl])
+        for rsp = rsps
+            for (fdivname,fdivlabel) = (("chi2","χ²"),("kl","KL"),("qrmse","𝐿²"),)
+                (
+                 fdiv_of_ast,
+                 contcorr_of_ast,globcorr_of_ast,mc_of_ast,
+                 iltfrac_mc_of_ast,
+                ) = (
+                     zeros(Float64, (Nleadtime,Nytgt,Nscales[dst])) for _=1:5
+                    )
+                (
+                 fdiv_of_contcorr,
+                 ast_of_contcorr,mc_of_contcorr,
+                 iccfrac_mc_of_contcorr,
+                ) = (
+                     zeros(Float64, (Nmcs["contcorr"],Nytgt,Nscales[dst])) for _=1:4
+                    )
+                ilt_best_of_ast = zeros(Int64, (Nytgt,Nscales[dst]))
+                icc_best_of_contcorr = zeros(Int64, (Nytgt,Nscales[dst]))
+                for i_scl = scales2plot
+                    for (i_ytgt,ytgt) in enumerate(ytgts)
+                        JLD2.jldopen(joinpath(exptdirs_COAST[i_ytgt],"results","ccdfs_combined.jld2"),"r") do f
+                            Nancy = size(f["mixcrits"][dst][rsp]["lt"],2)
+                            # AST as independent variable
+                            contcorr_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["mixcrits"][dst][rsp]["contcorr"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
+                            globcorr_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["mixcrits"][dst][rsp]["globcorr"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
+                            mc_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["mixcrits"][dst][rsp][mc][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
+                            fdiv_of_ast[:,i_ytgt,i_scl] .= (f["fdivs"][dst][rsp]["lt"][est][fdivname][i_boot,1:Nleadtime,i_scl])
+                            ilt_best_of_ast[i_ytgt,i_scl] = argmin(fdiv_of_ast[:,i_ytgt,i_scl])
 
-                        iltfrac_mc_of_ast[:,i_ytgt,i_scl] .= f["iltcounts"][dst][rsp][mc][i_mcval,:,i_scl]./Nancy
-                                               
-                        # contcorr as independent variable
-                        ilts_contcorr = f["iltmixs"][dst][rsp]["contcorr"][1:Nmcs["contcorr"],1:Nancy,i_scl] # the lead time index at which each ancestor achieves the chosen contour correlation value 
-                        ilts_globcorr = f["iltmixs"][dst][rsp]["globcorr"][1:Nmcs["globcorr"],1:Nancy,i_scl] # the lead time index at which each ancestor achieves the chosen globour correlation value 
-                        fdiv_of_contcorr[:,i_ytgt,i_scl] .= (f["fdivs"][dst][rsp]["contcorr"][est][fdivname][i_boot,1:Nmcs["contcorr"],i_scl])
-                        ast_of_contcorr[:,i_ytgt,i_scl] .= sdm.tu.*SB.mean(leadtimes[ilts_contcorr]; dims=2)[:,1]
-                        for i_contcorr = 1:Nmcs["contcorr"]
-                            mc_of_contcorr[i_contcorr,i_ytgt,i_scl] = SB.mean([f["mixcrits"][dst][rsp][mc][ilts_contcorr[i_contcorr,i_anc],i_anc,i_scl] for i_anc=1:Nancy])
-                        end
-                        # TODO figure out the frequency distribution of contour levels coinciding with maximum-entropy 
-                        icc_best_of_contcorr[i_ytgt,i_scl] = argmin(fdiv_of_contcorr[:,i_ytgt,i_scl])
-                        for i_anc = 1:Nancy
-                            i_leadtime_mcmax = f["iltmixs"][dst][rsp][mc][i_mcval,i_anc,i_scl]
-                            contcorr_mcmax = f["mixcrits"][dst][rsp]["contcorr"][i_leadtime_mcmax,i_anc,i_scl]
-                            i_contcorr_mcmax = (f["mixobjs"]["contcorr"][end] >= contcorr_mcmax ? findfirst(f["mixobjs"]["contcorr"] .>= contcorr_mcmax) : Nmcs["contcorr"])
-                            iccfrac_mc_of_contcorr[i_contcorr_mcmax,i_ytgt,i_scl] += 1/Nancy
+                            iltfrac_mc_of_ast[:,i_ytgt,i_scl] .= f["iltcounts"][dst][rsp][mc][i_mcval,:,i_scl]./Nancy
+                                                   
+                            # contcorr as independent variable
+                            ilts_contcorr = f["iltmixs"][dst][rsp]["contcorr"][1:Nmcs["contcorr"],1:Nancy,i_scl] # the lead time index at which each ancestor achieves the chosen contour correlation value 
+                            ilts_globcorr = f["iltmixs"][dst][rsp]["globcorr"][1:Nmcs["globcorr"],1:Nancy,i_scl] # the lead time index at which each ancestor achieves the chosen globour correlation value 
+                            fdiv_of_contcorr[:,i_ytgt,i_scl] .= (f["fdivs"][dst][rsp]["contcorr"][est][fdivname][i_boot,1:Nmcs["contcorr"],i_scl])
+                            ast_of_contcorr[:,i_ytgt,i_scl] .= sdm.tu.*SB.mean(leadtimes[ilts_contcorr]; dims=2)[:,1]
+                            for i_contcorr = 1:Nmcs["contcorr"]
+                                mc_of_contcorr[i_contcorr,i_ytgt,i_scl] = SB.mean([f["mixcrits"][dst][rsp][mc][ilts_contcorr[i_contcorr,i_anc],i_anc,i_scl] for i_anc=1:Nancy])
+                            end
+                            # TODO figure out the frequency distribution of contour levels coinciding with maximum-entropy 
+                            icc_best_of_contcorr[i_ytgt,i_scl] = argmin(fdiv_of_contcorr[:,i_ytgt,i_scl])
+                            for i_anc = 1:Nancy
+                                i_leadtime_mcmax = f["iltmixs"][dst][rsp][mc][i_mcval,i_anc,i_scl]
+                                contcorr_mcmax = f["mixcrits"][dst][rsp]["contcorr"][i_leadtime_mcmax,i_anc,i_scl]
+                                i_contcorr_mcmax = (f["mixobjs"]["contcorr"][end] >= contcorr_mcmax ? findfirst(f["mixobjs"]["contcorr"] .>= contcorr_mcmax) : Nmcs["contcorr"])
+                                iccfrac_mc_of_contcorr[i_contcorr_mcmax,i_ytgt,i_scl] += 1/Nancy
+                            end
                         end
                     end
                 end
-            end
-            colormap = Reverse(:bwr) #:YlGnBu_9
-            normalize_by_latitude = true
-            logscale_flag = false #(mc != "ent")
-            if logscale_flag
-                for arr = (
-                           fdiv_of_ast,fdiv_of_contcorr,
-                           mc_of_ast,mc_of_contcorr,
-                          )
-                    arr .= log10.(arr)
-                end
-                if normalize_by_latitude
-                    errlabel = "log($(fdivlabel)/max $(fdivlabel)|y)"
-                    mclabel = "log($(mixcrit_labels[mc])/max $(mixcrit_labels[mc])|y)"
+                colormap = Reverse(:bwr) #:YlGnBu_9
+                normalize_by_latitude = true
+                logscale_flag = false #(mc != "ent")
+                if logscale_flag
+                    for arr = (
+                               fdiv_of_ast,fdiv_of_contcorr,
+                               mc_of_ast,mc_of_contcorr,
+                              )
+                        arr .= log10.(arr)
+                    end
+                    if normalize_by_latitude
+                        errlabel = "log($(fdivlabel)/max $(fdivlabel)|y)"
+                        mclabel = "log($(mixcrit_labels[mc])/max $(mixcrit_labels[mc])|y)"
+                    else
+                        errlabel = "log₁₀($(fdivlabel))"
+                        mclabel = "log₁₀($(mixcrit_labels[mc]))"
+                    end
                 else
-                    errlabel = "log₁₀($(fdivlabel))"
-                    mclabel = "log₁₀($(mixcrit_labels[mc]))"
+                    errlabel = fdivlabel
+                    mclabel = mixcrit_labels[mc]
                 end
-            else
-                errlabel = fdivlabel
-                mclabel = mixcrit_labels[mc]
-            end
-            colorscale = identity
-            fdivrange = [minimum(minimum.([fdiv_of_ast,fdiv_of_contcorr,])),maximum(maximum.([fdiv_of_ast,fdiv_of_contcorr,]))]
-            mcrange = (minimum(minimum.([mc_of_ast,mc_of_contcorr,])),maximum(maximum.([mc_of_ast,mc_of_contcorr,])))
-            ccrange = (minimum(contcorr_of_ast), maximum(contcorr_of_ast))
-            gcrange = (minimum(globcorr_of_ast), maximum(globcorr_of_ast))
-            if normalize_by_latitude
-                for arr = (
-                           fdiv_of_ast,fdiv_of_contcorr,
-                           mc_of_ast,mc_of_contcorr,
-                          )
-                    arr .= (arr .- minimum(arr; dims=1)) ./ (maximum(arr; dims=1) .- minimum(arr; dims=1))
+                colorscale = identity
+                fdivrange = [minimum(minimum.([fdiv_of_ast,fdiv_of_contcorr,])),maximum(maximum.([fdiv_of_ast,fdiv_of_contcorr,]))]
+                mcrange = (minimum(minimum.([mc_of_ast,mc_of_contcorr,])),maximum(maximum.([mc_of_ast,mc_of_contcorr,])))
+                ccrange = (minimum(contcorr_of_ast), maximum(contcorr_of_ast))
+                gcrange = (minimum(globcorr_of_ast), maximum(globcorr_of_ast))
+                if normalize_by_latitude
+                    for arr = (
+                               fdiv_of_ast,fdiv_of_contcorr,
+                               mc_of_ast,mc_of_contcorr,
+                              )
+                        arr .= (arr .- minimum(arr; dims=1)) ./ (maximum(arr; dims=1) .- minimum(arr; dims=1))
+                    end
+                    colorrange_fdiv = (0,1)
+                    colorrange_mc = (0,1)
+                else
+                    colorrange_fdiv = fdivrange
+                    colorrange_mc = mcrange
                 end
-                colorrange_fdiv = (0,1)
-                colorrange_mc = (0,1)
-            else
-                colorrange_fdiv = fdivrange
-                colorrange_mc = mcrange
-            end
-            for i_scl = scales2plot
-                ytickvalues = ytgts[3:6:Nytgt]
-                yticklabels = [@sprintf("%d/%d", round(Int, sdm.Ny*ytgt), sdm.Ny) for ytgt=ytickvalues]
-                #heatmap_theme = Theme(titlefont=:regular, xlabelsize=12, ylabelsize=12, xticklabelsize=9, yticklabelsize=9, titlesize=15, ylabel="𝑦₀/𝐿", yticks=(ytickvalues, yticklabels))
-                axargs = Dict(:title=>"", :titlefont=>:regular, :xlabelsize=>10, :ylabelsize=>10, :xticklabelsize=>8, :yticklabelsize=>8, :titlesize=>12, :ylabel=>"𝑦₀/𝐿", :yticks=>(ytickvalues, yticklabels))
-                cbarargs = Dict(:labelfont=>:regular, :labelsize=>10, :ticklabelsize=>8, :size=>6, :vertical=>false, )
-                # --------------- contcorr as function of AST -------------------
-                fig = Figure(size=(200,350))
-                lout = fig[1,1] = GridLayout()
-                ax = Axis(lout[2,1]; xlabel="-AST", axargs...)
-                hm = heatmap!(ax, -sdm.tu.*reverse(leadtimes), ytgts, reverse(transcorr.(contcorr_of_ast[1:Nleadtime,1:Nytgt,i_scl]); dims=1); colormap=Reverse(:deep), colorrange=transcorr.(ccrange))
-                co = contour!(ax, -sdm.tu.*leadtimes, ytgts, transcorr.(contcorr_of_ast[1:Nleadtime,1:Nytgt,i_scl]); levels=[transcorr(1-(3/8)^2)], color=:black, linestyle=(:dash,:dense), linewidth=2)
-                cbar = Colorbar(lout[1,1], hm; label=@sprintf("σ⁻¹(ρ[𝑐(𝑦₀,⋅)]); %s, 𝑠=%.2f", label_target(target_r, sdm), distn_scales[dst][i_scl]), cbarargs...)
-                rowgap!(lout, 1, 5)
-                save(joinpath(resultdir,"heatmap_contcorr_ofASTandY_$(i_scl).png"), fig)
+                for i_scl = scales2plot
+                    ytickvalues = ytgts[3:6:Nytgt]
+                    yticklabels = [@sprintf("%d/%d", round(Int, sdm.Ny*ytgt), sdm.Ny) for ytgt=ytickvalues]
+                    #heatmap_theme = Theme(titlefont=:regular, xlabelsize=12, ylabelsize=12, xticklabelsize=9, yticklabelsize=9, titlesize=15, ylabel="𝑦₀/𝐿", yticks=(ytickvalues, yticklabels))
+                    axargs = Dict(:title=>"", :titlefont=>:regular, :xlabelsize=>10, :ylabelsize=>10, :xticklabelsize=>8, :yticklabelsize=>8, :titlesize=>12, :ylabel=>"𝑦₀/𝐿", :yticks=>(ytickvalues, yticklabels))
+                    cbarargs = Dict(:labelfont=>:regular, :labelsize=>10, :ticklabelsize=>8, :size=>6, :vertical=>false, )
+                    # --------------- contcorr as function of AST -------------------
+                    fig = Figure(size=(200,350))
+                    lout = fig[1,1] = GridLayout()
+                    ax = Axis(lout[2,1]; xlabel="-AST", axargs...)
+                    hm = heatmap!(ax, -sdm.tu.*reverse(leadtimes), ytgts, reverse(transcorr.(contcorr_of_ast[1:Nleadtime,1:Nytgt,i_scl]); dims=1); colormap=Reverse(:deep), colorrange=transcorr.(ccrange))
+                    co = contour!(ax, -sdm.tu.*leadtimes, ytgts, transcorr.(contcorr_of_ast[1:Nleadtime,1:Nytgt,i_scl]); levels=[transcorr(1-(3/8)^2)], color=:black, linestyle=(:dash,:dense), linewidth=2)
+                    cbar = Colorbar(lout[1,1], hm; label=@sprintf("σ⁻¹(ρ[𝑐(𝑦₀,⋅)]); %s, 𝑠=%.2f", label_target(target_r, sdm), distn_scales[dst][i_scl]), cbarargs...)
+                    rowgap!(lout, 1, 5)
+                    save(joinpath(resultdir,"heatmap_contcorr_ofASTandY_$(dst)_$(rsp)_$(i_scl).png"), fig)
 
-                #
-                # --------------- F-divergence as a function of AST  -----------
-                fig = Figure(size=(200,350))
-                lout = fig[1,1] = GridLayout()
-                threshcquantstr = @sprintf("%.2E",thresh_cquantile)
-                title = @sprintf("%s; %s, 𝑠=%.2f", errlabel, label_target(target_r, sdm), distn_scales[dst][i_scl])
-                ax1 = Axis(lout[2,1]; xlabel="−AST", axargs...)
-                # First heatmap: overlay optimal-entropy leadtime distribution on fdiv
-                hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(fdiv_of_ast[:,:,i_scl]; dims=1); colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
-                co1 = contour!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast[:,:,i_scl]; dims=1); levels=range(mcrange...; length=7), color=:black, labels=false)
-                for (i_ytgt,ytgt) in enumerate(ytgts)
-                    scatter!(ax1, -sdm.tu.*leadtimes, ytgt.*ones(Float64,Nleadtime); marker='O', markersize=60 .* iltfrac_mc_of_ast[:,i_ytgt,i_scl], color=:black)
+                    #
+                    # --------------- F-divergence as a function of AST  -----------
+                    fig = Figure(size=(200,350))
+                    lout = fig[1,1] = GridLayout()
+                    threshcquantstr = @sprintf("%.2E",thresh_cquantile)
+                    title = @sprintf("%s; %s, 𝑠=%.2f", errlabel, label_target(target_r, sdm), distn_scales[dst][i_scl])
+                    ax1 = Axis(lout[2,1]; xlabel="−AST", axargs...)
+                    # First heatmap: overlay optimal-entropy leadtime distribution on fdiv
+                    hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(fdiv_of_ast[:,:,i_scl]; dims=1); colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
+                    co1 = contour!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast[:,:,i_scl]; dims=1); levels=range(mcrange...; length=7), color=:black, labels=false)
+                    for (i_ytgt,ytgt) in enumerate(ytgts)
+                        scatter!(ax1, -sdm.tu.*leadtimes, ytgt.*ones(Float64,Nleadtime); marker='O', markersize=60 .* iltfrac_mc_of_ast[:,i_ytgt,i_scl], color=:black)
+                    end
+                    cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label=title, cbarargs...)
+                    rowgap!(lout, 1, 5)
+                    rowsize!(lout, 1, Relative(1/9))
+
+                    resize_to_layout!(fig)
+                    save(joinpath(resultdir,"heatmap_$(fdivname)_ofASTandY_$(dst)_$(rsp)_$(i_scl)_nocoast.png"), fig)
+                    co_contcorr = contour!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(contcorr_of_ast[:,:,i_scl]; dims=1); levels=[ϵ], color=:black, linestyle=(:dot,:dense))
+                    co_globcorr = contour!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(globcorr_of_ast[:,:,i_scl]; dims=1); levels=[ϵ], color=:black, linestyle=(:dash,:dense))
+                    scatter!(ax1, -sdm.tu.*leadtimes[ilt_best_of_ast[:,i_scl]], ytgts; color=:black, marker=:cross)
+                    save(joinpath(resultdir,"heatmap_$(fdivname)_ofASTandY_$(dst)_$(rsp)_$(i_scl).png"), fig)
+
+                    # --------------- F-divergence as a function of contcorr  -----------
+                    fig = Figure(size=(200,350))
+                    lout = fig[1,1] = GridLayout()
+                    threshcquantstr = @sprintf("%.2E",thresh_cquantile)
+                    title = @sprintf("%s; %s, 𝑠=%.2f", errlabel, label_target(target_r, sdm), distn_scales[dst][i_scl])
+                    ax1 = Axis(lout[2,1]; xlabel="σ⁻¹(ρ[𝑐(𝑦₀,⋅)])", ylabel="𝑦₀/𝐿", title="", axargs...)
+                    axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
+                    # First heatmap: overlay optimal-entropy leadtime distribution on fdiv
+                    hm1 = heatmap!(ax1, transcorr.(mixobjs["contcorr"]), ytgts, fdiv_of_contcorr[:,:,i_scl]; colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
+                    co1 = contour!(ax1, transcorr.(mixobjs["contcorr"]), ytgts, mc_of_contcorr[:,:,i_scl]; levels=range(mcrange...; length=7), color=:cyan, labels=false)
+                    for (i_ytgt,ytgt) in enumerate(ytgts)
+                        scatter!(ax1, transcorr.(mixobjs["contcorr"]), ytgt.*ones(Float64,Nmcs["contcorr"]); marker='O', markersize=60 .* iccfrac_mc_of_contcorr[:,i_ytgt,i_scl], color=:black)
+                    end
+                    cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label=title, cbarargs...)
+                    rowgap!(lout, 1, 5)
+                    rowsize!(lout, 1, Relative(1/9))
+
+                    resize_to_layout!(fig)
+                    save(joinpath(resultdir,"heatmap_$(fdivname)_ofCCandY_$(dst)_$(rsp)_$(i_scl)_nocoast.png"), fig)
+                    scatter!(ax1, transcorr.(mixobjs["contcorr"][icc_best_of_contcorr[:,i_scl]]), ytgts; color=:black, marker=:cross)
+                    vlines!(ax1, transcorr(ϵ); color=:black, linestyle=(:dot,:dense))
+                    save(joinpath(resultdir,"heatmap_$(fdivname)_ofCCandY_$(dst)_$(rsp)_$(i_scl).png"), fig)
+                    # --------------- the chosen mixing criterion as a function of AST -----------
+                    fig = Figure(size=(200,350), )
+                    lout = fig[1,1] = GridLayout()
+                    axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6)
+                    cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :valign=>:bottom)
+                    ax1 = Axis(lout[2,1]; xlabel="−AST", ylabel="𝑦₀/𝐿", title="", axargs...)
+                    axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
+                    threshcquantstr = @sprintf("%.2E",thresh_cquantile)
+                    hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast[:,:,i_scl]; dims=1); colormap=Reverse(colormap), colorscale=colorscale, colorrange=colorrange_mc)
+                    cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label="$(mclabel) (iso-$(mixcrit_labels["lt"]))", cbarargs...)
+                    rowgap!(lout, 1, 5)
+                    rowsize!(lout, 1, Relative(1/9))
+                    resize_to_layout!(fig)
+                    @assert (all(isfinite.(mc_of_ast)) && all(isfinite.(mc_of_contcorr)))
+                    save(joinpath(resultdir,"heatmap_$(mc)ofASTandY_$(dst)_$(rsp).png"), fig)
+                    #
+                    # --------------- the chosen mixing criterion as a function of contcorr -----------
+                    fig = Figure(size=(200,350), )
+                    lout = fig[1,1] = GridLayout()
+                    axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6)
+                    cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :valign=>:bottom)
+                    ax1 = Axis(lout[2,1]; xlabel="σ⁻¹(ρ[𝑐(𝑦₀,⋅)])", axargs...)
+                    hm1 = heatmap!(ax1, transcorr.(mixobjs["contcorr"]), ytgts, mc_of_contcorr[:,:,i_scl]; colormap=Reverse(colormap), colorscale=colorscale, colorrange=colorrange_mc)
+                    cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label="$(mclabel) (iso-$(mixcrit_labels["contcorr"]))", cbarargs...)
+                    rowgap!(lout, 1, 5)
+                    rowsize!(lout, 1, Relative(1/9))
+                    # rowsize!(lout, 2, Relative(2/9)) # TODO understand why uncommenting this line messes up all the proportions
+                    resize_to_layout!(fig)
+                    @assert (all(isfinite.(mc_of_ast)) && all(isfinite.(mc_of_contcorr)))
+                    save(joinpath(resultdir,"heatmap_$(mc)ofCCandY_$(dst)_$(rsp).png"), fig)
                 end
-                cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label=title, cbarargs...)
-                rowgap!(lout, 1, 5)
-                rowsize!(lout, 1, Relative(1/9))
-
-                resize_to_layout!(fig)
-                save(joinpath(resultdir,"heatmap_$(fdivname)_ofASTandY_$(dst)_$(rsp)_$(i_scl)_nocoast.png"), fig)
-                co_contcorr = contour!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(contcorr_of_ast[:,:,i_scl]; dims=1); levels=[ϵ], color=:black, linestyle=(:dot,:dense))
-                co_globcorr = contour!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(globcorr_of_ast[:,:,i_scl]; dims=1); levels=[ϵ], color=:black, linestyle=(:dash,:dense))
-                scatter!(ax1, -sdm.tu.*leadtimes[ilt_best_of_ast[:,i_scl]], ytgts; color=:black, marker=:cross)
-                save(joinpath(resultdir,"heatmap_$(fdivname)_ofASTandY_$(dst)_$(rsp)_$(i_scl).png"), fig)
-
-                # --------------- F-divergence as a function of contcorr  -----------
-                fig = Figure(size=(200,350))
-                lout = fig[1,1] = GridLayout()
-                threshcquantstr = @sprintf("%.2E",thresh_cquantile)
-                title = @sprintf("%s; %s, 𝑠=%.2f", errlabel, label_target(target_r, sdm), distn_scales[dst][i_scl])
-                ax1 = Axis(lout[2,1]; xlabel="σ⁻¹(ρ[𝑐(𝑦₀,⋅)])", ylabel="𝑦₀/𝐿", title="", axargs...)
-                axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
-                # First heatmap: overlay optimal-entropy leadtime distribution on fdiv
-                hm1 = heatmap!(ax1, transcorr.(mixobjs["contcorr"]), ytgts, fdiv_of_contcorr[:,:,i_scl]; colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
-                co1 = contour!(ax1, transcorr.(mixobjs["contcorr"]), ytgts, mc_of_contcorr[:,:,i_scl]; levels=range(mcrange...; length=7), color=:cyan, labels=false)
-                for (i_ytgt,ytgt) in enumerate(ytgts)
-                    scatter!(ax1, transcorr.(mixobjs["contcorr"]), ytgt.*ones(Float64,Nmcs["contcorr"]); marker='O', markersize=60 .* iccfrac_mc_of_contcorr[:,i_ytgt,i_scl], color=:black)
-                end
-                cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label=title, cbarargs...)
-                rowgap!(lout, 1, 5)
-                rowsize!(lout, 1, Relative(1/9))
-
-                resize_to_layout!(fig)
-                save(joinpath(resultdir,"heatmap_$(fdivname)_ofCCandY_$(dst)_$(rsp)_$(i_scl)_nocoast.png"), fig)
-                scatter!(ax1, transcorr.(mixobjs["contcorr"][icc_best_of_contcorr[:,i_scl]]), ytgts; color=:black, marker=:cross)
-                vlines!(ax1, transcorr(ϵ); color=:black, linestyle=(:dot,:dense))
-                save(joinpath(resultdir,"heatmap_$(fdivname)_ofCCandY_$(dst)_$(rsp)_$(i_scl).png"), fig)
-                # --------------- the chosen mixing criterion as a function of AST -----------
-                fig = Figure(size=(200,350), )
-                lout = fig[1,1] = GridLayout()
-                axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6)
-                cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :valign=>:bottom)
-                ax1 = Axis(lout[2,1]; xlabel="−AST", ylabel="𝑦₀/𝐿", title="", axargs...)
-                axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
-                threshcquantstr = @sprintf("%.2E",thresh_cquantile)
-                hm1 = heatmap!(ax1, -sdm.tu.*reverse(leadtimes), ytgts, reverse(mc_of_ast[:,:,i_scl]; dims=1); colormap=Reverse(colormap), colorscale=colorscale, colorrange=colorrange_mc)
-                cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label="$(mclabel) (iso-$(mixcrit_labels["lt"]))", cbarargs...)
-                rowgap!(lout, 1, 5)
-                rowsize!(lout, 1, Relative(1/9))
-                resize_to_layout!(fig)
-                @assert (all(isfinite.(mc_of_ast)) && all(isfinite.(mc_of_contcorr)))
-                save(joinpath(resultdir,"heatmap_$(mc)ofASTandY.png"), fig)
-                #
-                # --------------- the chosen mixing criterion as a function of contcorr -----------
-                fig = Figure(size=(200,350), )
-                lout = fig[1,1] = GridLayout()
-                axargs = Dict(:titlefont=>:regular, :xlabelsize=>8, :xticklabelsize=>6, :ylabelsize=>8, :yticklabelsize=>6)
-                cbarargs = Dict(:labelfont=>:regular, :labelsize=>8, :ticklabelsize=>6, :valign=>:bottom)
-                ax1 = Axis(lout[2,1]; xlabel="σ⁻¹(ρ[𝑐(𝑦₀,⋅)])", axargs...)
-                hm1 = heatmap!(ax1, transcorr.(mixobjs["contcorr"]), ytgts, mc_of_contcorr[:,:,i_scl]; colormap=Reverse(colormap), colorscale=colorscale, colorrange=colorrange_mc)
-                cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label="$(mclabel) (iso-$(mixcrit_labels["contcorr"]))", cbarargs...)
-                rowgap!(lout, 1, 5)
-                rowsize!(lout, 1, Relative(1/9))
-                # rowsize!(lout, 2, Relative(2/9)) # TODO understand why uncommenting this line messes up all the proportions
-                resize_to_layout!(fig)
-                @assert (all(isfinite.(mc_of_ast)) && all(isfinite.(mc_of_contcorr)))
-                save(joinpath(resultdir,"heatmap_$(mc)ofCCandY.png"), fig)
             end
         end
     end

@@ -45,9 +45,15 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                     )
          end
         )
-        levels = Rccdf_valid_agglon
-    coefslin,coefsquad,r2lin,r2quad = JLD2.jldopen(joinpath(resultdir,"regression_coefs.jld2"), "r") do f
-        return f["coefs_linear"],f["coefs_quadratic"],f["rsquared_linear"],f["rsquared_quadratic"]
+    levels = Rccdf_valid_agglon
+    (
+     coefslin,coefsquad,coefszern,
+     r2lin,r2quad,r2zern
+    ) = JLD2.jldopen(joinpath(resultdir,"regression_coefs.jld2"), "r") do f
+        return (
+                f["coefs_linear"],f["coefs_quadratic"],f["coefs_zernike"],
+                f["rsquared_linear"],f["rsquared_quadratic"],f["rsquared_zernike"]
+               )
     end
     globcorr,contcorr = JLD2.jldopen(joinpath(resultdir,"contour_dispersion.jld2"), "r") do f
         return f["globcorr"], f["contcorr"]
@@ -72,7 +78,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
         ilts[dst] = Dict{String,Dict}()
         iltcounts[dst] = Dict{String,Dict}()
         ccdfs[dst],pdfs[dst] = (Dict{String,Array{Float64}}() for _=1:2)
-        for rsp = ["2","e"]
+        for rsp = ["z","2","e"]
             mixcrits[dst][rsp] = Dict{String,Array{Float64}}()
             ilts[dst][rsp] = Dict{String,Array{Int64}}()
             iltcounts[dst][rsp] = Dict{String,Array{Int64}}()
@@ -91,7 +97,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
             idx_dsc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
             Rs[2:Npert+1] .= coast.desc_Rmax[i_anc][idx_dsc]
             for dst = ["b"]
-                for rsp = ["2","e"]
+                for rsp = ["z","2","e"]
                     for i_scl = 1:Nscales[dst]
                         mixcrits[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = leadtimes[i_leadtime]
                         if "e" == rsp
@@ -103,9 +109,26 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                             mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws[2:Npert+1]))
                             mixcrits[dst][rsp]["r2lin"][i_leadtime,i_anc,i_scl] = r2lin[i_leadtime,i_anc]
                             mixcrits[dst][rsp]["r2quad"][i_leadtime,i_anc,i_scl] = r2quad[i_leadtime,i_anc]
+                            mixcrits[dst][rsp]["r2zern"][i_leadtime,i_anc,i_scl] = r2zern[i_leadtime,i_anc]
                             QG2L.ccdf_gridded_from_samples!(
                                                             @view(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),@view(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),
                                                             Rs, Ws, levels
+                                                           ) 
+                            mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdfs[dst][rsp][i_thresh_cquantile:Nlev,i_leadtime,i_anc,i_scl]; normalize=false)
+                        elseif "z" == rsp
+                            Ws_interp .= QG2L.bump_density(U_interp, distn_scales[dst][i_scl], support_radius)
+                            Rs_interp[2:Nterp+1] .= QG2L.zernike_model_2d(X_interp[2:Nterp+1,:], support_radius, coefszern[:,i_leadtime,i_anc])
+                            mixcrits[dst][rsp]["pth"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs_interp, Ws_interp, thresh)
+                            mixcrits[dst][rsp]["pim"][i_leadtime,i_anc,i_scl] = QG2L.threshold_exceedance_probability_samples(Rs_interp, Ws_interp, Rs_interp[1])
+                            mixcrits[dst][rsp]["ei"][i_leadtime,i_anc,i_scl] = QG2L.expected_improvement_samples(Rs_interp, Ws_interp, Rs_interp[1])
+                            mixcrits[dst][rsp]["globcorr"][i_leadtime,i_anc,i_scl] = SB.mean(globcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws_interp[2:Npert+1]))
+                            mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws_interp[2:Npert+1]))
+                            mixcrits[dst][rsp]["r2lin"][i_leadtime,i_anc,i_scl] = r2lin[i_leadtime,i_anc]
+                            mixcrits[dst][rsp]["r2quad"][i_leadtime,i_anc,i_scl] = r2quad[i_leadtime,i_anc]
+                            mixcrits[dst][rsp]["r2zern"][i_leadtime,i_anc,i_scl] = r2zern[i_leadtime,i_anc]
+                            QG2L.ccdf_gridded_from_samples!(
+                                                            @view(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),@view(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),
+                                                            Rs_interp, Ws_interp, levels
                                                            ) 
                             mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdfs[dst][rsp][i_thresh_cquantile:Nlev,i_leadtime,i_anc,i_scl]; normalize=false)
                         elseif "2" == rsp
@@ -118,6 +141,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                             mixcrits[dst][rsp]["contcorr"][i_leadtime,i_anc,i_scl] = SB.mean(contcorr[cfg.lead_time_max, i_leadtime, :, i_anc], SB.weights(Ws_interp[2:Npert+1]))
                             mixcrits[dst][rsp]["r2lin"][i_leadtime,i_anc,i_scl] = r2lin[i_leadtime,i_anc]
                             mixcrits[dst][rsp]["r2quad"][i_leadtime,i_anc,i_scl] = r2quad[i_leadtime,i_anc]
+                            mixcrits[dst][rsp]["r2zern"][i_leadtime,i_anc,i_scl] = r2zern[i_leadtime,i_anc]
                             QG2L.ccdf_gridded_from_samples!(
                                                             @view(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),@view(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),
                                                             Rs_interp, Ws_interp, levels
@@ -130,13 +154,13 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
         end
         ilt_upper_bound = Nleadtime #findlast(leadtimes .<= cfg.dtRmax_max)
         for dst = ["b"]
-            for rsp = ["2","e"]
+            for rsp = ["z","2","e"]
                 for i_scl = 1:Nscales[dst]
                     for mc = keys(mixobjs)
                         for (i_mcval,mcval) in enumerate(mixobjs[mc])
                             if "lt" == mc
                                 ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = i_mcval
-                            elseif mc in ["r2lin","r2quad","pth","pim","globcorr","contcorr"]
+                            elseif mc in ["r2lin","r2quad","r2zern","pth","pim","globcorr","contcorr"]
                                 first_inceedance = findfirst(mixcrits[dst][rsp][mc][1:ilt_upper_bound,i_anc,i_scl] .<= mcval)
                                 last_exceedance = findlast(mixcrits[dst][rsp][mc][1:ilt_upper_bound,i_anc,i_scl] .> mcval)
                                 #ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = (isnothing(first_inceedance) ? Nleadtime : max(1,first_inceedance-1))
@@ -192,11 +216,16 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     Nr2th = length(r2threshes)
     Nscales = Dict(dst=>length(distn_scales[dst]) for dst=dsts)
     (
+     coefs_zernike,residmse_zernike,rsquared_zernike,resid_range_zernike,
      coefs_linear,residmse_linear,rsquared_linear,resid_range_linear,
      coefs_quadratic,residmse_quadratic,rsquared_quadratic,resid_range_quadratic,
      hessian_eigvals,hessian_eigvecs
     ) = JLD2.jldopen(joinpath(resultdir,"regression_coefs.jld2"), "r") do f
         return (
+                f["coefs_zernike"],
+                f["residmse_zernike"],
+                f["rsquared_zernike"],
+                f["resid_range_zernike"],
                 f["coefs_linear"],
                 f["residmse_linear"],
                 f["rsquared_linear"],
@@ -255,8 +284,9 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     end
 
 
-    color_lin = :cyan
-    color_quad = :sienna1
+    color_linear = :cyan
+    color_quadratic = :sienna1
+    color_zernike = :purple
     i_mode_sf = 1
     max_score = maximum(vcat(coast.anc_Rmax, (coast.desc_Rmax[i_anc] for i_anc=1:Nanc)...))
     # Set up bootstrap resamplings
@@ -277,7 +307,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     ccdfmixs,pdfmixs,fdivs = (Dict{String,Dict}() for _=1:3)
     for dst = ["b"]
         ccdfmixs[dst],pdfmixs[dst],fdivs[dst] = (Dict{String,Dict}() for _=1:3)
-        for rsp = ["2","e"]
+        for rsp = ["z","2","e"]
             ccdfmixs[dst][rsp],pdfmixs[dst][rsp],fdivs[dst][rsp] = (Dict{String,Dict}() for _=1:3)
             for mc = keys(mixobjs)
                 ccdfmixs[dst][rsp][mc],pdfmixs[dst][rsp][mc] = (Dict{String,Array{Float64}}() for _=1:2)
@@ -301,7 +331,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nanc)
     i_boot = 1
     for dst = ["b"]
-        for rsp = ["2","e"]
+        for rsp = ["z","2","e"]
             for i_scl = 1:length(distn_scales[dst])
                 println("Starting scale $(i_scl)")
                 # Iterate through each mixing objective of each mixing criterion

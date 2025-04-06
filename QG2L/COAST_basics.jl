@@ -650,7 +650,9 @@ clippdf(x, dlev=0.1) = (x <= 1e-10/dlev ? NaN : x)
 
 
 function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, rsp::String)
-    if "1" == rsp
+    if "z" == rsp
+        rspstr = "Zernike"
+    elseif "1" == rsp
         rspstr = "linear"
     elseif "2" == rsp
         rspstr = "quadratic"
@@ -662,7 +664,9 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, rsp::String)
 end
 
 function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, scale::Float64, rsp::String)
-    if "1" == rsp
+    if "z" == rsp
+        rspstr = "Zernike"
+    elseif "1" == rsp
         rspstr = "linear"
     elseif "2" == rsp
         rspstr = "quadratic"
@@ -773,12 +777,13 @@ function expt_config_COAST_analysis(cfg,pertop)
 
     # Parameterize both the input distributions and the response types 
     distns = ("b",) # bump, uniform, gaussian; also add noises in uniform and Gaussian form 
-    rsps = ("e","1","2") # empirical, linear model, quadratic model
+    rsps = ("z","e","1","2") # Zernike, empirical, linear model, quadratic model
     ilt_upper_bound = findlast(leadtimes .<= cfg.dtRmax_max)
     mixobjs = Dict(
                    "lt"=>leadtimes, 
                    "r2lin"=>r2threshes, 
                    "r2quad"=>r2threshes, 
+                   "r2zern"=>r2threshes, 
                    "pth"=>pths,
                    "pim"=>pths, 
                    "ei"=>["max"],  # reinterpreted as expected exceedance over threshold 
@@ -856,48 +861,57 @@ function expt_config_metaCOAST_latdep_analysis(; i_expt=nothing)
     return (vbl_param_arrs[j][ci_expt[j]] for j=1:length(vbl_param_arrs))
 end
 
-function regress_lead_dependent_risk_linear_quadratic(coast::COASTState, ens::EM.Ensemble, cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, pertop::QG2L.PerturbationOperator)
+function regress_lead_dependent_risk(coast::COASTState, ens::EM.Ensemble, cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, pertop::QG2L.PerturbationOperator)
     Nmem = EM.get_Nmem(ens)
     Nanc = length(coast.ancestors)
     leadtimes = collect(range(cfg.lead_time_min, cfg.lead_time_max; step=cfg.lead_time_inc))
     Ntpert = length(leadtimes)
     num_perts_max_per_leadtime = div(cfg.num_perts_max, Ntpert)
+
+    # Zernike model data
+    nmax_zern = 3 # Max Zernike degree
+    jmax = div((nmax_zern+1)*(nmax_zern+2), 2)
+    coefs_zernike = zeros(Float64, (jmax,Ntpert,Nanc))
+    resid_range_zernike = zeros(Float64, (2,Ntpert,Nanc))
+    residmse_zernike = zeros(Float64, (Ntpert,Nanc))
+    rsquared_zernike = zeros(Float64, (Ntpert,Nanc))
+
+    # Linear model data
     coefs_linear = zeros(Float64, (3,Ntpert,Nanc))
     resid_range_linear = zeros(Float64, (2,Ntpert,Nanc))
     residmse_linear = zeros(Float64, (Ntpert,Nanc))
     rsquared_linear = zeros(Float64, (Ntpert,Nanc))
+
+    # Quadratic model data 
     coefs_quadratic = zeros(Float64, (6,Ntpert,Nanc))
     residmse_quadratic = zeros(Float64, (Ntpert,Nanc))
     rsquared_quadratic = zeros(Float64, (Ntpert,Nanc))
     resid_range_quadratic = zeros(Float64, (2,Ntpert,Nanc))
     hessian_eigvals = zeros(Float64, (2,Ntpert,Nanc))
     hessian_eigvecs = zeros(Float64, (2,2,Ntpert,Nanc))
+
     i_mode_sf = 1
+    Us = vcat(zeros(Float64, (1,2)), collect(transpose(coast.pert_seq_qmc)))
+    amplitudes = sqrt.(
+                       pertop.sf_pert_amplitudes_min[i_mode_sf]^2 * (1 .- Us[:,1]) .+
+                       pertop.sf_pert_amplitudes_max[i_mode_sf]^2 * Us[:,1]
+                    )
+    phases = 2pi .* Us[:,2]
+    Xpert = hcat(amplitudes .* cos.(phases), amplitudes .* sin.(phases))
     Threads.@threads for i_anc = 1:Nanc #(i_anc,anc) in enumerate(coast.ancestors)
         anc = coast.ancestors[i_anc]
         println("Thread $(Threads.threadid()) dealing with ancestor $(i_anc) out of $(Nanc)")
         descendants = Graphs.outneighbors(ens.famtree, anc)
-        Xpert = zeros(Float64, (cfg.num_perts_max+1, 2))
         Ypert = zeros(Float64, cfg.num_perts_max+1)
         for (i_leadtime,leadtime) in enumerate(leadtimes)
             tpert = coast.anc_tRmax[i_anc] - leadtime
             idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
             Ndesc = length(idx_desc)
-            Ypert[Ndesc+1] = coast.anc_Rmax[i_anc]
-            for (i_desc,desc) in enumerate(descendants[idx_desc])
-                pert = QG2L.read_perturbation_sequence(ens.trajs[desc].forcing).perts[1]
-                i_pert_dim = 2*i_mode_sf-1
-                amplitude = sqrt(
-                                 pertop.sf_pert_amplitudes_min[i_mode_sf]^2 * (1-pert[i_pert_dim]) 
-                                 + pertop.sf_pert_amplitudes_max[i_mode_sf]^2 * pert[i_pert_dim]
-                                )
-                phase = 2pi*pert[i_pert_dim+1]
-                #@show amplitude,phase*360/(2pi),scores[i_desc]
-                Xpert[i_desc,:] .= amplitude .* [cos(phase), sin(phase)]
-                Ypert[i_desc] = coast.desc_Rmax[i_anc][idx_desc[i_desc]]
-            end
-            coefs_linear[:,i_leadtime,i_anc],residmse_linear[i_leadtime,i_anc],rsquared_linear[i_leadtime,i_anc],resid_range_linear[:,i_leadtime,i_anc] = QG2L.linear_regression_2d(Xpert[1:Ndesc+1,:], Ypert[1:Ndesc+1]; intercept=coast.anc_Rmax[i_anc])
-            coefs_quadratic[:,i_leadtime,i_anc],residmse_quadratic[i_leadtime,i_anc],rsquared_quadratic[i_leadtime,i_anc],resid_range_quadratic[:,i_leadtime,i_anc] = QG2L.quadratic_regression_2d(Xpert[1:Ndesc+1,:], Ypert[1:Ndesc+1]; intercept=coast.anc_Rmax[i_anc])
+            Ypert[1] = coast.anc_Rmax[i_anc]
+            Ypert[2:Ndesc+1] .= coast.desc_Rmax[i_anc][idx_desc]
+            coefs_zernike[:,i_leadtime,i_anc],residmse_zernike[i_leadtime,i_anc],rsquared_zernike[i_leadtime,i_anc],resid_range_zernike[:,i_leadtime,i_anc] = QG2L.zernike_regression_2d(Xpert[1:Ndesc+1,:], Ypert[1:Ndesc+1], pertop.sf_pert_amplitudes_max[i_mode_sf], nmax_zern) #; intercept=coast.anc_Rmax[i_anc])
+            coefs_linear[:,i_leadtime,i_anc],residmse_linear[i_leadtime,i_anc],rsquared_linear[i_leadtime,i_anc],resid_range_linear[:,i_leadtime,i_anc] = QG2L.linear_regression_2d(Xpert[1:Ndesc+1,:], Ypert[1:Ndesc+1]) #; intercept=coast.anc_Rmax[i_anc])
+            coefs_quadratic[:,i_leadtime,i_anc],residmse_quadratic[i_leadtime,i_anc],rsquared_quadratic[i_leadtime,i_anc],resid_range_quadratic[:,i_leadtime,i_anc] = QG2L.quadratic_regression_2d(Xpert[1:Ndesc+1,:], Ypert[1:Ndesc+1]) #; intercept=coast.anc_Rmax[i_anc])
             eigs = QG2L.quadratic_regression_2d_eigs(coefs_quadratic[:,i_leadtime,i_anc])
             hessian_eigvals[:,i_leadtime,i_anc] .= eigs[1]
             hessian_eigvecs[:,:,i_leadtime,i_anc] .= eigs[2]
@@ -910,7 +924,8 @@ function regress_lead_dependent_risk_linear_quadratic(coast::COASTState, ens::EM
     return (
             coefs_linear,residmse_linear,rsquared_linear,resid_range_linear,
             coefs_quadratic,residmse_quadratic,rsquared_quadratic,resid_range_quadratic,
-            hessian_eigvals,hessian_eigvecs
+            hessian_eigvals,hessian_eigvecs,
+            coefs_zernike,residmse_zernike,rsquared_zernike,resid_range_zernike
            )
 end
 

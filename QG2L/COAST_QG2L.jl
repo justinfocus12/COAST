@@ -6,6 +6,7 @@ import .EnsembleMod as EM
 
 import Printf
 using Printf: @sprintf
+import ZernikePolynomials as ZP
 import Random
 import Serialization
 import StatsBase as SB
@@ -45,7 +46,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "sail" =>                                           0, 
                              "compute_contour_dispersion" =>                     0,
                              "plot_contour_dispersion_distribution" =>           0,
-                             "regress_lead_dependent_risk_polynomial" =>         0, 
+                             "regress_lead_dependent_risk_polynomial" =>         1, 
                              "evaluate_mixing_criteria" =>                       1,
                              "plot_objective" =>                                 1, 
                              "plot_conditional_pdfs" =>                          1,
@@ -53,7 +54,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "mix_COAST_distributions" =>                        1,
                              "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    1,
-                             "plot_composite_contours" =>                        0,
+                             "plot_composite_contours" =>                        1,
                              # Danger zone 
                              "remove_pngs" =>                                    1,
                              # vestigial or hibernating
@@ -517,13 +518,20 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         (
          coefs_linear,residmse_linear,rsquared_linear,resid_range_linear,
          coefs_quadratic,residmse_quadratic,rsquared_quadratic,resid_range_quadratic,
-         hessian_eigvals,hessian_eigvecs
-        ) = regress_lead_dependent_risk_linear_quadratic(coast, ens, cfg, sdm, pertop)
+         hessian_eigvals,hessian_eigvecs,
+         coefs_zernike,residmse_zernike,rsquared_zernike,resid_range_zernike,
+        ) = regress_lead_dependent_risk(coast, ens, cfg, sdm, pertop)
         JLD2.jldopen(joinpath(resultdir,"regression_coefs.jld2"), "w") do f
+            f["coefs_zernike"] = coefs_zernike
+            f["residmse_zernike"] = residmse_zernike
+            f["rsquared_zernike"] = rsquared_zernike
+            f["resid_range_zernike"] = resid_range_zernike
+
             f["coefs_linear"] = coefs_linear
             f["residmse_linear"] = residmse_linear
             f["rsquared_linear"] = rsquared_linear
             f["resid_range_linear"] = resid_range_linear
+
             f["coefs_quadratic"] = coefs_quadratic
             f["residmse_quadratic"] = residmse_quadratic
             f["rsquared_quadratic"] = rsquared_quadratic
@@ -562,8 +570,16 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                    )
 
         regcoefs_filename = joinpath(resultdir,"regression_coefs.jld2")
-        coefs_linear,residmse_linear,rsquared_linear,coefs_quadratic,residmse_quadratic,rsquared_quadratic,hessian_eigvals,hessian_eigvecs = JLD2.jldopen(regcoefs_filename, "r") do f
+        (
+         coefs_zernike,residmse_zernike,rsquared_zernike,
+         coefs_linear,residmse_linear,rsquared_linear,
+         coefs_quadratic,residmse_quadratic,rsquared_quadratic,
+         hessian_eigvals,hessian_eigvecs
+        )= JLD2.jldopen(regcoefs_filename, "r") do f
             return (
+                    f["coefs_zernike"],
+                    f["residmse_zernike"],
+                    f["rsquared_zernike"],
                     f["coefs_linear"],
                     f["residmse_linear"],
                     f["rsquared_linear"],
@@ -585,6 +601,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
             if todosub["plot_response"]
                 plot_objective_response_linquad(
                     cfg, sdm, cop, pertop, ens, coast, i_anc, 
+                    coefs_zernike, residmse_zernike, rsquared_zernike,
                     coefs_linear, residmse_linear, rsquared_linear,
                     coefs_quadratic, residmse_quadratic, rsquared_quadratic,
                     figdir
@@ -625,7 +642,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
             return f["mixcrits"],f["ccdfs"],f["pdfs"],f["ilts"]
         end
         mixcrits2plot = ["ei","ent","globcorr","contcorr"] # TODO group them 
-        idx_leadtimes2plot = reverse(unique(clamp.(round.(Int, length(leadtimes).*[1/20, 1/5, 2/5, 3/5]), 1, length(leadtimes))))
+        #idx_leadtimes2plot = reverse(unique(clamp.(round.(Int, length(leadtimes).*[1/20, 1/5, 2/5, 3/5]), 1, length(leadtimes))))
+        idx_leadtimes2plot = reverse(collect(round.(Int, range(1, length(leadtimes); length=6))))
         levels = Rccdf_valid_agglon
         Nlev = length(levels)
         levels_exc = levels[i_thresh_cquantile:end]
@@ -636,14 +654,14 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         pdf_pot_valid_seplon = -diff(ccdf_pot_valid_seplon; dims=1) ./ diff(levels_exc)
         ylims = (thresh, max(max_score, levels[end]))
         dst = "b"
-        for rsp = ["2","e"]
+        for rsp = ["z","2","e"]
             for i_anc = idx_anc_strat_ent
                 xlims = maximum(
                                 maximum(pdfs[dst][rsp][i_thresh_cquantile:Nlev-1,:,i_anc,:]./ccdfs[dst][rsp][i_thresh_cquantile:i_thresh_cquantile,:,i_anc,:]; dims=1)[1,:,:] 
                                ) .* [-0.05, 1.05] .* thresh_cquantile
 
                 t0str = @sprintf("%d", coast.anc_tRmax[i_anc])
-                fig = Figure(size=(200*length(idx_leadtimes2plot),100*(3+length(mixcrits2plot))))
+                fig = Figure(size=(600,100*(3+length(mixcrits2plot))))
                 lout = fig[1,1] = GridLayout()
                 lout_pdfs = lout[1,1] = GridLayout()
                 lout_mixcrits = lout[2,1] = GridLayout()
@@ -723,7 +741,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         mixcrits2plot = ["ei","ent","globcorr","contcorr"] # TODO group them 
         Nmc = length(mixcrits2plot)
         dst = "b"
-        for rsp = ["2","e"]
+        for rsp = ["z","2","e"]
             Nscales = length(distn_scales[dst])
             fig = Figure(size=(450,150*(Nmc+1)))
             lout = fig[1,1] = GridLayout()
@@ -834,7 +852,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
         for dst = ["b"]
             Nscales = length(distn_scales[dst])
-            for rsp = ["2","e"] #,"2"]
+            for rsp = ["z","2","e"] #,"2"]
                 if ("g" == dst) && (rsp in ["1+u","2","2+u"])
                     continue
                 end
@@ -1164,7 +1182,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         mc = "ent"
         for dst = ["b"]
             Nscales = length(distn_scales[dst])
-            for rsp = ["2","e"]
+            for rsp = ["z","2","e"]
                 # Plot the entropy as a 2D phase plot: both its mean and its variance (not just the proportion of time it's optimal)
                 if todosub["mcmean_heatmap"]
                     # Heatmap of various mixing criteria as a function of AST; below, invert these functions it
@@ -1254,7 +1272,7 @@ else
         idx_expt = [1,]
     elseif "COAST" == all_procedures[i_proc]
         idx_expt = (vec([9,15] .+ [0,1]'.*23))[1:2]
-        #idx_expt = [15]
+        #idx_expt = [1]
     end
 end
 
