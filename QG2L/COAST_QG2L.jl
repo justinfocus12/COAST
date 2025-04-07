@@ -46,17 +46,17 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "sail" =>                                           0, 
                              "compute_contour_dispersion" =>                     0,
                              "plot_contour_dispersion_distribution" =>           0,
-                             "regress_lead_dependent_risk_polynomial" =>         1, 
-                             "evaluate_mixing_criteria" =>                       1,
-                             "plot_objective" =>                                 1, 
-                             "plot_conditional_pdfs" =>                          1,
+                             "regress_lead_dependent_risk_polynomial" =>         0, 
+                             "evaluate_mixing_criteria" =>                       0,
+                             "plot_objective" =>                                 0, 
+                             "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          1,
                              "mix_COAST_distributions" =>                        1,
                              "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    1,
                              "plot_composite_contours" =>                        1,
                              # Danger zone 
-                             "remove_pngs" =>                                    1,
+                             "remove_pngs" =>                                    0,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -1259,7 +1259,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])
@@ -1272,7 +1272,7 @@ else
         idx_expt = [1,]
     elseif "COAST" == all_procedures[i_proc]
         idx_expt = (vec([9,15] .+ [0,1]'.*23))[1:2]
-        #idx_expt = [1]
+        #idx_expt = [31]
     end
 end
 
