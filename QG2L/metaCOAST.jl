@@ -63,10 +63,10 @@ end
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
-                             "plot_mixcrits_ydep" =>             1,
+                             "plot_mixcrits_ydep" =>             0,
                              "compile_fdivs" =>                  0,
-                             "plot_fdivs" =>                     1,
-                             "plot_ccdfs_latdep" =>              0,
+                             "plot_fdivs" =>                     0,
+                             "plot_ccdfs_latdep" =>              1,
                              # danger zone
                              "remove_pngs" =>                    0,
                              # defunct/hibernating
@@ -226,30 +226,42 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         topolims = (minimum(topo_zonal_mean) == maximum(topo_zonal_mean) ? [-1,1] : extrema(topo_zonal_mean))
         axtopo = Axis(lout[1,1],xlabel="ℎ(𝑦₀)"; axargs..., title="Topo.", limits=(topolims..., ylims...))
         axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
-        axstd = Axis(lout[1,2]; xlabel="Std. Dev.", axargs..., limits=(0, maximum(mssk[:,2])*1.01, ylims...))
-        axscale = Axis(lout[1,3]; xlabel="GPD scale σ", axargs..., limits=(0,maximum(gpd_scale_valid)*1.01,ylims...))
-        axshape = Axis(lout[1,4]; xlabel="GPD shape ξ", axargs..., limits=(-0.5,0.05,ylims...))
+        axmean = Axis(lout[1,2]; title="Mean", xlabel="⟨𝑅⟩−𝑦₀/𝐿", axargs...)
+        axstd = Axis(lout[1,3]; title="Std. Dev.", xlabel="√[⟨𝑅²⟩−⟨𝑅⟩²]", axargs..., limits=(0, maximum(mssk[:,2])*1.01, ylims...))
+        axloc = Axis(lout[1,4]; title="GPD thresh", xlabel=@sprintf("μ[%s]−𝑦₀/𝐿", powerofhalfstring(i_thresh_cquantile)), axargs...)
+        axscale = Axis(lout[1,5]; title="GPD scale", xlabel="σ", axargs..., limits=(0,maximum(gpd_scale_valid)*1.01,ylims...))
+        axshape = Axis(lout[1,6]; title="GPD shape", xlabel="ξ", axargs..., limits=(-0.5,0.05,ylims...))
         threshcquantstr = @sprintf("%.2E",thresh_cquantile)
-        toplabel = @sprintf("Threshold μ[%s], exceedance probability %s = %.2E", powerofhalfstring(i_thresh_cquantile), powerofhalfstring(i_thresh_cquantile), thresh_cquantile)
-        Label(lout[1,2:4,Top()], toplabel, padding=(5.0,5.0,5.0,5.0), valign=:bottom, halign=:right, fontsize=15, font=:regular)
         # Topography
         lines!(axtopo, topo_zonal_mean, sdm.ygrid./sdm.Ly; color=:black)
+        # Mean 
+        lines!(axmean, mssk[:,1].-sdm.ygrid./sdm.Ly, sdm.ygrid./sdm.Ly; color=:black, linestyle=(:dash,:dense), label="1/$(2*sdm.Ny))L")
+        scatterlines!(axmean, Rmean_valid.-Rccdf_rough, ytgts; color=:black, label="($(round(Int, target_r*sdm.Ny))/$(sdm.Ny))𝐿")
         # Std. Dev.
         lines!(axstd, mssk[:,2], sdm.ygrid./sdm.Ly; color=:black, linestyle=(:dash,:dense), label="(1/$(2*sdm.Ny))𝐿")
         scatterlines!(axstd, std_valid, ytgts; color=:black, label="($(round(Int, target_r*sdm.Ny))/$(sdm.Ny))𝐿")
-        axislegend(axstd, "Box radius ℓ"; position=:lc, labelsize=10, titlesize=12, titlefont=:regular, framevisible=false)
+        #axislegend(axstd, "Box radius ℓ"; position=:lc, labelsize=10, titlesize=12, titlefont=:regular, framevisible=false)
+        # Location
+        scatterlines!(axloc, Rccdfs_valid[i_thresh_cquantile,:].-Rccdf_rough, ytgts; color=:black)
         # scale
         scatterlines!(axscale, gpd_scale_valid, ytgts; color=:black)
         # shape
         vlines!(axshape, 0.0; color=:grey60, linewidth=2, linestyle=(:dash,:dense))
         scatterlines!(axshape, gpd_shape_valid, ytgts; color=:black)
 
-        colsize!(lout, 2, Relative(6/16))
-        colsize!(lout, 3, Relative(4/16))
-        colsize!(lout, 4, Relative(4/16))
+        colsize!(lout, 1, Relative(1/11))
+        for i_col = 2:5
+            colsize!(lout, i_col, Relative(2/11))
+        end
+            
         colgap!(lout, 1, 10.0)
-        colgap!(lout, 2, 10.0)
+        colgap!(lout, 2, 0.0)
         colgap!(lout, 3, 10.0)
+        colgap!(lout, 4, 0.0)
+        colgap!(lout, 5, 0.0)
+        for ax = [axtopo,axmean,axstd,axloc,axscale,axshape]
+            ylims!(ax, ylims...)
+        end
         save(joinpath(resultdir,"gpdpars_latdep_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
     end
 
@@ -563,7 +575,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         ax.xticklabelrotation = pi/2
                     end
                     for ax = (axfdiv, axmc)
-                        ax.xticklabel = "−AST"
+                        ax.xlabel = "−AST"
                     end
                     save(joinpath(resultdir,"heatmap_$(fdivname)_ofASTandY_$(dst)_$(rsp)_$(i_scl).png"), fig)
 
