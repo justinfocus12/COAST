@@ -38,7 +38,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "update_paths" =>                                   0,
                              "plot_transcorr" =>                                 0,
                              "plot_pertop" =>                                    0,
-                             "plot_bumps" =>                                     1,
+                             "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
                              "use_backups" =>                                    0,
@@ -48,7 +48,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_contour_dispersion_distribution" =>           0,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "evaluate_mixing_criteria" =>                       0,
-                             "plot_objective" =>                                 0, 
+                             "plot_objective" =>                                 1, 
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        0,
@@ -309,12 +309,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
             )
     end
     if todo["plot_dns_objective_stats"]
-        # TODO do some plotting and quantify the difference between ancgen and valid (train and test?) distributions 
-        fig = Figure()
-        lout = fig[1,1] = GridLayout()
-        axpdf = Axis(lout[1,1], ylabel="Intensity 𝑅", xlabel="PDF", xscale=log10, xgridvisible=false, ygridvisible=false, xlabelsize=15, ylabelsize=15, xticklabelsize=12, yticklabelsize=12)
-        axccdf = Axis(lout[1,2], ylabel="Intensity 𝑅", xlabel="CCDF", xscale=log10, xgridvisible=false, ygridvisible=false, ylabelvisible=false, xlabelsize=15, ylabelsize=15, xticklabelsize=12, yticklabelsize=12)
-        Label(lout[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,15.0,5.0), valign=:top, halign=:left, fontsize=18)
         bin_edges = collect(range(0,1,200))
         bin_centers = (bin_edges[2:end] .+ bin_edges[1:end-1]) ./ 2
         levels = Rccdf_valid_agglon
@@ -334,46 +328,106 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         end
         pdf_valid_agglon = zero2nan(SB.mean(pdfs_valid; dims=2))[:,1]
         GPD = Dists.GeneralizedPareto(thresh, gpdpar_valid_agglon...)
+        #
+        #
+        #
+        # Plots 
+        #
+        shortcolor = :firebrick
+        # confidence interval 
+        pdf_ci_ancgen,pdf_ci_valid = (zeros(length(bin_centers), 2) for _=1:2)
+        Rccdf_ci_ancgen,Rccdf_ci_valid = (zeros(length(ccdf_levels), 2) for _=1:2)
+        ccdf_pot_ci_ancgen,ccdf_pot_ci_valid = (zeros(length(levels_exc), 2) for _=1:2)
+        confint = 0.9
+        for (i_q,q) in enumerate(1/2 .+ (confint/2).*[-1,1])
+            pdf_ci_ancgen[:,i_q] .= zero2nan(QG2L.quantile_sliced(pdfs_ancgen, q, 2)[:,1])
+            pdf_ci_valid[:,i_q] .= zero2nan(QG2L.quantile_sliced(pdfs_valid, q, 2)[:,1])
+            Rccdf_ci_ancgen[:,i_q] .= zero2nan(QG2L.quantile_sliced(Rccdf_ancgen_seplon, q, 2)[:,1])
+            Rccdf_ci_valid[:,i_q] .= zero2nan(QG2L.quantile_sliced(Rccdf_valid_seplon, q, 2)[:,1])
+            ccdf_pot_ci_ancgen[:,i_q] .= zero2nan(QG2L.quantile_sliced(ccdf_pot_ancgen_seplon, q, 2)[:,1])
+            ccdf_pot_ci_valid[:,i_q] .= zero2nan(QG2L.quantile_sliced(ccdf_pot_valid_seplon, q, 2)[:,1])
+        end
+
+        # Determine the indices to plot. d = pdf; c = cdf; p = pot; a = ancgen; v = valid
+        ida = findall(all(isfinite.(pdf_ci_ancgen); dims=2)[:,1])
+        ica = findall(all(isfinite.(Rccdf_ci_ancgen); dims=2)[:,1])
+        ipa = findall(all(isfinite.(ccdf_pot_ci_ancgen); dims=2)[:,1])
+        idv = findall(all(isfinite.(pdf_ci_valid); dims=2)[:,1])
+        icv = findall(all(isfinite.(Rccdf_ci_valid); dims=2)[:,1])
+        ipv = findall(all(isfinite.(ccdf_pot_ci_valid); dims=2)[:,1])
+
+        shortlabel,longlabel = [
+                                @sprintf(
+                                         "%s (%d-day) DNS & %d%% CI", 
+                                         squal, squant, confint*100
+                                         ) 
+                                for (squal,squant)=[("Short",time_ancgen_dns_ph),("Long",time_valid_dns_ph)]
+                               ]
+        #
+        fig = Figure()
+        lout = fig[1,1] = GridLayout()
+        axargs = Dict(:xscale=>log10, :xgridvisible=>false, :ygridvisible=>false, :xlabelsize=>12, :ylabelsize=>12, :yticklabelsize=>10, :titlesize=>12, :titlefont=>:regular)
+        axpdf = Axis(lout[2,1]; title="Intensity 𝑅", xlabel="PDF", axargs...)
+        axccdf = Axis(lout[2,2]; title="Intensity 𝑅", xlabel="CCDF", axargs...)
+        axpot = Axis(lout[2,3]; title="Severity 𝑅*", xlabel="CCDF", axargs...)
+        Label(lout[1,:], @sprintf("%s, threshold μ[%s]=%.2f", label_target(cfg, sdm), powerofhalfstring(i_thresh_cquantile), thresh); padding=(5.0,5.0,0.0,5.0), valign=:top, halign=:center, fontsize=12)
 
         # PDF
-        confint = 0.9
-        shortcolor = :firebrick
         #lines!(axpdf, thresh_cquantile.*clippdf.(Dists.pdf.(GPD, levels_exc_mid)), levels_exc_mid, color=:gray, linewidth=3, alpha=0.5)
-        lines!(axpdf, zero2nan(SB.mean(pdfs_ancgen; dims=2)[:,1]), bin_centers; color=shortcolor, linewidth=2, linestyle=(:dash,:dense), label="Short DNS ($(round(Int,confint*100))% CI)")
-        lines!(axpdf, pdf_valid_agglon, bin_centers; color=:black, linewidth=2, linestyle=(:dash,:dense), label="Long DNS ($(round(Int,confint*100))% CI)")
+        band!(axpdf, (Point2f.(pdf_ci_ancgen[ida,i_q],bin_centers[ida]) for i_q=1:2)...; color=shortcolor, alpha=0.5)
+        band!(axpdf, (Point2f.(pdf_ci_valid[idv,i_q],bin_centers[idv]) for i_q=1:2)...; color=:gray60, alpha=0.5)
+        lines!(axpdf, zero2nan(SB.mean(pdfs_ancgen; dims=2)[:,1]), bin_centers; color=shortcolor, linewidth=2, linestyle=(:dash,:dense), label=shortlabel)
+        lines!(axpdf, pdf_valid_agglon, bin_centers; color=:black, linewidth=2, linestyle=(:dash,:dense), label=longlabel)
         for level = (levels[1],levels[end])
             hlines!(axpdf, level; color=:gray, linewidth=1, alpha=0.5)
         end
-        # CCDF
-        lines!(axccdf, thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc)), levels_exc, color=:gray, linewidth=3, alpha=0.5, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)\nThreshold μ[%s]", thresh, gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2]), powerofhalfstring(i_thresh_cquantile)))
-        lines!(axccdf, ccdf_levels, zero2nan(SB.mean(Rccdf_valid_seplon; dims=2)[:,1]); color=:black, linewidth=2, linestyle=(:dash,:dense))
-        scatterlines!(axccdf, thresh_cquantile.*zero2nan(SB.mean(ccdf_pot_valid_seplon, ; dims=2)[:,1]), levels[i_thresh_cquantile:end]; color=:black, marker=:star6, label="Long DNS,\npeaks over threshold")
-        lines!(axccdf, ccdf_levels, zero2nan(Rccdf_ancgen_seplon[:,1]); color=shortcolor, linewidth=2, linestyle=(:dash,:dense))
-        scatterlines!(axccdf, thresh_cquantile.*zero2nan(ccdf_pot_ancgen_seplon[:,1]), levels[i_thresh_cquantile:end]; color=shortcolor, marker=:star6, label="Short DNS,\npeaks over threshold")
-        vlines!(axccdf, thresh_cquantile; color=:gray, alpha=0.5)
-        hlines!(axccdf, thresh; color=:gray, alpha=0.5)
-        #lines!(axccdf, zero2nan(Rccdf_valid_agglon), ccdf_levels; color=:gray, alpha=0.5, linewidth=3)
-        for q = 1/2 .+ (confint/2).*[-1,1]
-            qancgen = zero2nan(QG2L.quantile_sliced(pdfs_ancgen, q, 2)[:,1])
-            qvalid = zero2nan(QG2L.quantile_sliced(pdfs_valid, q, 2)[:,1])
-            lines!(axpdf, zero2nan(QG2L.quantile_sliced(pdfs_valid, q, 2)[:,1]), bin_centers; color=:black, linestyle=(:dot,:dense))
-            lines!(axpdf, qancgen, bin_centers; color=shortcolor, linestyle=(:dot,:dense))
-            qancgen = zero2nan(QG2L.quantile_sliced(Rccdf_ancgen_seplon, q, 2)[:,1])
-            qvalid = zero2nan(QG2L.quantile_sliced(Rccdf_valid_seplon, q, 2)[:,1])
-            lines!(axccdf, ccdf_levels, qvalid; color=:black, linestyle=(:dot,:dense))
-            lines!(axccdf, ccdf_levels, qancgen; color=shortcolor, linestyle=(:dot,:dense))
-            println("For q = $(q), qancgen = ")
-            display(qancgen')
-            ccancgen = thresh_cquantile.*zero2nan(QG2L.quantile_sliced(ccdf_pot_ancgen_seplon, q, 2)[:,1])
-            ccvalid = thresh_cquantile.*zero2nan(QG2L.quantile_sliced(ccdf_pot_valid_seplon, q, 2)[:,1])
-            #scatter!(axccdf, ccancgen, levels[i_thresh_cquantile:end]; color=:black, marker=:xcross)
-            #scatter!(axccdf, ccvalid, levels[i_thresh_cquantile:end]; color=:orange, marker=:xcross)
+        for ax = (axccdf,axpot)
+            lines!(ax, thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc)), levels_exc, color=:gray, linewidth=3, alpha=1.0, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)", thresh, gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2])))
+            vlines!(ax, thresh_cquantile; color=:gray, alpha=0.5)
+            hlines!(ax, thresh; color=:gray, alpha=0.5)
         end
-        axislegend(axpdf; position=:lb, framevisible=true, labelsize=15)
-        axislegend(axccdf; position=:lb, framevisible=true, labelsize=15)
+        # CCDF
+        band!(axccdf, (Point2f.(ccdf_levels[ica],Rccdf_ci_ancgen[ica,i_q]) for i_q=1:2)...; color=shortcolor, alpha=0.5)
+        band!(axccdf, (Point2f.(ccdf_levels[icv],Rccdf_ci_valid[icv,i_q]) for i_q=1:2)...; color=:gray60, alpha=0.5)
+        lines!(axccdf, ccdf_levels, zero2nan(SB.mean(Rccdf_valid_seplon; dims=2)[:,1]); color=:black, linewidth=2, linestyle=(:dash,:dense))
+        lines!(axccdf, ccdf_levels, zero2nan(Rccdf_ancgen_seplon[:,1]); color=shortcolor, linewidth=2, linestyle=(:dash,:dense))
+        # POT CCDF
+        band!(axpot, (Point2f.(thresh_cquantile.*ccdf_pot_ci_ancgen[ipa,i_q],levels_exc[ipa]) for i_q=1:2)...; color=shortcolor, alpha=0.5)
+        band!(axpot, (Point2f.(thresh_cquantile.*ccdf_pot_ci_valid[ipv,i_q],levels_exc[ipv]) for i_q=1:2)...; color=:gray60, alpha=0.5)
+        lines!(axpot, thresh_cquantile.*zero2nan(SB.mean(ccdf_pot_valid_seplon, ; dims=2)[:,1]), levels[i_thresh_cquantile:end]; color=:black, linestyle=(:dash,:dense), label=longlabel)
+        lines!(axpot, thresh_cquantile.*zero2nan(ccdf_pot_ancgen_seplon[:,1]), levels[i_thresh_cquantile:end]; color=shortcolor, linestyle=(:dash,:dense), label=shortlabel)
+
+        # ------------ Legend code from julia forum via Perplexity ------------
+
+        plots_in_fig = AbstractPlot[]
+        labels_in_fig = AbstractString[]
+        for ax = (axpdf,axccdf,axpot)
+            pl, lb = Makie.get_labeled_plots(ax, merge=false, unique=false)
+            append!(plots_in_fig, pl)
+            append!(labels_in_fig, lb)
+        end
+        ulabels = Base.unique(labels_in_fig)
+        mergedplots = [
+                       [lp for (i, lp) in enumerate(plots_in_fig) if labels_in_fig[i] == ul]
+                       for ul in ulabels
+                      ]
+        
+        Legend(lout[3,:], mergedplots, ulabels, nbanks=3, merged=true, labelsize=10)
+        # ------------------------------------------------------------------
+
+
 
         ylims!(axpdf, 0.0, 1.0)
         ylims!(axccdf, levels[1], levels[end])
+        ylims!(axpot, levels[i_thresh_cquantile], levels[end])
+
+        rowsize!(lout, 1, Relative(1/10))
+        rowsize!(lout, 3, Relative(1/8))
+
+        colgap!(lout, 1, 10)
+        colgap!(lout, 2, 10)
+        rowgap!(lout, 1, 0)
+        rowgap!(lout, 2, 0)
 
         save(joinpath(figdir,"histograms_ancgen_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).png"),fig)
         
@@ -564,9 +618,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         rxystr = @sprintf("%.3f",cfg.target_ryPerL*sdm.Ly)
         ytgtstr = @sprintf("%.2f",cfg.target_yPerL*sdm.Ly)
         todosub = Dict{String,Bool}(
-                                    "plot_spaghetti" =>                 1,
+                                    "plot_spaghetti" =>                 0,
                                     "plot_response" =>                  1,
-                                    "plot_response_fixpert_varytime" => 1,
+                                    "plot_response_fixpert_varytime" => 0,
                                    )
 
         regcoefs_filename = joinpath(resultdir,"regression_coefs.jld2")

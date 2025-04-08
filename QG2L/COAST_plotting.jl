@@ -112,14 +112,14 @@ function plot_objective_response_linquad(
     i_mode_sf = 1
     Amin,Amax = pertop.sf_pert_amplitudes_min[i_mode_sf], pertop.sf_pert_amplitudes_max[i_mode_sf]
     @show leadtimes
-    lout = fig[1:3,1] = GridLayout()
-    lout_2d = lout[1,1] = GridLayout()
-    lout_1d = lout[2,1] = GridLayout()
-    lout_r2 = lout[3,1] = GridLayout()
+    lout = fig[1,1:2] = GridLayout()
+    lout_rsp = lout[1:3,2] = GridLayout()
+    lout_r2 = lout[4,2] = GridLayout()
+    lout_rsp_label = lout[2:3,1] = GridLayout()
+    lout_r2_label = lout[4,1] = GridLayout()
     scores = vcat(coast.desc_Rmax[i_anc], [coast.anc_Rmax[i_anc]])
     scorerange = maximum(abs.(scores .- coast.anc_Rmax[i_anc])).*[-1,1].+coast.anc_Rmax[i_anc]
     
-    i_col = 0
     Rbounds = [minimum(scores),maximum(scores)]
     Us = vcat(zeros(Float64, (1,2)), collect(transpose(coast.pert_seq_qmc)))
     amplitudes = sqrt.(
@@ -128,41 +128,58 @@ function plot_objective_response_linquad(
                     )
     phases = 2pi .* Us[:,2]
     Xpert = hcat(amplitudes .* cos.(phases), amplitudes .* sin.(phases))
+    Ngrid = 30
+    p1grid = collect(range(-Amax,Amax; length=Ngrid))
+    p2grid = collect(range(-Amax,Amax; length=Ngrid))
+    p12grid = hcat(vec(p1grid .* ones((1,Ngrid))), vec(ones(Ngrid) .* p2grid'))
+    plot_zernike_flag = false
+    lblargs = Dict(:xticklabelsize=>8,:xlabelsize=>10,:yticklabelsize=>8,:ylabelsize=>10,:titlesize=>12,:xlabelvisible=>false,:ylabelvisible=>false,:xticklabelsvisible=>false, :xticklabelrotation=>pi/2, :yticklabelsvisible=>false, :xgridvisible=>false, :ygridvisible=>false, :titlefont=>:regular, :xticksize=>2.0, :yticksize=>2.0, :xlabelpadding=>1.5, :ylabelpadding=>1.5)
+    limits_2d = (1.1*Amax) .* [-1,1]
+    limits_1d = [Inf,-Inf]
+
+    Label(lout_rsp[1,:], label_target(cfg, sdm), padding=(5.0,5.0,0.0,5.0), valign=:bottom, fontsize=15, font=:regular)
+    axs2d = [Axis(lout_rsp[2,i_col]; lblargs...) for i_col=1:length(idx_leadtimes2plot)]
+    axs1d = [Axis(lout_rsp[3,i_col]; lblargs...) for i_col=1:length(idx_leadtimes2plot)]
+    i_col = 0
     for i_leadtime = idx_leadtimes2plot
         i_col += 1
         leadtime = leadtimes[i_leadtime]
+        ax2d = axs2d[i_col]
+        ax1d = axs1d[i_col]
         tpert = coast.anc_tRmax[i_anc] - leadtime
         tpstr = @sprintf("%.2f", leadtime*sdm.tu)
-        r2_lin_str = @sprintf("%.2f", rsquared_linear[i_leadtime,i_anc])
-        r2_quad_str = @sprintf("%.2f", rsquared_quadratic[i_leadtime,i_anc])
-        r2_zern_str = @sprintf("%.2f", rsquared_zernike[i_leadtime,i_anc])
-        lblargs = Dict(:xticklabelsize=>7,:xlabelsize=>8,:yticklabelsize=>7,:ylabelsize=>8,:titlesize=>10,:xlabelvisible=>false,:ylabelvisible=>(i_col==1),:xticklabelsvisible=>true, :xticklabelrotation=>pi/2, :yticklabelsvisible=>true, :xgridvisible=>false, :ygridvisible=>false, :titlefont=>:regular, :xticksize=>2.0, :yticksize=>2.0, :xlabelpadding=>1.5, :ylabelpadding=>1.5)
+        # extra formatting
+        ax2d.title = @sprintf("%s−%.2f", (i_col == 1 ? "−AST" : ""), leadtime*sdm.tu)
         title_2d = "−$(tpstr)"
-        title_1d = "($(r2_lin_str),$(r2_quad_str))"
+        ax2d.ylabel = "ω" 
+        ax2d.ylabelrotation = 0
+        ax1d.ylabel = "𝑅*"
+        ax1d.ylabelrotation = 0
         if i_col == 1
-            title_2d = "−AST=$(title_2d)"
-            title_1d = "𝑅² (1,2) = $(title_1d)"
+            ax2d.title = @sprintf("−AST=−%d", leadtime*sdm.tu)
+            ax2d.ylabelvisible = ax2d.yticklabelsvisible = true
+            ax1d.ylabelvisible = ax1d.yticklabelsvisible = true
+        else
+            ax2d.title = @sprintf("−%d", leadtime*sdm.tu)
         end
-        ax2d = Axis(lout_2d[1,i_col]; xlabel="Re{ω}", ylabel="Im{ω}", title=title_2d,lblargs...,titlevisible=false, titlealign=:right)
-        ax1d = Axis(lout_1d[1,i_col]; xlabel="Fitted severity", ylabel="Actual severity 𝑅*(ω)", title=title_1d, lblargs..., titlevisible=false, titlealign=:right)
-        idx_desc = findall(round.(Int, coast.desc_tphpert[i_anc]./sdm.tu) .== tpert)
-        #@infiltrate
+        if i_col < length(idx_leadtimes2plot)
+            colgap!(lout_rsp, i_col, 0)
+        end
+        idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm) 
         (Rmax_pred_zernike,Rmax_pred_linear,Rmax_pred_quadratic) = (zeros(Float64, length(idx_desc)) for _=1:3)
         Rmax_pred_zernike_anc = coefs_zernike[1,i_leadtime,i_anc]
         Rmax_pred_linear_anc = coefs_linear[1,i_leadtime,i_anc]
         Rmax_pred_quadratic_anc = coefs_quadratic[1,i_leadtime,i_anc]
         #  ------------- Contours ---------------------
-        Ngrid = 30
-        p1grid = collect(range(-Amax,Amax; length=Ngrid))
-        p2grid = collect(range(-Amax,Amax; length=Ngrid))
-        p12grid = hcat(vec(p1grid .* ones((1,Ngrid))), vec(ones(Ngrid) .* p2grid'))
         response_surface_zernike = reshape(QG2L.zernike_model_2d(p12grid, Amax, coefs_zernike[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
         response_surface_linear = reshape(QG2L.linear_model_2d(p12grid, coefs_linear[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
         response_surface_quadratic = reshape(QG2L.quadratic_model_2d(p12grid, coefs_quadratic[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
-        max_dR = max((maximum(filter(!isnan, (r.-coast.anc_Rmax[i_anc]))) for r=(response_surface_zernike, response_surface_linear, response_surface_quadratic))...)
-        min_dR = min((minimum(filter(!isnan, (r.-coast.anc_Rmax[i_anc]))) for r=(response_surface_zernike, response_surface_linear, response_surface_quadratic))...)
+        max_dR = max((maximum(filter(!isnan, (r.-coast.anc_Rmax[i_anc]))) for r=(response_surface_zernike, response_surface_linear, response_surface_quadratic)[2-plot_zernike_flag:3])...)
+        min_dR = min((minimum(filter(!isnan, (r.-coast.anc_Rmax[i_anc]))) for r=(response_surface_zernike, response_surface_linear, response_surface_quadratic)[2-plot_zernike_flag:3])...)
         vmin = coast.anc_Rmax[i_anc] + min_dR
         vmax = coast.anc_Rmax[i_anc] + max_dR
+        limits_1d[1] = min(limits_1d[1], vmin)
+        limits_1d[2] = max(limits_1d[2], vmax)
 
         #vmin = min((minimum(r) for r=(response_surface_linear, response_surface_quadratic))...)
         @show vmin,vmax,coast.anc_Rmax[i_anc]
@@ -171,9 +188,11 @@ function plot_objective_response_linquad(
         levneg = levels[levels .< coast.anc_Rmax[i_anc]]
         lev0 = [coast.anc_Rmax[i_anc]]
         # Contours: Zernike model
-        contour!(ax2d, p1grid, p2grid, response_surface_zernike; levels=levpos, linestyle=:solid, color=color_zern, linewidth=2)
-        contour!(ax2d, p1grid, p2grid, response_surface_zernike; levels=levneg, linestyle=(:dot,:dense), color=color_zern, linewidth=2)
-        contour!(ax2d, p1grid, p2grid, response_surface_zernike; levels=lev0, linestyle=(:dash,:dense), color=color_zern, linewidth=2)
+        if plot_zernike_flag
+            contour!(ax2d, p1grid, p2grid, response_surface_zernike; levels=levpos, linestyle=:solid, color=color_zern, linewidth=2)
+            contour!(ax2d, p1grid, p2grid, response_surface_zernike; levels=levneg, linestyle=(:dot,:dense), color=color_zern, linewidth=2)
+            contour!(ax2d, p1grid, p2grid, response_surface_zernike; levels=lev0, linestyle=(:dash,:dense), color=color_zern, linewidth=2)
+        end
         # Contours: linear model
         contour!(ax2d, p1grid, p2grid, response_surface_linear; levels=levpos, linestyle=:solid, color=color_lin, linewidth=2)
         contour!(ax2d, p1grid, p2grid, response_surface_linear; levels=levneg, linestyle=(:dot,:dense), color=color_lin, linewidth=2)
@@ -213,47 +232,68 @@ function plot_objective_response_linquad(
                 c = coefs_quadratic[:,i_leadtime,i_anc]
                 QG2L.quadratic_model_2d(Xpert[i_desc+1:i_desc+2,:], c)[1]
             end
-            scorekwargs[:color] = color_zern
-            scatter!(ax1d, Rmax_pred_zernike[i_desc], coast.desc_Rmax[i_anc][idx_desc[i_desc]]; scorekwargs...)
+            if plot_zernike_flag
+                scorekwargs[:color] = color_zern
+                scatter!(ax1d, Rmax_pred_zernike[i_desc], coast.desc_Rmax[i_anc][idx_desc[i_desc]]; scorekwargs...)
+            end
             scorekwargs[:color] = color_lin
             scatter!(ax1d, Rmax_pred_linear[i_desc], coast.desc_Rmax[i_anc][idx_desc[i_desc]]; scorekwargs...)
             scorekwargs[:color] = color_quad
             scatter!(ax1d, Rmax_pred_quadratic[i_desc], coast.desc_Rmax[i_anc][idx_desc[i_desc]]; scorekwargs...)
         end
-        scatter!(ax1d, Rmax_pred_zernike_anc, coast.anc_Rmax[i_anc]; marker=:star5, color=color_zern)
+        if plot_zernike_flag
+            scatter!(ax1d, Rmax_pred_zernike_anc, coast.anc_Rmax[i_anc]; marker=:star5, color=color_zern)
+        end
         scatter!(ax1d, Rmax_pred_linear_anc, coast.anc_Rmax[i_anc]; marker=:star5, color=color_lin)
         scatter!(ax1d, Rmax_pred_quadratic_anc, coast.anc_Rmax[i_anc]; marker=:star5, color=color_quad)
-        lines!(ax1d, Rbounds, Rbounds; color=:black, linestyle=(:dash,:dense))
         hlines!(ax1d, coast.anc_Rmax[i_anc]; color=:black, linestyle=(:dash, :dense))
         scores_lit = vcat([coast.anc_Rmax[i_anc]], coast.desc_Rmax[i_anc][idx_desc], Rmax_pred_zernike_anc, Rmax_pred_linear_anc, Rmax_pred_quadratic_anc)
         scoremin_lit,scoremax_lit = extrema(scores_lit)
         inflation = 0.1
         scorebounds_lit = [(1+inflation)*scoremin_lit-inflation*scoremax_lit, (1+inflation)*scoremax_lit-inflation*scoremin_lit]
-        xlims!(ax1d, scorebounds_lit...)
-        ylims!(ax1d, scorebounds_lit...)
+        #xlims!(ax1d, scorebounds_lit...)
+        #ylims!(ax1d, scorebounds_lit...)
         arc!(ax2d, Point2f(0,0), Amin, 0, 2pi; color=:gray, alpha=0.5)
         arc!(ax2d, Point2f(0,0), Amax, 0, 2pi; color=:gray, alpha=0.5)
     end
-    for i_col = 1:ncols(lout_2d)-1
-        colgap!(lout_2d, i_col, 10.0)
-        colgap!(lout_1d, i_col, 10.0)
+    for i_col = 1:length(idx_leadtimes2plot)-1
+        colgap!(lout_rsp, i_col, 0.0)
+        colsize!(lout_rsp, i_col, Relative(1/length(idx_leadtimes2plot)))
+        xlims!(axs2d[i_col], limits_2d...)
+        ylims!(axs2d[i_col], limits_2d...)
+        xlims!(axs1d[i_col], limits_1d...)
+        ylims!(axs1d[i_col], limits_1d...)
     end
-    ax_r2 = Axis(lout_r2[1,1], xlabel="−AST (𝑡* = $(t0str))", ylabel="𝑅²", ylabelsize=8, xlabelsize=8, yticklabelsize=7, xticklabelsize=7, xgridvisible=false, ygridvisible=false, yticks=[0.0,0.5,1.0], xticksize=2, yticksize=2, titlefont=:regular)
+    for ax1d = axs1d
+        lines!(ax1d, limits_1d, limits_1d; color=:black, linestyle=(:dash,:dense))
+    end
+
+    label_pert_text = """
+    Im
+    ↑
+    ω → Re
+    """
+    label_pert = Label(lout_rsp_label[1,1], label_pert_text, halign=:left, fontsize=15)
+    label_resp_text = """
+    "Actual
+    ↑
+    𝑅* → Predicted
+    """
+    label_resp =Label(lout_rsp_label[2,1], label_resp_text, halign=:left, fontsize=15)
+
+    ax_r2 = Axis(lout_r2[1,1], xlabel="−AST (𝑡* = $(t0str))", xlabelsize=12, yticklabelsize=10, xticklabelsize=10, xgridvisible=false, ygridvisible=false, yticks=[0.0,0.5,1.0], xticksize=2, yticksize=2, titlefont=:regular)
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_zernike[:,i_anc]; color=color_zern, label="Zern")
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_linear[:,i_anc]; color=color_lin, label="Lin")
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_quadratic[:,i_anc]; color=color_quad, label="Quad")
-    hlines!(ax_r2, r2thresh; color=:gray, alpha=0.5)
     vlines!(ax_r2, -leadtimes[idx_leadtimes2plot].*sdm.tu; color=:gray, alpha=0.5)
     ylims!(ax_r2, -0.1, 1.1)
 
-    Label(lout_2d[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,5.0,5.0), valign=:bottom, fontsize=9)
-    Label(lout_2d[1,:,Bottom()], "Re{ω}", padding=(0,5,0,18), valign=:bottom, fontsize=8)
-    Label(lout_1d[1,:,Bottom()], "fitted severity 𝑅̂*(ω)", padding=(0,5,0,20), valign=:bottom, fontsize=8)
     #rowsize!(lout_1d, 1, Relative(14/15))
     #rowsize!(lout_2d, 1, Relative(14/15))
-    rowgap!(lout, 1, 4.0)
+    rowgap!(lout, 1, 0.0)
     rowgap!(lout, 2, 4.0)
-    rowsize!(lout, 3, Relative(1/5))
+    rowsize!(lout, 3, Relative(1/6))
+    colsize!(lout, 1, Relative(1/7))
 
     save(joinpath(figdir,"objective_response_anc$(i_anc)_linquad.png"), fig)
     println("Saved linquad for i_anc $(i_anc)")
