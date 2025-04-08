@@ -78,7 +78,7 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
                 "compute_extrema" =>                0,
                 "plot_energy" =>                    0,
                 "plot_hovmoller" =>                 1, 
-                "animate" =>                        1,
+                "animate" =>                        0,
                 # ---------- defunct ---------
                 "compute_rough_quantiles" =>        0,
                 "compute_local_GPD_params" =>       0,
@@ -472,10 +472,10 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             end
 
             #@infiltrate
-            fig = Figure(size=(2000,1000))
+            fig = Figure(size=(1200,600))
             for iz = 1:2
                 lout = fig[iz,1] = GridLayout()
-                QG2L.plot_hovmoller_ydep!(lout, obs_val_zm_hov[1,:,iz,:], sf_zm_hov[1,:,iz,:], obs_mssk_xall[1,:,iz,:], sf_mssk_xall[1,:,iz,:], cop, sdm; tinit=hovmoller_timespan[1], title="Layer $(iz) zonal mean $(obs_labels[obs_name])", anomaly_heat=anomaly_heat, anomaly_cont=anomaly_cont)
+                QG2L.plot_hovmoller_ydep!(lout, obs_val_zm_hov[1,:,iz,:], sf_zm_hov[1,:,iz,:], obs_mssk_xall[1,:,iz,:], sf_mssk_xall[1,:,iz,:], cop, sdm; tinit=hovmoller_timespan[1], title="Layer $(iz) zonal mean $(obs_labels["sf"]) and $(obs_labels[obs_name])", anomaly_heat=anomaly_heat, anomaly_cont=anomaly_cont)
             end
             save(joinpath(figdir,"hovmoller_$(obs_name).png"), fig)
         end

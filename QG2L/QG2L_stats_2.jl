@@ -500,6 +500,9 @@ function plot_bump_densities_2d(scales::Vector{Float64}, support_radius::Float64
         for r = rs
             lines!(axcont, r.*cos.(thetas), r.*sin.(thetas); colargs...)
         end
+        thetamean = SB.mean(thetas)
+        textrot,textalign = (cos(thetamean) >= 0 ? (thetamean,:left) : (thetamean+pi,:right))
+        scl_label = text!(axcont, (1.01*support_radius.*[cos(thetamean), sin(thetamean)])...; text=@sprintf("%.2f", scl), colargs..., fontsize=10, font=:bold, rotation=textrot, align=(textalign,:center))
         lines!(axcont, [0, support_radius*cos(thetas[1])], [0, support_radius*sin(thetas[1])]; color=:gray, alpha=0.25)
         pslice .= exp.(-0.5 .* (imomegas./scl).^2 ./ (1 .- (imomegas./support_radius).^2)) ./ Zs[i_scl]
         lines!(axslice, pslice, imomegas; colargs..., )
@@ -518,8 +521,9 @@ function plot_bump_densities_2d(scales::Vector{Float64}, support_radius::Float64
     end
     colsize!(lout, 1, Relative(4/5))
     for ax = (axcont,axslice)
-        ylims!(ax, -support_radius*1.01, support_radius*1.01)
+        ylims!(ax, -support_radius*1.2, support_radius*1.2)
     end
+    xlims!(axcont, -support_radius*1.2, support_radius*1.2)
     xlims!(axslice, 1e-10, 1/Zs[1,1])
     save(joinpath(figdir,"bumps.png"), fig)
 end

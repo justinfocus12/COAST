@@ -302,20 +302,20 @@ function animate_fields(tgrid::Vector{Int64}, fcont::Array{Float64,4}, fheat::Ar
 end
 
 function plot_snapshots(tgrid::Vector{Int64}, fheat::Array{Float64,4},fcont::Array{Float64,4},sdm::SpaceDomain, outfile_prefix::String; fcont_label="", fheat_label="", titles=nothing, scale_choice="global")
-    figsize = (500 + 50, 1000)
+    figsize = (350 + 50, 600)
     fig = Figure(size=figsize)
     lout = fig[1:2,1:2] = GridLayout()
     if isnothing(titles)
-        titles = collect("Layer $(iz) $(fcont_label), $(fheat_label)" for iz=1:2)
+        titles = collect("Layer $(iz) $(fcont_label) and $(fheat_label)" for iz=1:2)
     end
-    axes = collect(Axis(lout[iz,1], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿", title=titles[iz], titlesize=20, xlabelsize=20, ylabelsize=20, titlefont=:regular) for iz=1:2)
-    axes_cb = collect(Axis(lout[iz,2]) for iz=1:2)
-    colsize!(lout, 1, Aspect(1, 1.0))
-    colsize!(lout, 2, Relative(50/figsize[1]))
-    for ax in axes_cb
-        hidedecorations!(ax)
-        hidespines!(ax)
-    end
+    # Insert some labeling specific to COAST targets
+    ytgts = collect(range(0, 1; length=33)[6:28])
+    Nytgt = length(ytgts)
+    ytickvalues = ytgts[3:6:Nytgt]
+    yticklabels = [@sprintf("%d/%d", round(Int, sdm.Ny*ytgt), sdm.Ny) for ytgt=ytickvalues]
+    boxrad = 1/32
+    # 
+    axes = collect(Axis(lout[iz,1], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿", yticks=(ytickvalues,yticklabels), xticks=(ytickvalues,yticklabels), title=titles[iz], titlesize=14, xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10, titlefont=:regular, xticklabelrotation=pi/2) for iz=1:2)
     for iz = 1:2
         xlims!(axes[iz], (0,1)) #sdm.Lx))
         ylims!(axes[iz], (0,1)) #sdm.Ly))
@@ -328,10 +328,16 @@ function plot_snapshots(tgrid::Vector{Int64}, fheat::Array{Float64,4},fcont::Arr
     fheat_negdef = (maximum(fheat) <= 0)
     if fheat_posdef
         colormap = :lipari
+        colorranges = [[0,maximum(fheat[:,:,iz,:])] for iz=1:2]
+        boxcolor = :cyan
     elseif fheat_negdef
         colormap = Reverse(:lipari)
+        colorranges = [[minimum(fheat[:,:,iz,:],0)] for iz=1:2]
+        boxcolor = :cyan
     else
         colormap = :vik
+        colorranges = [maximum(abs.(fheat[:,:,iz,:])) .* [-1,1] for iz=1:2]
+        boxcolor = :purple
     end
     global_colorscale = (scale_choice == "global")
     for (i_snap,t_snap) in enumerate(tgrid)
@@ -343,12 +349,23 @@ function plot_snapshots(tgrid::Vector{Int64}, fheat::Array{Float64,4},fcont::Arr
         for iz = 1:2
             ax = axes[iz]
             tstr = @sprintf("%.2f", t_snap*sdm.tu)
-            ax.title = "$(titles[iz]), 𝑡 = $(tstr)"
+            ax.title = "$(titles[iz]) at 𝑡 = $(tstr)"
             ax.titlefont = :regular
             img = image!(ax, (0,1), (0,1), fheat[:,:,iz,i_snap], colormap=colormap, colorrange=(-fheat_max[iz]*(!fheat_posdef),fheat_max[iz]*(!fheat_negdef)),)
             push!(objs, (ax,img))
+            # Little box
+            if iz == 1
+                corners = [32/64, 26/64] .+ boxrad .* vcat([-1,1,1,-1]', [-1,-1,1,1]')
+                for i_corner = 1:4
+                    x0,y0 = corners[:,i_corner]
+                    x1,y1 = corners[:,mod(i_corner,4)+1]
+                    lines!(ax, [x0,x1],[y0,y1]; color=boxcolor, linewidth=2)
+                end
+            end
             ## colorbar 
-            cbar = Colorbar(lout[iz,2], img, vertical=true)
+            cbartickvalues = collect(range(colorranges[iz]...; length=3))
+            cbarticklabels = (c->@sprintf("%.2f",c)).(cbartickvalues)
+            cbar = Colorbar(lout[iz,2], img, vertical=true, ticks=(cbartickvalues,cbarticklabels), ticklabelsize=10)
             push!(objs, (cbar,))
             ## contours
             levneg = collect(range(-fcont_max[iz], 0, length=8)[1:end-1])
@@ -358,6 +375,7 @@ function plot_snapshots(tgrid::Vector{Int64}, fheat::Array{Float64,4},fcont::Arr
             contpos = contour!(ax, sdm.xgrid./sdm.Lx, sdm.ygrid./sdm.Ly, fcont[:,:,iz,i_snap],levels=levpos,color=:black)
             push!(objs, (ax,contpos))
         end
+        colsize!(lout, 1, Aspect(1,1))
         save("$(outfile_prefix)_$(i_snap).png", fig)
         for obj in objs
             delete!(obj...)
@@ -440,6 +458,8 @@ function plot_composite_extreme(obsoft::Vector{Float64}, thresh::Float64, lead_t
 end
 
 function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, cop::ConstantOperators, sdm::SpaceDomain; title="", flabel="", tinit::Int64=0, anomaly::Bool=false)
+    # NOT SUPPOSED TO USE ,
+    error("Not supported")
     fheat_mean_xt = SB.mean(fheat_nom; dims=2)
     fheat = fheat_nom .- anomaly .* fheat_mean_xt
     @assert size(fheat,1) == sdm.Ny
@@ -472,12 +492,18 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, cop
 end
 
 function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, fcont_nom::Array{Float64,2}, fheat_mssk::Array{Float64,2}, fcont_mssk::Array{Float64,2}, cop::ConstantOperators, sdm::SpaceDomain; title="", tinit::Int64=0, anomaly_heat::Bool=false, anomaly_cont::Bool=false)
+    # Insert some labeling specific to COAST targets
+    ytgts = collect(range(0, 1; length=33)[6:28])
+    Nytgt = length(ytgts)
+    ytickvalues = ytgts[3:6:Nytgt]
+    yticklabels = [@sprintf("%d/%d", round(Int, sdm.Ny*ytgt), sdm.Ny) for ytgt=ytickvalues]
+    boxrad = 1/32
     #fheat_mean_xt = SB.mean(fheat_nom; dims=2)
     fheat = fheat_nom .- anomaly_heat .* fheat_mssk[:,1]
     fcont = fcont_nom .- anomaly_cont .* fcont_mssk[:,1]
     @assert size(fcont,1) == sdm.Ny
     Nt = size(fheat,2)
-    lblargs = Dict(:xticklabelsize=>30,:xlabelsize=>36,:yticklabelsize=>30,:ylabelsize=>36,:titlesize=>40,:xticklabelrotation=>0.0,:titlefont=>:regular)
+    lblargs = Dict(:xticklabelsize=>12,:xlabelsize=>15,:yticklabelsize=>12,:ylabelsize=>15,:yticklabelpad=>15,:titlesize=>15,:xticklabelrotation=>0.0,:titlefont=>:regular,:yticks=>(ytickvalues,yticklabels),)
     if anomaly_heat
         title = "$(title) anomaly"
         cbartickvals = maximum(abs.(fheat)) .* [-1,0,1]
@@ -486,17 +512,17 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, fco
         cbartickvals = collect(range(extrema(fheat)...; length=3))
         vmin,vmax = extrema(fheat)
     end
-    ax = Axis(lout[1,2], xlabel="𝑡", ylabel="𝑦/𝐿"; lblargs..., title=title)
+    ax = Axis(lout[1,1], xlabel="𝑡", ylabel="𝑦/𝐿"; lblargs..., title=title)
     fheat_posdef = (minimum(fheat) >= 0)
     fheat_negdef = (maximum(fheat) <= 0)
     if fheat_posdef
         colormap = :lipari
-        color_cont = :cyan
+        color_cont = :black
     elseif fheat_negdef
         colormap = Reverse(:lipari)
-        color_cont = :cyan
+        color_cont = :black
     else
-        colormap = :BrBg
+        colormap = :vik
         color_cont = :black
     end
     img = image!(ax, (tinit*sdm.tu,(tinit+Nt-1)*sdm.tu), (0.0,1.0), fheat', colormap=colormap, colorrange=(vmin,vmax))
@@ -516,7 +542,7 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, fco
     contneg = contour!(ax, range(tinit,tinit+Nt-1,step=1).*sdm.tu, sdm.ygrid./sdm.Ly, fcont', levels=levels_neg, linestyle=:dash, color=color_cont, linewidth=2)
     contpos = contour!(ax, range(tinit,tinit+Nt-1,step=1).*sdm.tu, sdm.ygrid./sdm.Ly, fcont', levels=levels_pos, linestyle=:solid, color=color_cont)
     cbarticklabs = (F->@sprintf("%+3.2f",F)).(cbartickvals)
-    cbar = Colorbar(lout[1,1], img, vertical=true, labelsize=30, ticklabelsize=24, ticks=(cbartickvals,cbarticklabs))
+    cbar = Colorbar(lout[1,2], img, vertical=true, labelsize=15, ticklabelsize=12, ticks=(cbartickvals,cbarticklabs))
     # zonal mean 
     # topography
     topo_zonal_mean = vec(SB.mean(cop.topography[:,:,2], dims=1))
@@ -533,10 +559,10 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, fco
         end
     end
 
-    colsize!(lout, 1, Relative(1/30))
-    colsize!(lout, 2, Relative(1/2))
-    colgap!(lout, 1, 0.0)
-    colgap!(lout, 2, 100.0)
+    colsize!(lout, 2, Relative(1/60))
+    colsize!(lout, 1, Relative(5/8))
+    colgap!(lout, 1, 3.0)
+    colgap!(lout, 2, 15.0)
     for i_col = 3:6
         colgap!(lout, i_col, 10.0)
     end
