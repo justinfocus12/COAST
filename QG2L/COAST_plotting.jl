@@ -104,6 +104,7 @@ function plot_objective_response_linquad(
     rxystr = @sprintf("%.3f", cfg.target_ryPerL*sdm.Ly)
     Rmin = minimum([minimum(coast.anc_Roft[i_anc]) for i_anc=1:Nanc])
     obj_label,short_obj_label = label_objective(cfg)
+    lblargs = Dict(:xticklabelsize=>8,:xlabelsize=>10,:yticklabelsize=>8,:ylabelsize=>10,:titlesize=>12,:xlabelvisible=>false,:ylabelvisible=>false,:xticklabelsvisible=>false, :xticklabelrotation=>pi/2, :yticklabelsvisible=>false, :xgridvisible=>false, :ygridvisible=>false, :titlefont=>:regular, :xticksize=>2.0, :yticksize=>2.0, :xlabelpadding=>1.5, :ylabelpadding=>1.5)
 
     #idx_leadtimes2plot = reverse(unique(clamp.(round.(Int, length(leadtimes).*[1/20, 1/5, 2/5, 3/5]), 1, length(leadtimes))))
     idx_leadtimes2plot = reverse(collect(round.(Int, range(1, length(leadtimes); length=6))))
@@ -112,11 +113,31 @@ function plot_objective_response_linquad(
     i_mode_sf = 1
     Amin,Amax = pertop.sf_pert_amplitudes_min[i_mode_sf], pertop.sf_pert_amplitudes_max[i_mode_sf]
     @show leadtimes
-    lout = fig[1,1:2] = GridLayout()
-    lout_rsp = lout[1:3,2] = GridLayout()
-    lout_r2 = lout[4,2] = GridLayout()
-    lout_rsp_label = lout[2:3,1] = GridLayout()
-    lout_r2_label = lout[4,1] = GridLayout()
+    lout = fig[1,1] = GridLayout()
+
+    # -------------- Labels -----------------
+    Label(lout[1,:], label_target(cfg, sdm), padding=(5.0,5.0,0.0,5.0), valign=:bottom, halign=:center, fontsize=15, font=:regular)
+    label_pert_text = """
+    Im    
+    ↑     
+    ω → Re
+    """
+    #label_pert = Label(lout_rsp_leftlab[1,1], label_pert_text, halign=:left, fontsize=10)
+    label_resp_text = """
+    Actual         
+    ↑             
+    𝑅* → Predicted
+    """
+    #label_resp = Label(lout_rsp_leftlab[2,1], label_resp_text, halign=:left, fontsize=10)
+    label_r2_text = "𝑅²"
+    #label_r2 = Label(lout_r2_leftlab[1,1], label_r2_text, halign=:right, fontsize=10)
+
+    # --------- Main axes ------------
+    axs2d = [Axis(lout[2,i_col]; lblargs...) for i_col=1:length(idx_leadtimes2plot)]
+    axs1d = [Axis(lout[3,i_col]; lblargs...) for i_col=1:length(idx_leadtimes2plot)]
+
+    ax_r2 = Axis(lout[4,:], xlabel="−AST (𝑡* = $(t0str))", xlabelsize=12, yticklabelsize=10, xticklabelsize=10, xgridvisible=false, ygridvisible=false, yticks=[0.0,0.5,1.0], xticksize=2, yticksize=2, titlefont=:regular)
+
     scores = vcat(coast.desc_Rmax[i_anc], [coast.anc_Rmax[i_anc]])
     scorerange = maximum(abs.(scores .- coast.anc_Rmax[i_anc])).*[-1,1].+coast.anc_Rmax[i_anc]
     
@@ -133,13 +154,9 @@ function plot_objective_response_linquad(
     p2grid = collect(range(-Amax,Amax; length=Ngrid))
     p12grid = hcat(vec(p1grid .* ones((1,Ngrid))), vec(ones(Ngrid) .* p2grid'))
     plot_zernike_flag = false
-    lblargs = Dict(:xticklabelsize=>8,:xlabelsize=>10,:yticklabelsize=>8,:ylabelsize=>10,:titlesize=>12,:xlabelvisible=>false,:ylabelvisible=>false,:xticklabelsvisible=>false, :xticklabelrotation=>pi/2, :yticklabelsvisible=>false, :xgridvisible=>false, :ygridvisible=>false, :titlefont=>:regular, :xticksize=>2.0, :yticksize=>2.0, :xlabelpadding=>1.5, :ylabelpadding=>1.5)
     limits_2d = (1.1*Amax) .* [-1,1]
-    limits_1d = [Inf,-Inf]
+    limits_1d = [Rbounds[1],Rbounds[2]]
 
-    Label(lout_rsp[1,:], label_target(cfg, sdm), padding=(5.0,5.0,0.0,5.0), valign=:bottom, fontsize=15, font=:regular)
-    axs2d = [Axis(lout_rsp[2,i_col]; lblargs...) for i_col=1:length(idx_leadtimes2plot)]
-    axs1d = [Axis(lout_rsp[3,i_col]; lblargs...) for i_col=1:length(idx_leadtimes2plot)]
     i_col = 0
     for i_leadtime = idx_leadtimes2plot
         i_col += 1
@@ -151,25 +168,22 @@ function plot_objective_response_linquad(
         # extra formatting
         ax2d.title = @sprintf("%s−%.2f", (i_col == 1 ? "−AST" : ""), leadtime*sdm.tu)
         title_2d = "−$(tpstr)"
-        ax2d.ylabel = "ω" 
-        ax2d.ylabelrotation = 0
-        ax1d.ylabel = "𝑅*"
-        ax1d.ylabelrotation = 0
         if i_col == 1
             ax2d.title = @sprintf("−AST=−%d", leadtime*sdm.tu)
-            ax2d.ylabelvisible = ax2d.yticklabelsvisible = true
-            ax1d.ylabelvisible = ax1d.yticklabelsvisible = true
         else
             ax2d.title = @sprintf("−%d", leadtime*sdm.tu)
         end
         if i_col < length(idx_leadtimes2plot)
-            colgap!(lout_rsp, i_col, 0)
+            colgap!(lout, i_col, 0)
         end
         idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm) 
         (Rmax_pred_zernike,Rmax_pred_linear,Rmax_pred_quadratic) = (zeros(Float64, length(idx_desc)) for _=1:3)
         Rmax_pred_zernike_anc = coefs_zernike[1,i_leadtime,i_anc]
         Rmax_pred_linear_anc = coefs_linear[1,i_leadtime,i_anc]
         Rmax_pred_quadratic_anc = coefs_quadratic[1,i_leadtime,i_anc]
+        limits_1d[1] = min(limits_1d[1], minimum(vcat(Rmax_pred_linear_anc,Rmax_pred_quadratic_anc)))
+        limits_1d[2] = max(limits_1d[1], maximum(vcat(Rmax_pred_linear_anc,Rmax_pred_quadratic_anc)))
+
         #  ------------- Contours ---------------------
         response_surface_zernike = reshape(QG2L.zernike_model_2d(p12grid, Amax, coefs_zernike[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
         response_surface_linear = reshape(QG2L.linear_model_2d(p12grid, coefs_linear[:,i_leadtime,i_anc]), (Ngrid,Ngrid)) #r = c[1] .+ c[2].*p1grid .+ c[3].*transpose(p2grid)
@@ -178,8 +192,6 @@ function plot_objective_response_linquad(
         min_dR = min((minimum(filter(!isnan, (r.-coast.anc_Rmax[i_anc]))) for r=(response_surface_zernike, response_surface_linear, response_surface_quadratic)[2-plot_zernike_flag:3])...)
         vmin = coast.anc_Rmax[i_anc] + min_dR
         vmax = coast.anc_Rmax[i_anc] + max_dR
-        limits_1d[1] = min(limits_1d[1], vmin)
-        limits_1d[2] = max(limits_1d[2], vmax)
 
         #vmin = min((minimum(r) for r=(response_surface_linear, response_surface_quadratic))...)
         @show vmin,vmax,coast.anc_Rmax[i_anc]
@@ -256,45 +268,35 @@ function plot_objective_response_linquad(
         arc!(ax2d, Point2f(0,0), Amin, 0, 2pi; color=:gray, alpha=0.5)
         arc!(ax2d, Point2f(0,0), Amax, 0, 2pi; color=:gray, alpha=0.5)
     end
-    for i_col = 1:length(idx_leadtimes2plot)-1
-        colgap!(lout_rsp, i_col, 0.0)
-        colsize!(lout_rsp, i_col, Relative(1/length(idx_leadtimes2plot)))
-        xlims!(axs2d[i_col], limits_2d...)
-        ylims!(axs2d[i_col], limits_2d...)
-        xlims!(axs1d[i_col], limits_1d...)
-        ylims!(axs1d[i_col], limits_1d...)
-    end
     for ax1d = axs1d
         lines!(ax1d, limits_1d, limits_1d; color=:black, linestyle=(:dash,:dense))
     end
 
-    label_pert_text = """
-    Im
-    ↑
-    ω → Re
-    """
-    label_pert = Label(lout_rsp_label[1,1], label_pert_text, halign=:left, fontsize=15)
-    label_resp_text = """
-    "Actual
-    ↑
-    𝑅* → Predicted
-    """
-    label_resp =Label(lout_rsp_label[2,1], label_resp_text, halign=:left, fontsize=15)
-
-    ax_r2 = Axis(lout_r2[1,1], xlabel="−AST (𝑡* = $(t0str))", xlabelsize=12, yticklabelsize=10, xticklabelsize=10, xgridvisible=false, ygridvisible=false, yticks=[0.0,0.5,1.0], xticksize=2, yticksize=2, titlefont=:regular)
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_zernike[:,i_anc]; color=color_zern, label="Zern")
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_linear[:,i_anc]; color=color_lin, label="Lin")
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_quadratic[:,i_anc]; color=color_quad, label="Quad")
     vlines!(ax_r2, -leadtimes[idx_leadtimes2plot].*sdm.tu; color=:gray, alpha=0.5)
     ylims!(ax_r2, -0.1, 1.1)
 
-    #rowsize!(lout_1d, 1, Relative(14/15))
-    #rowsize!(lout_2d, 1, Relative(14/15))
+    for i_col = 1:length(idx_leadtimes2plot)
+        if i_col < length(idx_leadtimes2plot)
+            colgap!(lout, i_col, 0.0)
+        end
+        colsize!(lout, i_col, Relative(1/length(idx_leadtimes2plot)))
+        xlims!(axs2d[i_col], limits_2d...)
+        ylims!(axs2d[i_col], limits_2d...)
+        xlims!(axs1d[i_col], limits_1d...)
+        ylims!(axs1d[i_col], limits_1d...)
+    end
     rowgap!(lout, 1, 0.0)
-    rowgap!(lout, 2, 4.0)
-    rowsize!(lout, 3, Relative(1/6))
-    colsize!(lout, 1, Relative(1/7))
+    rowgap!(lout, 2, 0.0)
 
+    rowsize!(lout, 1, Relative(1/6))
+    rowsize!(lout, 4, Relative(1/6))
+
+    #colsize!(lout, 1, Relative(1/(1+length(idx_leadtimes2plot))))
+
+    resize_to_layout!(fig)
     save(joinpath(figdir,"objective_response_anc$(i_anc)_linquad.png"), fig)
     println("Saved linquad for i_anc $(i_anc)")
 end
