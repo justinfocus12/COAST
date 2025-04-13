@@ -48,7 +48,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_contour_dispersion_distribution" =>           0,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "evaluate_mixing_criteria" =>                       0,
-                             "plot_objective" =>                                 1, 
+                             "plot_objective" =>                                 0, 
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        0,
@@ -658,6 +658,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     coefs_zernike, residmse_zernike, rsquared_zernike,
                     coefs_linear, residmse_linear, rsquared_linear,
                     coefs_quadratic, residmse_quadratic, rsquared_quadratic,
+                    hessian_eigvals, hessian_eigvecs,
                     figdir
                    )
             end
@@ -953,6 +954,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     for (fdivname,fdivlabel) = (("qrmse","𝐿²"),("kl","KL"),("chi2","χ²")) #("kl","KL"),("chi2","χ²"),("tv","TV"))
                         scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
 
+                        # TODO loop over boots 
                         i_boot = 1
                         ccdfs_opt,fdivs_opt,imcs_opt = (Dict{String,Dict}() for _=1:3)
                         mcstrs_opt,fdivstrs_opt = (Dict{String,Dict}() for _=1:2)
@@ -1313,7 +1315,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])
@@ -1323,7 +1325,7 @@ if length(ARGS) > 0
     end
 else
     if "metaCOAST" == all_procedures[i_proc]
-        idx_expt = [1,]
+        idx_expt = [2,]
     elseif "COAST" == all_procedures[i_proc]
         idx_expt = (vec([9,15] .+ [0,1]'.*23))[1:2]
         #idx_expt = [31]

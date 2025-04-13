@@ -292,7 +292,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     # Set up bootstrap resamplings
     rng_boot = Random.MersenneTwister(871940)
     ancs_boot = Random.rand(rng_boot, 1:Nanc, (Nanc, Nboot+1))
-    anc_boot_mults = zeros(Int64, (Nanc,Nboot+1)) # multiplicities
+    anc_boot_mults = zeros(Int64, (Nanc,Nboot+1)) # multiplicities of each ancestor in each bootstrap round 
     anc_boot_mults[:,1] .= 1
     for i_boot = 2:Nboot+1
         for i_anc = 1:Nanc
@@ -329,45 +329,45 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     Ndsc = Nmem - Nanc
     idx_lev = collect(range(i_thresh_cquantile,i_level_highest_shortdns; step=1)) 
     Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nanc)
-    i_boot = 1
-    for dst = ["b"]
-        for rsp = ["z","2","e"]
-            for i_scl = 1:length(distn_scales[dst])
-                println("Starting scale $(i_scl)")
-                # Iterate through each mixing objective of each mixing criterion
-                for mc = keys(mixobjs)
-                    Nmcv = length(mixobjs[mc])
-                    for i_mcval = 1:Nmcv
-                        for i_anc = 1:Nanc
-                            @infiltrate !all(isfinite.(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl]))
-                            ilt = iltmixs[dst][rsp][mc][i_mcval,i_anc,i_scl]
-                            ccdfmixs[dst][rsp][mc]["pool"][:,i_boot,i_mcval,i_scl] .+= (anc_boot_mults[i_anc,i_boot]/Nanc) .* ccdfs[dst][rsp][:,ilt,i_anc,i_scl]
-                            pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
-                            @infiltrate pth <= 0
-                            pthmix = ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile,i_boot,i_mcval,i_scl]
-                            @infiltrate !(pthmix > 0)
-                            ccdfmixs[dst][rsp][mc]["mix"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl] .+= (anc_boot_mults[i_anc,i_boot]/Nanc) .* (ccdfs[dst][rsp][i_thresh_cquantile:Nlev,ilt,i_anc,i_scl] .+ (1-pth).*(coast.anc_Rmax[i_anc] .> levels[i_thresh_cquantile:Nlev]))
-                            @infiltrate !QG2L.check_ccdf_validity(ccdfmixs[dst][rsp][mc]["mix"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl])
-                            @infiltrate !QG2L.check_ccdf_validity(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl])
+    for i_boot = 1:Nboot+1
+        for dst = ["b"]
+            for rsp = ["z","2","e"]
+                for i_scl = 1:length(distn_scales[dst])
+                    println("Starting scale $(i_scl)")
+                    # Iterate through each mixing objective of each mixing criterion
+                    for mc = keys(mixobjs)
+                        Nmcv = length(mixobjs[mc])
+                        for i_mcval = 1:Nmcv
+                            for i_anc = 1:Nanc
+                                ilt = iltmixs[dst][rsp][mc][i_mcval,i_anc,i_scl]
+                                ccdfmixs[dst][rsp][mc]["pool"][:,i_boot,i_mcval,i_scl] .+= (anc_boot_mults[i_anc,i_boot]/Nanc) .* ccdfs[dst][rsp][:,ilt,i_anc,i_scl]
+                                pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
+                                @assert pth <= 0
+                                pthmix = ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile,i_boot,i_mcval,i_scl]
+                                @assert!(pthmix > 0)
+                                ccdfmixs[dst][rsp][mc]["mix"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl] .+= (anc_boot_mults[i_anc,i_boot]/Nanc) .* (ccdfs[dst][rsp][i_thresh_cquantile:Nlev,ilt,i_anc,i_scl] .+ (1-pth).*(coast.anc_Rmax[i_anc] .> levels[i_thresh_cquantile:Nlev]))
+                                @assert !QG2L.check_ccdf_validity(ccdfmixs[dst][rsp][mc]["mix"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl])
+                                @assert !QG2L.check_ccdf_validity(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl])
+                            end
                         end
-                    end
-                    # normalize 
-                    ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev, 1:Nboot+1, 1:Nmcv, i_scl] ./= ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:i_thresh_cquantile, 1:Nboot+1, 1:Nmcv, i_scl]
-                    ccdfmixs[dst][rsp][mc]["pool"][1:i_thresh_cquantile-1, :, :, i_scl] .= NaN
-                    ccdfmixs[dst][rsp][mc]["mix"][1:i_thresh_cquantile-1, :, :, i_scl] .= NaN
-                    for est = ["mix","pool"]
-                        # TODO manual broadcast 
-                        pdfmixs[dst][rsp][mc][est][1:Nlev-1, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]] .= -diff(ccdfmixs[dst][rsp][mc][est][1:Nlev,1:Nboot+1,1:Nmcv,1:Nscales[dst]]; dims=1) ./ diff(levels)
-                        pdfmixs[dst][rsp][mc][est][Nlev, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]] .= -ccdfmixs[dst][rsp][mc][est][Nlev,1:Nboot+1,1:Nmcv,1:Nscales[dst]] ./ (levels[Nlev]-levels[Nlev-1])
-                    end
-                    # Penalize 
-                    for fdivname = fdivnames
+                        # normalize 
+                        ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev, 1:Nboot+1, 1:Nmcv, i_scl] ./= ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:i_thresh_cquantile, 1:Nboot+1, 1:Nmcv, i_scl]
+                        ccdfmixs[dst][rsp][mc]["pool"][1:i_thresh_cquantile-1, :, :, i_scl] .= NaN
+                        ccdfmixs[dst][rsp][mc]["mix"][1:i_thresh_cquantile-1, :, :, i_scl] .= NaN
                         for est = ["mix","pool"]
-                            for i_mcval = 1:length(mixobjs[mc])
-                                @assert maximum(abs.(1 .- [ccdfmixs[dst][rsp][mc][est][i_thresh_cquantile,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1]])) < 1e-6
-                                # Only integrte up to the maximum achieve by short DNS 
-                                pmf1,pmf2 = ccdfmixs[dst][rsp][mc][est][idx_lev,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1:length(idx_lev)]
-                                fdivs[dst][rsp][mc][est][fdivname][i_boot,i_mcval,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][est][idx_lev,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1:length(idx_lev)], levels_exc[1:length(idx_lev)], levels_exc[1:length(idx_lev)], fdivname)
+                            # TODO manual broadcast 
+                            pdfmixs[dst][rsp][mc][est][1:Nlev-1, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]] .= -diff(ccdfmixs[dst][rsp][mc][est][1:Nlev,1:Nboot+1,1:Nmcv,1:Nscales[dst]]; dims=1) ./ diff(levels)
+                            pdfmixs[dst][rsp][mc][est][Nlev, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]] .= -ccdfmixs[dst][rsp][mc][est][Nlev,1:Nboot+1,1:Nmcv,1:Nscales[dst]] ./ (levels[Nlev]-levels[Nlev-1])
+                        end
+                        # Penalize 
+                        for fdivname = fdivnames
+                            for est = ["mix","pool"]
+                                for i_mcval = 1:length(mixobjs[mc])
+                                    @assert maximum(abs.(1 .- [ccdfmixs[dst][rsp][mc][est][i_thresh_cquantile,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1]])) < 1e-6
+                                    # Only integrte up to the maximum achieve by short DNS 
+                                    pmf1,pmf2 = ccdfmixs[dst][rsp][mc][est][idx_lev,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1:length(idx_lev)]
+                                    fdivs[dst][rsp][mc][est][fdivname][i_boot,i_mcval,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][est][idx_lev,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1:length(idx_lev)], levels_exc[1:length(idx_lev)], levels_exc[1:length(idx_lev)], fdivname)
+                                end
                             end
                         end
                     end

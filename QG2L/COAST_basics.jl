@@ -649,16 +649,16 @@ clipccdf(x) = (x <= 1e-10 ? NaN : x)
 clippdf(x, dlev=0.1) = (x <= 1e-10/dlev ? NaN : x)
 
 
+function get_rsp_labels()
+    return Dict("z"=>"Zernike","1"=>"Linear","2"=>"Quadratic","e"=>"empirical")
+end
+
+function label_target(rsp::String)
+    return get_rsp_labels()[rsp]
+end
+
 function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, rsp::String)
-    if "z" == rsp
-        rspstr = "Zernike"
-    elseif "1" == rsp
-        rspstr = "linear"
-    elseif "2" == rsp
-        rspstr = "quadratic"
-    elseif "e" == rsp
-        rspstr = "empirical"
-    end
+    rspstr = label_target(rsp)
     label = "$(label_target(cfg, sdm)), $(rspstr) 𝑅"
     return label
 end
@@ -837,7 +837,7 @@ function expt_config_COAST_analysis(cfg,pertop)
                         "g" => Rmin .+ (Rmax-Rmin).*[0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0],
                        )
     fdivnames = ("qrmse","kl","chi2","tv")
-    Nboot = 0 #1000
+    Nboot = 0 #1000 TODO actually do bootstrapping and put error bars on the CCDFs in results panels 
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
     i_thresh_cquantile = 5
     time_ancgen_dns_ph = 4000
