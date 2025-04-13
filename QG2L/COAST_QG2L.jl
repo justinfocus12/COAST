@@ -52,7 +52,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        0,
-                             "plot_COAST_mixture" =>                             0,
+                             "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
@@ -954,28 +954,31 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     for (fdivname,fdivlabel) = (("qrmse","𝐿²"),("kl","KL"),("chi2","χ²")) #("kl","KL"),("chi2","χ²"),("tv","TV"))
                         scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
 
-                        # TODO loop over boots 
-                        i_boot = 1
                         ccdfs_opt,fdivs_opt,imcs_opt = (Dict{String,Dict}() for _=1:3)
                         mcstrs_opt,fdivstrs_opt = (Dict{String,Dict}() for _=1:2)
                         labels_opt = Dict{String,String}()
 
                         for mc = mcs2mix
                             ccdfs_opt[mc] = Dict{String,Array{Float64}}()
-                            fdivs_opt[mc] = Dict{String,Float64}()
-                            imcs_opt[mc] = Dict{String,Int64}()
+                            fdivs_opt[mc] = Dict{String,Array{Float64}}()
+                            imcs_opt[mc] = Dict{String,Array{Int64}}()
                             mcstrs_opt[mc],fdivstrs_opt[mc] = (Dict{String,String}() for _=1:2)
                             for est = ["mix","pool"]
-                                fdivs_opt[mc][est],imcs_opt[mc][est] = findmin(fdivs[dst][rsp][mc][est][fdivname][i_boot,:,i_scl])
+                                fdivs_opt[mc][est] = zeros(Float64, Nboot+1)
+                                imcs_opt[mc][est] = zeros(Int64, Nboot+1)
+                                ccdfs_opt[mc][est] = zeros(Float64, (Nlev,Nboot+1))
+                                for i_boot = 1:Nboot+1
+                                    fdivs_opt[mc][est][i_boot],imcs_opt[mc][est][i_boot] = findmin(fdivs[dst][rsp][mc][est][fdivname][i_boot,:,i_scl])
+                                    ccdfs_opt[mc][est][:,i_boot] .= ccdfmixs[dst][rsp][mc][est][:,i_boot,imcs_opt[mc][est][i_boot],i_scl]
+                                end
                                 if mc in ["globcorr","contcorr"]
-                                    mcstrs_opt[mc][est] = @sprintf("σ(%.1f)",transcorr(mixobjs[mc][imcs_opt[mc][est]]))
+                                    mcstrs_opt[mc][est] = @sprintf("σ(%.1f)",transcorr(mixobjs[mc][imcs_opt[mc][est][1]]))
                                 elseif mc in ["lt"]
-                                    mcstrs_opt[mc][est] = @sprintf("%d",mixobjs[mc][imcs_opt[mc][est]])
+                                    mcstrs_opt[mc][est] = @sprintf("%d",mixobjs[mc][imcs_opt[mc][est][1]])
                                 else
                                     mcstrs_opt[mc][est] = "max" #@sprintf("%.1f",mixobjs[mc][imcs_opt[mc][est]])
                                 end
-                                fdivstrs_opt[mc][est] = @sprintf("%.1E",fdivs_opt[mc][est])
-                                ccdfs_opt[mc][est] = ccdfmixs[dst][rsp][mc][est][:,i_boot,imcs_opt[mc][est],i_scl]
+                                fdivstrs_opt[mc][est] = @sprintf("%.1E",fdivs_opt[mc][est][1])
                             end
                             if mc in ["globcorr","contcorr","lt"]
                                 labels_opt[mc] = "$(mixcrit_labels[mc])\n=$(mcstrs_opt[mc]["mix"]) / $(mcstrs_opt[mc]["pool"])" #\n$(fdivlabel) = $(fdivstrs_opt[mc]["mix"]) / $(fdivstrs_opt[mc]["pool"])"
@@ -991,38 +994,33 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         fdivstr_ancgen = @sprintf("%.1E\n(%.2E, %.2E)",fdiv_ancgen_valid_pt, fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi)
                         dnspot = thresh_cquantile.*ccdf_pot_valid_pt
                         # -------------- Plot --------------
-                        fig = Figure(size=(900,400))
+                        Nmcs2mix = length(mcs2mix)
+                        fig = Figure(size=(100*Nmcs2mix+200,400))
                         lout = fig[1,1] = GridLayout()
-                        ax1 = Axis(lout[1,1]; xscale=log10, xlabel="CCDF", ylabel="Severity 𝑅*", title="$(label_target(cfg,sdm,distn_scales[dst][i_scl])), μ[$(powerofhalfstring(i_thresh_cquantile))]", titlefont=:regular, xgridvisible=false, ygridvisible=false)
-                        ax2 = Axis(lout[1,2]; xscale=log10, xlabel="CCDF/CCDF(DNS)", ylabel="Severity 𝑅*", titlefont=:regular, ylabelvisible=false, xgridvisible=false, ygridvisible=false)
+                        axs_mcseps = [
+                                      Axis(lout[1,i_mc]; xscale=log10, xlabel="CCDF", ylabel="Severity 𝑅*", title=labels_opt[mcs2mix[i_mc]], titlefont=:regular, xgridvisible=false, ygridvisible=false,)
+                                      for i_mc=1:Nmcs2mix
+                                     ]
+                        #ax1 = Axis(lout[1,1]; xscale=log10, xlabel="CCDF", ylabel="Severity 𝑅*", title="$(label_target(cfg,sdm,distn_scales[dst][i_scl])), μ[$(powerofhalfstring(i_thresh_cquantile))]", titlefont=:regular, xgridvisible=false, ygridvisible=false)
+                        ax2 = Axis(lout[1,Nmcs2mix+1]; xscale=log10, xlabel="CCDF/CCDF(DNS)", ylabel="Severity 𝑅*", titlefont=:regular, ylabelvisible=false, xgridvisible=false, ygridvisible=false)
                         ax3 = Axis(
                                    lout[1,3]; xscale=log10, xlabel=fdivlabel, 
-                                   yticks = (1:(length(mcs2mix)+1), vcat("Short DNS",[labels_opt[mc] for mc=mcs2mix])),
+                                   yticks = (1:(Nmcs2mix+1), vcat("Short DNS",[labels_opt[mc] for mc=mcs2mix])),
                                    xgridvisible=false, ygridvisible=false, yticklabelalign=(:right,:center), 
                                   )
                         scatter!(ax3, fdiv_ancgen_valid_pt, 1; color=:black, marker=:circle, markersize=12)
                         for (est,marker) = (("mix",:xcross),("pool",'O'))
-                            scatter!(ax3, [fdivs_opt[mc][est] for mc=mcs2mix], 2:(length(mcs2mix)+1); color=[mixcrit_colors[mc] for mc=mcs2mix], marker=marker, markersize=12)
+                            scatter!(ax3, [fdivs_opt[mc][est] for mc=mcs2mix], 2:(Nmcs2mix+1); color=[mixcrit_colors[mc] for mc=mcs2mix], marker=marker, markersize=12)
                         end
-                        #barplot!(
-                        #         ax3, 
-                        #         1:(length(mcs2mix)+1), 
-                        #         vcat(fdiv_ancgen_valid_pt, [fdivs_opt[mc]["mix"] for mc=mcs2mix]),
-                        #         ;
-                        #         color=vcat(:black, [mixcrit_colors[mc] for mc=mcs2mix]),
-                        #         direction=:x,
-                        #        )
-                        #vlines!(ax3, fdiv_ancgen_valid_pt; color=:black)
-                        # GPD
-                        lines!(ax1, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2])))
-                        lines!(ax2, clipccdfratio.(ccdf_gpd./dnspot), levels_exc; color=:gray, alpha=0.5, linewidth=3)
-                        # Mixed 
-                        for mc = mcs2mix
+                        for (i_mc,mc) in enumerate(mcs2mix)
+                            # GPD
+                            lines!(axs_mcseps[i_mc], ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2])))
                             for (est,linestyle,marker) in (("mix",:solid,:xcross),("pool",(:dot,:dense),'O'))
-                                scatterlines!(ax1, thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end], levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, label=labels_opt[mc], linewidth=1.5, )
+                                scatterlines!(axs_mcseps[i_mc], thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end], levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, label=labels_opt[mc], linewidth=1.5, )
                                 scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end]./dnspot), levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, linewidth=1.5)
                             end
                         end
+                        lines!(ax2, clipccdfratio.(ccdf_gpd./dnspot), levels_exc; color=:gray, alpha=0.5, linewidth=3)
                         # DNS 
                         lines!(ax1, dnspot, levels_exc; linewidth=3, color=:black, linestyle=(:dash,:dense), label="Long DNS")
                         lines!(ax2, clipccdfratio.(dnspot./dnspot), levels_exc; linewidth=3, color=:black, linestyle=(:dash,:dense))
@@ -1032,13 +1030,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; marker=:circle, linewidth=3, colargs...)
                         #lout[1,1] = Legend(fig, ax1; framevisible=true, rowgap=8, merge=true)
                         #
-                        colsize!(lout, 1, Relative(500/1200))
-                        colsize!(lout, 2, Relative(400/1200))
                         #colsize!(lout, 3, Relative(200/1200))
-                        for ax = (ax1,ax2)
+                        for ax = (ax1,axs_mcseps...)
                             ylims!(ax, 1.1*levels[i_thresh_cquantile]-0.1*levels[i_thresh_cquantile+1], 1.1*levels[end]-0.1*levels[end-1])
+                            xlims!(ax, 1/(time_valid_dns_ph*sdm.tu*10), thresh_cquantile*1.1)
                         end
-                        xlims!(ax1, 1/(time_valid_dns_ph*sdm.tu*10), thresh_cquantile*1.1)
                         xlims!(ax2, 1/10, 10)
                         save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(fdivname)_$(i_scl)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                     end
@@ -1315,7 +1311,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])

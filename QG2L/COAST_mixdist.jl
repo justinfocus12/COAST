@@ -329,35 +329,39 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     Ndsc = Nmem - Nanc
     idx_lev = collect(range(i_thresh_cquantile,i_level_highest_shortdns; step=1)) 
     Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nanc)
-    for i_boot = 1:Nboot+1
-        for dst = ["b"]
-            for rsp = ["z","2","e"]
-                for i_scl = 1:length(distn_scales[dst])
-                    println("Starting scale $(i_scl)")
+    for dst = ["b"]
+        for rsp = ["z","2","e"]
+            for mc = keys(mixobjs)
+                for i_boot = 1:Nboot+1
+                    @infiltrate (any(isnan.(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,:,:,:]))) #i_mcval,i_scl])))
+                    for i_scl = 1:length(distn_scales[dst])
                     # Iterate through each mixing objective of each mixing criterion
-                    for mc = keys(mixobjs)
                         Nmcv = length(mixobjs[mc])
                         for i_mcval = 1:Nmcv
                             for i_anc = 1:Nanc
                                 ilt = iltmixs[dst][rsp][mc][i_mcval,i_anc,i_scl]
+                                @infiltrate (any(isnan.(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl])))
                                 ccdfmixs[dst][rsp][mc]["pool"][:,i_boot,i_mcval,i_scl] .+= (anc_boot_mults[i_anc,i_boot]/Nanc) .* ccdfs[dst][rsp][:,ilt,i_anc,i_scl]
+                                @infiltrate !all(isfinite.((anc_boot_mults[i_anc,i_boot]/Nanc) .* ccdfs[dst][rsp][:,ilt,i_anc,i_scl]))
+                                @infiltrate (any(isnan.(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl])))
                                 pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
-                                @assert pth <= 0
-                                pthmix = ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile,i_boot,i_mcval,i_scl]
-                                @assert!(pthmix > 0)
+                                @assert pth > 0
+                                #pthpool = ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile,i_boot,i_mcval,i_scl]
+                                #@assert pthpool > 0
                                 ccdfmixs[dst][rsp][mc]["mix"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl] .+= (anc_boot_mults[i_anc,i_boot]/Nanc) .* (ccdfs[dst][rsp][i_thresh_cquantile:Nlev,ilt,i_anc,i_scl] .+ (1-pth).*(coast.anc_Rmax[i_anc] .> levels[i_thresh_cquantile:Nlev]))
-                                @assert !QG2L.check_ccdf_validity(ccdfmixs[dst][rsp][mc]["mix"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl])
-                                @assert !QG2L.check_ccdf_validity(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl])
                             end
+                            mix_valid = QG2L.check_ccdf_validity(ccdfmixs[dst][rsp][mc]["mix"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl])
+                            pool_valid = QG2L.check_ccdf_validity(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,i_boot,i_mcval,i_scl])
+                            @infiltrate !(mix_valid & pool_valid)
                         end
                         # normalize 
-                        ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev, 1:Nboot+1, 1:Nmcv, i_scl] ./= ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:i_thresh_cquantile, 1:Nboot+1, 1:Nmcv, i_scl]
-                        ccdfmixs[dst][rsp][mc]["pool"][1:i_thresh_cquantile-1, :, :, i_scl] .= NaN
-                        ccdfmixs[dst][rsp][mc]["mix"][1:i_thresh_cquantile-1, :, :, i_scl] .= NaN
+                        ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev, i_boot, 1:Nmcv, i_scl] ./= ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:i_thresh_cquantile, i_boot, 1:Nmcv, i_scl]
+                        ccdfmixs[dst][rsp][mc]["pool"][1:i_thresh_cquantile-1, i_boot, :, i_scl] .= NaN
+                        ccdfmixs[dst][rsp][mc]["mix"][1:i_thresh_cquantile-1, i_boot, :, i_scl] .= NaN
                         for est = ["mix","pool"]
                             # TODO manual broadcast 
-                            pdfmixs[dst][rsp][mc][est][1:Nlev-1, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]] .= -diff(ccdfmixs[dst][rsp][mc][est][1:Nlev,1:Nboot+1,1:Nmcv,1:Nscales[dst]]; dims=1) ./ diff(levels)
-                            pdfmixs[dst][rsp][mc][est][Nlev, 1:Nboot+1, 1:Nmcv, 1:Nscales[dst]] .= -ccdfmixs[dst][rsp][mc][est][Nlev,1:Nboot+1,1:Nmcv,1:Nscales[dst]] ./ (levels[Nlev]-levels[Nlev-1])
+                            pdfmixs[dst][rsp][mc][est][1:Nlev-1, i_boot, 1:Nmcv, 1:Nscales[dst]] .= -diff(ccdfmixs[dst][rsp][mc][est][1:Nlev,i_boot,1:Nmcv,1:Nscales[dst]]; dims=1) ./ diff(levels)
+                            pdfmixs[dst][rsp][mc][est][Nlev, i_boot, 1:Nmcv, 1:Nscales[dst]] .= -ccdfmixs[dst][rsp][mc][est][Nlev,i_boot,1:Nmcv,1:Nscales[dst]] ./ (levels[Nlev]-levels[Nlev-1])
                         end
                         # Penalize 
                         for fdivname = fdivnames
