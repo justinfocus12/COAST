@@ -333,6 +333,9 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
         for rsp = ["z","2","e"]
             for mc = keys(mixobjs)
                 for i_boot = 1:Nboot+1
+                    if mod(i_boot,10) == 0
+                        println("i_boot = $(i_boot)")
+                    end
                     @infiltrate (any(isnan.(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,:,:,:]))) #i_mcval,i_scl])))
                     for i_scl = 1:length(distn_scales[dst])
                     # Iterate through each mixing objective of each mixing criterion

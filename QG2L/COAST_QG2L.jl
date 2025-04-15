@@ -51,7 +51,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_objective" =>                                 0, 
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
-                             "mix_COAST_distributions" =>                        0,
+                             "mix_COAST_distributions" =>                        1,
                              "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
@@ -894,6 +894,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         println("loaded ccdfs_combined")
         #@infiltrate
         levels_exc = levels[i_thresh_cquantile:end]
+        Nlev = length(levels)
         levels_exc_mid = (levels_exc[1:end-1] .+ levels_exc[2:end]) ./ 2
         pdf_valid_agglon = - diff(ccdf_levels) ./ diff(Rccdf_valid_agglon)
         pdf_valid_seplon = - diff(ccdf_levels) ./ diff(Rccdf_valid_seplon; dims=1)
@@ -994,48 +995,65 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         fdivstr_ancgen = @sprintf("%.1E\n(%.2E, %.2E)",fdiv_ancgen_valid_pt, fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi)
                         dnspot = thresh_cquantile.*ccdf_pot_valid_pt
                         # -------------- Plot --------------
+                        axargs = Dict(:xscale=>log10, :xlabel=>"CCDF", :ylabel=>"Severity 𝑅*", :titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :ylabelvisible=>false, :yticklabelsvisible=>false, :titlesize=>10, :xlabelsize=>8, :xticklabelsize=>6)
                         Nmcs2mix = length(mcs2mix)
                         fig = Figure(size=(100*Nmcs2mix+200,400))
                         lout = fig[1,1] = GridLayout()
                         axs_mcseps = [
-                                      Axis(lout[1,i_mc]; xscale=log10, xlabel="CCDF", ylabel="Severity 𝑅*", title=labels_opt[mcs2mix[i_mc]], titlefont=:regular, xgridvisible=false, ygridvisible=false,)
+                                      Axis(lout[1,i_mc]; axargs..., title=labels_opt[mcs2mix[i_mc]], )
                                       for i_mc=1:Nmcs2mix
                                      ]
                         #ax1 = Axis(lout[1,1]; xscale=log10, xlabel="CCDF", ylabel="Severity 𝑅*", title="$(label_target(cfg,sdm,distn_scales[dst][i_scl])), μ[$(powerofhalfstring(i_thresh_cquantile))]", titlefont=:regular, xgridvisible=false, ygridvisible=false)
-                        ax2 = Axis(lout[1,Nmcs2mix+1]; xscale=log10, xlabel="CCDF/CCDF(DNS)", ylabel="Severity 𝑅*", titlefont=:regular, ylabelvisible=false, xgridvisible=false, ygridvisible=false)
-                        ax3 = Axis(
-                                   lout[1,3]; xscale=log10, xlabel=fdivlabel, 
-                                   yticks = (1:(Nmcs2mix+1), vcat("Short DNS",[labels_opt[mc] for mc=mcs2mix])),
-                                   xgridvisible=false, ygridvisible=false, yticklabelalign=(:right,:center), 
-                                  )
+                        axargs[:xlabel] = "CCDF/CCDF(DNS)"
+                        ax2 = Axis(lout[1,Nmcs2mix+1]; axargs...)
+                        ax3 = Axis(lout[1,Nmcs2mix+2]; axargs...)
                         scatter!(ax3, fdiv_ancgen_valid_pt, 1; color=:black, marker=:circle, markersize=12)
                         for (est,marker) = (("mix",:xcross),("pool",'O'))
-                            scatter!(ax3, [fdivs_opt[mc][est] for mc=mcs2mix], 2:(Nmcs2mix+1); color=[mixcrit_colors[mc] for mc=mcs2mix], marker=marker, markersize=12)
+                            scatter!(ax3, [fdivs_opt[mc][est][1] for mc=mcs2mix], 2:(Nmcs2mix+1); color=[mixcrit_colors[mc] for mc=mcs2mix], marker=marker, markersize=12)
+                            for (i_mc,mc) in enumerate(mcs2mix)
+                                fdivlo,fdivhi = [SB.quantile(fdivs_opt[mc][est][2:Nboot+1], q) for q=[0.05,0.95]]
+                                lines!(ax3, [fdivlo,fdivhi], (1+i_mc).*ones(Float64, 2); color=mixcrit_colors[mc])
+                            end
+                            #lines!(ax3, [fdivlo,fdivhi], 
+                            #for i_boot = 1:Nboot+1
+                            #    scatter!(ax3, [fdivs_opt[mc][est][i_boot] for mc=mcs2mix], 2:(Nmcs2mix+1); color=[mixcrit_colors[mc] for mc=mcs2mix], marker=marker, markersize=12)
+                            #end
                         end
                         for (i_mc,mc) in enumerate(mcs2mix)
                             # GPD
                             lines!(axs_mcseps[i_mc], ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3, label=@sprintf("GPD(%.2f,%.2f,%s%.2f)", levels[i_thresh_cquantile], gpdpar_valid_agglon[1], (gpdpar_valid_agglon[2] >= 0 ? "+" : "−"), abs(gpdpar_valid_agglon[2])))
-                            for (est,linestyle,marker) in (("mix",:solid,:xcross),("pool",(:dot,:dense),'O'))
-                                scatterlines!(axs_mcseps[i_mc], thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end], levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, label=labels_opt[mc], linewidth=1.5, )
-                                scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end]./dnspot), levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, linewidth=1.5)
+                            # DNS 
+                            lines!(axs_mcseps[i_mc], dnspot, levels_exc; linewidth=3, color=:black, linestyle=(:dash,:dense), label="Long DNS")
+                            for (est,linestyle,marker,yoffset) in (("mix",:solid,:xcross,0.2),("pool",(:dot,:dense),'O',-0.2))
+                                for i_boot = 1:Nboot+1
+                                    band!(axs_mcseps[i_mc], Point2f.() # TODO 
+                                    scatterlines!(axs_mcseps[i_mc], thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end,i_boot], levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, label=labels_opt[mc], linewidth=1.5, )
+                                    scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end,i_boot]./dnspot), levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, linewidth=1.5)
+                                end
                             end
+                            # Ancestor run 
+                            colargs = Dict(:color=>:black,)
+                            scatterlines!(axs_mcseps[i_mc], thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; linewidth=3, colargs..., marker=:circle, label="Short DNS\n$(fdivlabel) = $(fdivstr_ancgen)")
+                            scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; marker=:circle, linewidth=3, colargs...)
+                            lines!(axs_mcseps[i_mc], clipccdfratio.(ccdf_gpd./dnspot), levels_exc; color=:gray, alpha=0.5, linewidth=3)
+                            lines!(ax2, clipccdfratio.(dnspot./dnspot), levels_exc; linewidth=3, color=:black, linestyle=(:dash,:dense))
                         end
-                        lines!(ax2, clipccdfratio.(ccdf_gpd./dnspot), levels_exc; color=:gray, alpha=0.5, linewidth=3)
-                        # DNS 
-                        lines!(ax1, dnspot, levels_exc; linewidth=3, color=:black, linestyle=(:dash,:dense), label="Long DNS")
-                        lines!(ax2, clipccdfratio.(dnspot./dnspot), levels_exc; linewidth=3, color=:black, linestyle=(:dash,:dense))
-                        # Ancestor run 
-                        colargs = Dict(:color=>:black,)
-                        scatterlines!(ax1, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; linewidth=3, colargs..., marker=:circle, label="Short DNS\n$(fdivlabel) = $(fdivstr_ancgen)")
-                        scatterlines!(ax2, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; marker=:circle, linewidth=3, colargs...)
-                        #lout[1,1] = Legend(fig, ax1; framevisible=true, rowgap=8, merge=true)
+                        #lougt[1,1] = Legend(fig, ax1; framevisible=true, rowgap=8, merge=true)
                         #
                         #colsize!(lout, 3, Relative(200/1200))
-                        for ax = (ax1,axs_mcseps...)
+                        for ax = (axs_mcseps...,ax2)
                             ylims!(ax, 1.1*levels[i_thresh_cquantile]-0.1*levels[i_thresh_cquantile+1], 1.1*levels[end]-0.1*levels[end-1])
+                        end
+                        for ax = axs_mcseps
                             xlims!(ax, 1/(time_valid_dns_ph*sdm.tu*10), thresh_cquantile*1.1)
                         end
                         xlims!(ax2, 1/10, 10)
+
+                        axs_mcseps[1].ylabelvisible = axs_mcseps[1].yticklabelsvisible = true
+                        for i_col = 1:Nmcs2mix
+                            colgap!(lout, i_col, 0)
+                        end
+
                         save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(fdivname)_$(i_scl)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                     end
                 end
@@ -1323,7 +1341,7 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [2,]
     elseif "COAST" == all_procedures[i_proc]
-        idx_expt = (vec([9,15] .+ [0,1]'.*23))[1:2]
+        idx_expt = (vec([9,15] .+ [0,1]'.*23))[1:1]
         #idx_expt = [31]
     end
 end
