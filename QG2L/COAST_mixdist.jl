@@ -130,6 +130,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
                                                             @view(ccdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),@view(pdfs[dst][rsp][:,i_leadtime,i_anc,i_scl]),
                                                             Rs_interp, Ws_interp, levels
                                                            ) 
+                            @infiltrate !QG2L.check_ccdf_validity(ccdfs[dst][rsp][i_thresh_cquantile:Nlev,i_leadtime,i_anc,i_scl])
                             mixcrits[dst][rsp]["ent"][i_leadtime,i_anc,i_scl] = QG2L.entropy_fun_ccdf(ccdfs[dst][rsp][i_thresh_cquantile:Nlev,i_leadtime,i_anc,i_scl]; normalize=false)
                         elseif "2" == rsp
                             Ws_interp .= QG2L.bump_density(U_interp, distn_scales[dst][i_scl], support_radius)

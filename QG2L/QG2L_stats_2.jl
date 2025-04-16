@@ -724,11 +724,18 @@ function expected_improvement_samples(xs::Vector{Float64}, weights::Vector{Float
 end
 
 function ccdf_gridded_from_samples!(ccdf::AbstractArray{Float64}, pdf::AbstractArray{Float64}, xs::Vector{Float64}, weights::Vector{Float64}, levels::Vector{Float64})
+    @assert minimum(weights) >= 0
     Nlev = length(levels)
     Nx = length(xs)
     order = sortperm(xs)
-    tailsum = reverse(cumsum(reverse(weights[order])))
-    tailsum ./= tailsum[1]
+    weightsum = sum(weights)
+    tailsum = reverse(cumsum(reverse(weights[order]./weightsum)))
+    # enforce non-increasing tailsum 
+    for i = 2:Nx
+        tailsum[i] = min(tailsum[i],max(0,tailsum[i-1]-1000*eps(Float64)))
+    end
+    @infiltrate !(maximum(diff(tailsum)) <= 0)
+    @assert maximum(diff(tailsum)) <= 0
     i_x = 1
     ccdf_prev = 1.0
     ccdf_curr = 1.0
