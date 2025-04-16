@@ -16,8 +16,12 @@ function shortfmt(xrange::Float64)
     return fmt 
 end
 
+function nanquantile(x::Vector{Float64}, q::Float64)
+    @assert 0 <= q <= 1
+    return SB.quantile(filter(!isnan, x), q)
+end
+
 function quantile_sliced(X::Array{Float64}, q::Float64, dims::Integer)
-    nanquantile(x,q) = SB.quantile(filter(!isnan, x), q)
     qslices = mapslices(x->nanquantile(x, q), X; dims=dims)
     return qslices
 end
