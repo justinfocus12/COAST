@@ -24,6 +24,11 @@ function metaCOAST_latdep_boxsizedep_procedure(expt_supdir::String, resultdir_dn
     pertopstr = QG2L.strrep_PerturbationOperator(pertop, sdm)
     ytgts,rtgts = paramsets()
     Nytgts,Nrtgts = length(ytgts),length(rtgts)
+
+    # tick values and labels for all lat-dependent plots 
+    ytickvalues = ytgts[3:6:Nytgt]
+    yticklabels = [@sprintf("%d/%d", round(Int, sdm.Ny*ytgt), sdm.Ny) for ytgt=ytickvalues]
+
     cfgs = Vector{ConfigCOAST}([])
     exptdirs_COAST = Vector{String}([])
     for (i_rtgt,rtgt) in enumerate(rtgts)
@@ -65,8 +70,8 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     todo = Dict{String,Bool}(
                              "plot_mixcrits_ydep" =>             0,
                              "compile_fdivs" =>                  0,
-                             "plot_fdivs" =>                     0,
-                             "plot_ccdfs_latdep" =>              1,
+                             "plot_fdivs" =>                     1,
+                             "plot_ccdfs_latdep" =>              0,
                              # danger zone
                              "remove_pngs" =>                    0,
                              # defunct/hibernating
@@ -96,6 +101,10 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     rxystr = @sprintf("(%d/%d)𝐿",round(Int,target_r*sdm.Ny),sdm.Ny)
     ytgts,_ = paramsets()
     Nytgt = length(ytgts)
+    # -------- Common latitude labels -------------
+    ytickvalues = ytgts[3:6:Nytgt]
+    yticklabels = [@sprintf("%d/%d", round(Int, sdm.Ny*ytgt), sdm.Ny) for ytgt=ytickvalues]
+    # ---------------------------------------------
     cfgs = Vector{ConfigCOAST}([])
     exptdirs_COAST = Vector{String}([])
     for y = ytgts
@@ -177,14 +186,11 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         Rccdf_rough = Rccdf_rough_intercept .+ Rccdf_rough_slope .* ytgts #0.5 .+ 0.5 .* ytgts
         ylims = (1.5*ytgts[1]-0.5*ytgts[2], 1.5*ytgts[Nytgt]-0.5*ytgts[Nytgt-1])
         topo_zonal_mean = vec(SB.mean(cop.topography[:,:,2], dims=1))
-        ytickvalues = ytgts[3:6:Nytgt]
-        yticklabels = [@sprintf("%d/%d", round(Int, sdm.Ny*ytgt), sdm.Ny) for ytgt=ytickvalues]
-        axargs = Dict(:titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>pi/2, :xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :titlesize=>15, :ylabel=>"𝑦₀/𝐿", :yticks=>(ytickvalues, yticklabels))
+        axargs = Dict(:titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>-pi/2, :xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :titlesize=>15, :ylabel=>"𝑦₀/𝐿", :yticks=>(ytickvalues, yticklabels))
         topolims = (minimum(topo_zonal_mean) == maximum(topo_zonal_mean) ? [-1,1] : extrema(topo_zonal_mean))
         axtopo = Axis(lout[1,1]; xlabel="ℎ(𝑦₀)", title="Topo.", titlefont=:regular, titlevisible=false, limits=(topolims..., ylims...), axargs...)
         axmean = Axis(lout[1,2]; xlabel="⟨𝑅⟩ − 𝑦₀/𝐿",ylabel="𝑦₀/𝐿", ylabelvisible=false, yticklabelsvisible=false, title="Mean", titlevisible=false, limits=(extrema(vcat(Rmean_ancgen.-Rccdf_rough,Rmean_valid.-Rccdf_rough).*1.25)..., ylims...), axargs...)
         axquants = Axis(lout[1,3]; xlabel="μ[(½)ᵏ] − 𝑦₀/𝐿\n𝑘∈{1,...,15}", ylabelvisible=false, yticklabelsvisible=false, title="(½)ᵏ-complementary\nquantiles, 𝑘∈{1,...,15}", titlevisible=false, limits=(extrema(Rccdfs_valid.-Rccdf_rough')...,ylims...), axargs...)
-        #axquantyders = Axis(lout[1,4], xlabel="Δ(𝑅-⟨𝑅⟩)/Δ⟨𝑅⟩", ylabel="𝑦₀/𝐿", xgridvisible=false, ygridvisible=false, ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=pi/2, title="Relative 𝑦-gradients", titlefont=:regular, limits=(0,2,ylims...))
         toplabel = "Intensities 𝑅, $(label_target(target_r,sdm))"
         Label(lout[1,2:3,Top()], toplabel, padding=(5.0,5.0,5.0,5.0), valign=:center, halign=:left, fontsize=15, font=:regular)
         lines!(axtopo, topo_zonal_mean, sdm.ygrid./sdm.Ly; color=:black)
@@ -220,9 +226,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         end
         fig = Figure(size=(600,400))
         lout = fig[1,1] = GridLayout()
-        ytickvalues = ytgts[3:6:Nytgt]
-        yticklabels = [@sprintf("%d/%d", round(Int, sdm.Ny*ytgt), sdm.Ny) for ytgt=ytickvalues]
-        axargs = Dict(:titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>pi/2, :xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :titlesize=>15, :ylabel=>"𝑦₀/𝐿", :yticks=>(ytickvalues, yticklabels))
+        axargs = Dict(:titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :xticklabelrotation=>-pi/2, :xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :titlesize=>15, :ylabel=>"𝑦₀/𝐿", :yticks=>(ytickvalues, yticklabels))
         topolims = (minimum(topo_zonal_mean) == maximum(topo_zonal_mean) ? [-1,1] : extrema(topo_zonal_mean))
         axtopo = Axis(lout[1,1],xlabel="ℎ(𝑦₀)"; axargs..., title="Topo.", limits=(topolims..., ylims...))
         axargs[:ylabelvisible] = axargs[:yticklabelsvisible] = false
@@ -295,12 +299,12 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         # Plot the TV achieved by (a) maximizing entropy, and (b) choosing a specific lead time, as a function of latitude. Do this with two vertically stacked plots
         dsts = ("b",)
         rsps = ("z","2","e",)
-        i_boot = 1
 
         @show Nleadtime
 
         mcs2compile = ["contcorr","globcorr","ei","pim","pth","ent","lt","r2lin","r2quad"]
 
+        # possibly also save the confidence intervals across bootstraps 
         fdivs = Dict{String,Dict}()
         for dst = dsts
             fdivs[dst] = Dict{String,Dict}()
@@ -351,15 +355,16 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
 
     if todo["plot_fdivs"]
 
+
         fdivs,fdivs_ancgen_valid = JLD2.jldopen(joinpath(resultdir,"fdivs.jld2"),"r") do f
             return f["fdivs"],f["fdivs_ancgen_valid"]
         end
 
         dsts = ("b",)
         rsps = ("z","2","e",)
-        i_boot = 1
 
         fdivs2plot = ["qrmse","kl","chi2","tv"]
+
 
         fdivlabels = Dict("qrmse"=>"𝐿²","tv"=>"TV","chi2"=>"χ²","kl"=>"KL")
         for fdivname = fdivs2plot
@@ -371,32 +376,51 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 for rsp = rsps
                     for i_scl = scales2plot
                         scalestr = @sprintf("𝑠 = %.2f", distn_scales[dst][i_scl])
-                        syncmcs = ["lt","contcorr","globcorr"]
-                        fig = Figure(size=(450,400))
+                        syncmcs = ["lt","contcorr","globcorr","ei","ent"]
+                        Nmcs2plot = length(syncmcs)
+                        # ---------------- Put each mixing criterion into its own panel -------
+                        fig = Figure(size=(100*Nmcs2plot,360))
                         lout = fig[1,1] = GridLayout()
-                        ax = Axis(lout[1,2], xlabel=fdivlabels[fdivname], ylabel="𝑦₀/𝐿", title="$(label_target(target_r,sdm)), $(scalestr), μ[$(powerofhalfstring(i_thresh_cquantile))]", titlevisible=true, titlefont=:regular, xscale=log10, xgridvisible=false, ygridvisible=false)
+                        axs_mc = [
+                                Axis(
+                                    lout[1,i_mc], 
+                                    ylabel="𝑦₀/𝐿", ylabelvisible=(i_mc==1), yticklabelsvisible=(i_mc==1), ylabelsize=12, yticklabelsize=10, yticks=(ytickvalues,yticklabels),
+                                    xlabel=fdivlabels[fdivname], xlabelvisible=false, xlabelsize=12, xticklabelsize=10, xticklabelrotation=-pi/2, 
+                                    title=mixcrit_labels[mc], titlevisible=true, titlefont=:regular, 
+                                    xscale=log10, xgridvisible=false, ygridvisible=false
+                                   )
+                               for (i_mc,mc) in enumerate(syncmcs)
+                              ]
+                        shared_xlabel = Label(lout[2,1:Nmcs2plot], fdivlabels[fdivname])
+
                         # Short simulation
-                        band!(ax, Point2f.(fdivs_ancgen_valid_lo,ytgts), Point2f.(fdivs_ancgen_valid_hi,ytgts); color=:gray, alpha=0.25)
-                        lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=4, label="Short DNS\n(90% CI)")
+                        for ax = axs_mc
+                            band!(ax, Point2f.(fdivs_ancgen_valid_lo,ytgts), Point2f.(fdivs_ancgen_valid_hi,ytgts); color=:gray, alpha=0.5)
+                            lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=1)
+                        end
                         # All desired mixing criteria
                         for (i_syncmc,syncmc) in enumerate(syncmcs)
-                            for (est,marker) = (("mix",:xcross),("pool",'O'))
-                                idx_mcobj_best = mapslices(argmin, fdivs[dst][rsp][syncmc][est][fdivname][:,i_boot,:,i_scl]; dims=2)[:,1]
-                                scatter!(ax, [fdivs[dst][rsp][syncmc][est][fdivname][i_ytgt,i_boot,idx_mcobj_best[i_ytgt],i_scl] for i_ytgt=1:Nytgt], ytgts; color=mixcrit_colors[syncmc], marker=marker, label="Optimal $(mixcrit_labels[syncmc])")
+                            ax = axs_mc[i_syncmc]
+                            for (est,marker,linestyle) = (("mix",:xcross,:solid),("pool",'O',(:dot,:dense)))
+                                fdiv_best = mapslices(minimum, fdivs[dst][rsp][syncmc][est][fdivname][1:Nytgt,1:Nboot+1,1:length(mixobjs[syncmc]),i_scl]; dims=3)[:,:,1]
+                                fdivofy_mid = fdiv_best[:,1]
+                                fdivofy_lo = QG2L.quantile_sliced(fdiv_best[:,2:Nboot+1], 0.05, 2)[1:Nytgt,1]
+                                fdivofy_hi = QG2L.quantile_sliced(fdiv_best[:,2:Nboot+1], 0.95, 2)[1:Nytgt,1]
+                                if "mix" == est
+                                    band!(ax, Point2f.(fdivofy_lo,ytgts), Point2f.(fdivofy_hi,ytgts); color=mixcrit_colors[syncmc], alpha=0.5)
+                                end
+                                scatterlines!(ax, fdivofy_mid, ytgts; color=mixcrit_colors[syncmc], marker=marker, linestyle=linestyle)
                                 # Max-entropy
                                 #lines!(ax, fdivs[dst][rsp]["ent"][fdivname][:,i_boot,1,i_scl], ytgts; color=:red, linewidth=3, label=mixobj_labels["ent"][1], alpha=0.5)
                                 # Max-EI 
                             end
+                            xlims!(ax, minimum(fdivs_ancgen_valid_lo)/10^1.5, maximum(fdivs_ancgen_valid_hi)*1.1)
                         end
-                        xlims!(ax, minimum(fdivs_ancgen_valid_lo)/10^1.5, maximum(fdivs_ancgen_valid_hi)*1.1)
-                        for (est,marker) = (("mix",:xcross),("pool",'O'))
-                            scatter!(ax, fdivs[dst][rsp]["ei"][est][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ei"], label=mixobj_labels["ei"][1], alpha=1.0, marker=marker)
-                            scatter!(ax, fdivs[dst][rsp]["ent"][est][fdivname][:,i_boot,1,i_scl], ytgts; color=mixcrit_colors["ent"], label=mixobj_labels["ent"][1], alpha=1.0, marker=marker)
-                            # TODO put error bars 
+
+                        for i_col = 1:Nmcs2plot-1
+                            colgap!(lout, i_col, 0)
                         end
-                        lout[1,1] = Legend(fig, ax; labelsize=10, framevisible=false, merge=true)
-                        colsize!(lout, 2, Relative(3/5))
-                        colgap!(lout, 1, 0)
+                        rowsize!(lout, 2, Relative(1/9))
 
                         save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl).png"), fig)
                     end
@@ -507,28 +531,28 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     colorrange_mc = mcrange
                 end
                 for i_scl = scales2plot
-                    ytickvalues = ytgts[3:6:Nytgt]
-                    yticklabels = [@sprintf("%d/%d", round(Int, sdm.Ny*ytgt), sdm.Ny) for ytgt=ytickvalues]
                     #heatmap_theme = Theme(titlefont=:regular, xlabelsize=12, ylabelsize=12, xticklabelsize=9, yticklabelsize=9, titlesize=15, ylabel="𝑦₀/𝐿", yticks=(ytickvalues, yticklabels))
-                    axargs = Dict(:title=>"", :titlefont=>:regular, :xlabelsize=>10, :ylabelsize=>10, :xticklabelsize=>8, :yticklabelsize=>8, :titlesize=>12, :ylabel=>"𝑦₀/𝐿", :yticks=>(ytickvalues, yticklabels))
+                    axargs = Dict(:title=>"", :titlefont=>:regular, :titlesize=>10, :xlabelsize=>8, :ylabelsize=>8, :xticklabelsize=>6, :yticklabelsize=>6, :ylabel=>"𝑦₀/𝐿", :yticks=>(ytickvalues, yticklabels))
                     cbarargs = Dict(:labelfont=>:regular, :labelsize=>10, :ticklabelsize=>8, :size=>6, :vertical=>false, )
                     # --------------- contcorr as function of AST -------------------
-                    fig = Figure(size=(200,350))
+                    fig = Figure(size=(200,250))
                     lout = fig[1,1] = GridLayout()
                     ax = Axis(lout[2,1]; xlabel="-AST", axargs...)
-                    hm = heatmap!(ax, -sdm.tu.*reverse(leadtimes), ytgts, reverse(transcorr.(contcorr_of_ast[1:Nleadtime,1:Nytgt,i_scl]); dims=1); colormap=Reverse(:deep), colorrange=transcorr.(ccrange))
-                    co = contour!(ax, -sdm.tu.*leadtimes, ytgts, transcorr.(contcorr_of_ast[1:Nleadtime,1:Nytgt,i_scl]); levels=[transcorr(1-(3/8)^2)], color=:black, linestyle=(:dash,:dense), linewidth=2)
+                    hm = heatmap!(ax, -sdm.tu.*reverse(leadtimes), ytgts, reverse(transcorr.(contcorr_of_ast[1:Nleadtime,1:Nytgt,i_scl]); dims=1); colormap=Reverse(:grays), colorrange=transcorr.(ccrange))
+                    co = contour!(ax, -sdm.tu.*leadtimes, ytgts, transcorr.(contcorr_of_ast[1:Nleadtime,1:Nytgt,i_scl]); levels=[transcorr(1-(3/8)^2)], color=:red, linestyle=(:dash,:dense), linewidth=2)
                     cbar = Colorbar(lout[1,1], hm; label=@sprintf("σ⁻¹(ρ[𝑐(𝑦₀,⋅)]); %s, 𝑠=%.2f", label_target(target_r, sdm), distn_scales[dst][i_scl]), cbarargs...)
                     rowgap!(lout, 1, 5)
                     save(joinpath(resultdir,"heatmap_contcorr_ofASTandY_$(dst)_$(rsp)_$(i_scl).png"), fig)
 
                     #
                     # --------------- F-divergence as a function of AST  -----------
-                    fig = Figure(size=(400,350))
+                    fig = Figure(size=(400,250))
                     lout = fig[1,1] = GridLayout()
-                    axfdiv,axmaxfdiv,axmc,axmaxmc = [Axis(lout[2,i]; axargs...) for i=1:4]
+                    axfdiv,axmc = [Axis(lout[2,i]; axargs...) for i=[1,3]]
+                    axargs[:xticklabelrotation] = -pi/2
+                    axmaxfdiv,axmaxmc = [Axis(lout[2,i]; axargs...) for i=[2,4]]
                     threshcquantstr = @sprintf("%.2E",thresh_cquantile)
-                    suptitle = Label(lout[1,:], @sprintf("%s, 𝑠=%.2f", label_target(target_r, sdm), distn_scales[dst][i_scl]); fontsize=12)
+                    suptitle = Label(lout[1,:], @sprintf("%s, 𝑠=%.2f", label_target(target_r, sdm), distn_scales[dst][i_scl]); fontsize=10)
                     axfdiv.title = fdivlabel
                     axmaxfdiv.title = "bounds"
                     axmc.title = mclabel
@@ -572,7 +596,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         scatter!(ax, -sdm.tu.*leadtimes[ilt_best_of_ast[:,i_scl]], ytgts; color=:green, marker=:cross)
                     end
                     for ax = (axmaxfdiv,axmaxmc)
-                        ax.xticklabelrotation = pi/2
+                        ax.xticklabelrotation = -pi/2
                     end
                     for ax = (axfdiv, axmc)
                         ax.xlabel = "−AST"

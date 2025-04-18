@@ -24,17 +24,38 @@ function transcorr(x::Float64, fwd::Bool,; c0=0.01)
     # z denotes transformed correlation (-infty < z < infty)
     if fwd # 
         c = abs(x)
-        z = logit_shifted_scaled.(c, c0)
+        z = logit_shifted_scaled(c, c0)
         return z*sign(x)
     else
         z = abs(x)
-        c = sigmoid_shifted_scaled.(z, c0)
+        c = sigmoid_shifted_scaled(z, c0)
         return c*sign(x)
     end
 end
 
 transcorr(x::Float64, c0::Float64=0.01) = transcorr(x, true; c0=c0)
 invtranscorr(x::Float64, c0::Float64=0.01) = transcorr(x, false; c0=c0)
+
+# ------------ harder-coded versions ------------
+function transcorr_hard(x::Float64)
+    c0 = 0.01
+    c = abs(x)
+    z = logit_shifted_scaled(c, c0)
+    return z*sign(x)
+end
+function invtranscorr_hard(x::Float64)
+    c0 = 0.01
+    z = abs(x)
+    c = sigmoid_shifted_scaled(z, c0)
+    return c*sign(x)
+end
+Makie.inverse_transform(::typeof(transcorr_hard)) = invtranscorr_hard
+Makie.defined_interval(::typeof(transcorr_hard)) = Makie.IntervalSets.Interval{:closed,:closed,Float64}(-1.0,1.0)
+Makie.defaultlimits(::typeof(transcorr_hard)) = (0.01, 0.99)
+#
+#
+# -----------------------------------------------
+
 
 
 function plot_transcorr(figdir)
