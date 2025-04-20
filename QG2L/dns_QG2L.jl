@@ -148,6 +148,7 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
                     "eke" => (args...) -> QG2L.obs_fun_eke_hist(args..., sdm, cop),
                     "pv" => (args...) -> QG2L.obs_fun_pv_hist(args..., sdm, cop) .+ php.beta.*sdm.ygrid',
                     "u" => (args...) -> QG2L.obs_fun_zonal_velocity_hist(args..., sdm, cop),
+                    "v" => (args...) -> QG2L.obs_fun_meridional_velocity_hist(args..., sdm, cop),
                    )
     obs_labels = Dict(
                       "sf" => "ψ",
@@ -157,8 +158,9 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
                       "eke" => "(½)|∇ψ|²",
                       "pv" => "𝑃𝑉",
                       "u" => "𝑢",
+                      "v" => "𝑣",
                      )
-    obs2plot = ["u","pv","conc","sf","eke","temp","heatflux",]
+    obs2plot = ["v","u","pv","conc","sf","eke","temp","heatflux",]
     if todo["compute_moments"] == 1
         @show EM.get_Nmem(ens)
         Nmem = EM.get_Nmem(ens)-1
@@ -461,7 +463,6 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             outfile_prefix = joinpath(figdir, "snapshots_$(obs_name)_sf")
             QG2L.plot_snapshots(tgrid[tidx_snap], fheat_2d, sf_2d, sdm, outfile_prefix; fcont_label=obs_labels["sf"], fheat_label=obs_labels[obs_name])
 
-            # Compute first four moments
             zonal_mean_obs_fun(hist_filename) = SB.mean(obs_funs[obs_name](hist_filename), dims=1)
             obs_val_zm_hov = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, zonal_mean_obs_fun)..., dims=4)[:,:,:,tidx_hov]
             @show size(obs_val_zm_hov)
@@ -489,6 +490,7 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
                          "heatflux" =>      1,
                          "temp" =>          1,
                          "u" =>             1,
+                         "v" =>             1,
                          "pv" =>            1,
                         )
         # --------- Animate a timespan shortly after spinup --------------
@@ -516,35 +518,45 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             fheat .= conc_hist 
             fcont .= sf_hist.ox .- 1.0*(sdm.ygrid .- sdm.Ly/2)'
             outfile = joinpath(figdir,"anim_sf_conc.mp4")
-            QG2L.animate_fields(tgrid, fcont, fheat, sdm, outfile; fcont_label=L"\psi", fheat_label=L"$c$")
+            QG2L.animate_fields(tgrid, fcont, fheat, sdm, outfile; fcont_label="ψ", fheat_label="𝑐")
         end
         if todo_anim["sf"] == 1
             println("starting to animate sf")
             fheat .= QG2L.obs_fun_sf_hist(tgrid, sf_hist.ox, sdm, cop) #.- 1.0*(sdm.ygrid .- sdm.Ly/2)'
             fcont .= sf_hist.ox .- 1.0*(sdm.ygrid .- sdm.Ly/2)'
             outfile = joinpath(figdir,"anim_sf_sf.mp4")
-            QG2L.animate_fields(tgrid, fcont, fheat, sdm, outfile; fcont_label=L"\psi", fheat_label=L"\psi")
+            QG2L.animate_fields(tgrid, fcont, fheat, sdm, outfile; fcont_label="ψ", fheat_label="ψ")
         end
         if todo_anim["eke"] == 1
             println("starting to animate eke")
             fheat .= QG2L.obs_fun_eke_hist(tgrid, sf_hist.ok, sdm, cop)
             fcont .= sf_hist.ox .- 1.0*(sdm.ygrid .- sdm.Ly/2)'
             outfile = joinpath(figdir,"anim_sf_eke.mp4")
-            QG2L.animate_fields(tgrid, fcont, fheat, sdm, outfile; fcont_label=L"\psi", fheat_label=L"\frac{1}{2}|\nabla\psi|^2")
+            QG2L.animate_fields(tgrid, fcont, fheat, sdm, outfile; fcont_label="ψ", fheat_label="(½)|∇ψ|²")
         end
         if todo_anim["temp"] == 1
             println("starting to animate temp")
             fheat .= QG2L.obs_fun_temperature_hist(tgrid, sf_hist.ok, sdm, cop) #.- 1.0*(sdm.ygrid .- sdm.Ly/2)'
             fcont .= sf_hist.ox .- 1.0*(sdm.ygrid .- sdm.Ly/2)'
             outfile = joinpath(figdir,"anim_sf_temp.mp4")
-            QG2L.animate_fields(tgrid, fcont, fheat, sdm, outfile; fcont_label=L"\psi", fheat_label=L"\psi_{BC}")
+            QG2L.animate_fields(tgrid, fcont, fheat, sdm, outfile; fcont_label="ψ", fheat_label="ψ(BC)")
         end
         if todo_anim["heatflux"] == 1
             println("starting to animate heatflux")
             fheat .= QG2L.obs_fun_heatflux_hist(tgrid, sf_hist.ok, sdm, cop)
             fcont .= sf_hist.ox .- 1.0*(sdm.ygrid .- sdm.Ly/2)'
             outfile = joinpath(figdir,"anim_sf_heatflux.mp4")
-            QG2L.animate_fields(tgrid, fcont, fheat, sdm, outfile; fcont_label=L"\psi", fheat_label=L"v'\psi_{BC}")
+            QG2L.animate_fields(tgrid, fcont, fheat, sdm, outfile; fcont_label="ψ", fheat_label="𝑣'ψ(BC)")
+        end
+        if todo_anim["v"] == 1
+            v_hist = QG2L.FlowFieldHistory(tgrid, sdm.Nx, sdm.Ny)
+            v_hist.ok .= cop.Dx .* sf_hist.ok
+            QG2L.synchronize_FlowField_k2x!(v_hist)
+            fheat .= v_hist.ox
+            fcont .= sf_hist.ox .- 1.0*(sdm.ygrid .- sdm.Ly/2)'
+            outfile = joinpath(figdir,"anim_sf_v.mp4")
+            @show outfile
+            QG2L.animate_fields(sf_hist.tgrid, fcont, fheat, sdm, outfile; fcont_label="ψ", fheat_label="𝑣")
         end
         if todo_anim["u"] == 1
             u_hist = QG2L.FlowFieldHistory(tgrid, sdm.Nx, sdm.Ny)
@@ -553,9 +565,9 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             fheat .= u_hist.ox
             fheat[:,:,1,:] .+= 1.0 # mean flow 
             fcont .= sf_hist.ox .- 1.0*(sdm.ygrid .- sdm.Ly/2)'
-            outfile = joinpath(figdir,"anim_sf_u_mem$(Nmem).mp4")
+            outfile = joinpath(figdir,"anim_sf_u.mp4")
             @show outfile
-            QG2L.animate_fields(sf_hist.tgrid, fcont, fheat, sdm, outfile; fcont_label=L"\psi", fheat_label=L"u")
+            QG2L.animate_fields(sf_hist.tgrid, fcont, fheat, sdm, outfile; fcont_label="ψ", fheat_label="𝑢")
         end
         if todo_anim["pv"] == 1
             println("starting to animate pv")
@@ -563,7 +575,7 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             fheat .= pv_hist_ox .+ php.beta*(sdm.ygrid .- sdm.Ly/2)'
             fcont .= sf_hist.ox .- 1.0*(sdm.ygrid .- sdm.Ly/2)'
             outfile = joinpath(figdir,"anim_sf_pv.mp4")
-            QG2L.animate_fields(tgrid, fcont, fheat, sdm, outfile; fcont_label=L"\psi", fheat_label=L"q")
+            QG2L.animate_fields(tgrid, fcont, fheat, sdm, outfile; fcont_label="ψ", fheat_label="𝑞")
         end
     end
 end

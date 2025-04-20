@@ -236,23 +236,28 @@ function animate_fields(tgrid::Vector{Int64}, fcont::Array{Float64,4}, fheat::Ar
     @show size(tidx)
 
 
-    figsize = (500 + 50, 1000)
+    figsize = (350 + 50, 600)
     fig = Figure(size=figsize)
     lout = fig[1:2,1:2] = GridLayout()
     if isnothing(titles)
-        titles = collect(L"Layer %$(iz) %$(fcont_label), %$(fheat_label)" for iz=1:2)
+        titles = collect("Layer $(iz) $(fcont_label) and $(fheat_label)" for iz=1:2)
     end
-    axes = collect(Axis(lout[iz,1], xlabel="x", ylabel="y", title=titles[iz]) for iz=1:2)
+    ytgts = collect(range(0, 1; length=33)[6:28])
+    Nytgt = length(ytgts)
+    ytickvalues = ytgts[3:6:Nytgt]
+    yticklabels = [@sprintf("%d/%d", round(Int, sdm.Ny*ytgt), sdm.Ny) for ytgt=ytickvalues]
+    boxrad = 1/32
+    axes = collect(Axis(lout[iz,1], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿", yticks=(ytickvalues,yticklabels), xticks=(ytickvalues,yticklabels), title=titles[iz], titlesize=14, xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10, titlefont=:regular, xticklabelrotation=-pi/2) for iz=1:2)
+    for iz = 1:2
+        xlims!(axes[iz], (0,1)) #sdm.Lx))
+        ylims!(axes[iz], (0,1)) #sdm.Ly))
+    end
     axes_cb = collect(Axis(lout[iz,2]) for iz=1:2)
     colsize!(lout, 1, Aspect(1, 1.0))
     colsize!(lout, 2, Relative(50/figsize[1]))
     for ax in axes_cb
         hidedecorations!(ax)
         hidespines!(ax)
-    end
-    for iz = 1:2
-        xlims!(axes[iz], (0,sdm.Lx))
-        ylims!(axes[iz], (0,sdm.Ly))
     end
     fcont_max_glob = vec(maximum(abs.(fcont[:,:,:,tidx]), dims=[1,2,4]))
     fheat_max_glob = vec(maximum(abs.(fheat[:,:,:,tidx]), dims=[1,2,4]))
@@ -277,19 +282,20 @@ function animate_fields(tgrid::Vector{Int64}, fcont::Array{Float64,4}, fheat::Ar
             fheat_max = global_colorscale ? fheat_max_glob : fheat_max_loc
             for iz = 1:2
                 ax = axes[iz]
-                tstr = @sprintf("%.2f", tgrid[i_t]*sdm.tu)
-                ax.title = L"%$(titles[iz]), t=%$(tstr)"
-                img = image!(ax, (0,sdm.Lx), (0,sdm.Ly), fheat[:,:,iz,i_t], colormap=colormap, colorrange=(-fheat_max[iz]*(!fheat_posdef),fheat_max[iz]*(!fheat_negdef)),)
+                tstr = @sprintf("%d", tgrid[i_t]*sdm.tu)
+                ax.title = "$(titles[iz]) at 𝑡 = $(tstr)"
+                img = image!(ax, (0,1), (0,1), fheat[:,:,iz,i_t], colormap=colormap, colorrange=(-fheat_max[iz]*(!fheat_posdef),fheat_max[iz]*(!fheat_negdef)),)
                 push!(objs, (ax,img))
                 ## colorbar 
+                cbartickvalues,cbarticklabels = hatickvals([-fcont_max,fcont_max])
                 cbar = Colorbar(lout[iz,2], img, vertical=true)
                 push!(objs, (cbar,))
                 ## contours
                 levneg = collect(range(-fcont_max[iz], 0, length=8)[1:end-1])
                 levpos = collect(range(0, fcont_max[iz], length=8)[2:end])
-                contneg = contour!(ax, sdm.xgrid, sdm.ygrid, fcont[:,:,iz,i_t],levels=levneg,color=:black,linestyle=:dash)
+                contneg = contour!(ax, sdm.xgrid./sdm.Lx, sdm.ygrid./sdm.Ly, fcont[:,:,iz,i_t],levels=levneg,color=:black,linestyle=:dash)
                 push!(objs, (ax,contneg))
-                contpos = contour!(ax, sdm.xgrid, sdm.ygrid, fcont[:,:,iz,i_t],levels=levpos,color=:black)
+                contpos = contour!(ax, sdm.xgrid./sdm.Lx, sdm.ygrid./sdm.Ly, fcont[:,:,iz,i_t],levels=levpos,color=:black)
                 push!(objs, (ax,contpos))
             end
             recordframe!(io)
@@ -315,7 +321,7 @@ function plot_snapshots(tgrid::Vector{Int64}, fheat::Array{Float64,4},fcont::Arr
     yticklabels = [@sprintf("%d/%d", round(Int, sdm.Ny*ytgt), sdm.Ny) for ytgt=ytickvalues]
     boxrad = 1/32
     # 
-    axes = collect(Axis(lout[iz,1], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿", yticks=(ytickvalues,yticklabels), xticks=(ytickvalues,yticklabels), title=titles[iz], titlesize=14, xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10, titlefont=:regular, xticklabelrotation=pi/2) for iz=1:2)
+    axes = collect(Axis(lout[iz,1], xlabel="𝑥/𝐿", ylabel="𝑦/𝐿", yticks=(ytickvalues,yticklabels), xticks=(ytickvalues,yticklabels), title=titles[iz], titlesize=14, xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10, titlefont=:regular, xticklabelrotation=-pi/2) for iz=1:2)
     for iz = 1:2
         xlims!(axes[iz], (0,1)) #sdm.Lx))
         ylims!(axes[iz], (0,1)) #sdm.Ly))
@@ -348,7 +354,7 @@ function plot_snapshots(tgrid::Vector{Int64}, fheat::Array{Float64,4},fcont::Arr
         fheat_max = global_colorscale ? fheat_max_glob : fheat_max_loc
         for iz = 1:2
             ax = axes[iz]
-            tstr = @sprintf("%.2f", t_snap*sdm.tu)
+            tstr = @sprintf("%d", t_snap*sdm.tu)
             ax.title = "$(titles[iz]) at 𝑡 = $(tstr)"
             ax.titlefont = :regular
             img = image!(ax, (0,1), (0,1), fheat[:,:,iz,i_snap], colormap=colormap, colorrange=(-fheat_max[iz]*(!fheat_posdef),fheat_max[iz]*(!fheat_negdef)),)
@@ -503,15 +509,14 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, fco
     fcont = fcont_nom .- anomaly_cont .* fcont_mssk[:,1]
     @assert size(fcont,1) == sdm.Ny
     Nt = size(fheat,2)
-    lblargs = Dict(:xticklabelsize=>12,:xlabelsize=>15,:yticklabelsize=>12,:ylabelsize=>15,:yticklabelpad=>15,:titlesize=>15,:xticklabelrotation=>0.0,:titlefont=>:regular,:yticks=>(ytickvalues,yticklabels),)
+    lblargs = Dict(:xticklabelsize=>12,:xlabelsize=>15,:yticklabelsize=>12,:ylabelsize=>15,:yticklabelpad=>15,:titlesize=>15,:xticklabelrotation=>-pi/2,:titlefont=>:regular,:yticks=>(ytickvalues,yticklabels), :xgridvisible=>false, :ygridvisible=>false)
     if anomaly_heat
-        title = "$(title) anomaly"
-        cbartickvals = maximum(abs.(fheat)) .* [-1,0,1]
-        vmin,vmax = cbartickvals[[1,3]]
+        title *= " anomaly"
+        vmin,vmax = maximum(abs.(fheat)) .* [-1,1] 
     else
-        cbartickvals = collect(range(extrema(fheat)...; length=3))
         vmin,vmax = extrema(fheat)
     end
+    vmid = (vmin+vmax)/2
     ax = Axis(lout[1,1], xlabel="𝑡", ylabel="𝑦/𝐿"; lblargs..., title=title)
     fheat_posdef = (minimum(fheat) >= 0)
     fheat_negdef = (maximum(fheat) <= 0)
@@ -525,7 +530,9 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, fco
         colormap = :vik
         color_cont = :black
     end
-    img = image!(ax, (tinit*sdm.tu,(tinit+Nt-1)*sdm.tu), (0.0,1.0), fheat', colormap=colormap, colorrange=(vmin,vmax))
+    cbartickvals,cbarticklabs = hatickvals([vmin,vmax])
+    img = image!(ax, (tinit*sdm.tu,(tinit+Nt-1)*sdm.tu), (0.0,1.0), fheat', colormap=colormap, colorrange=(cbartickvals[1],cbartickvals[end]))
+    cbar = Colorbar(lout[1,2], img, vertical=true, labelsize=15, ticklabelsize=12, ticks=(cbartickvals,cbarticklabs))
 
     fcont_posdef = (minimum(fcont) >= 0)
     fcont_negdef = (maximum(fcont) <= 0)
@@ -541,18 +548,19 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, fco
     end
     contneg = contour!(ax, range(tinit,tinit+Nt-1,step=1).*sdm.tu, sdm.ygrid./sdm.Ly, fcont', levels=levels_neg, linestyle=:dash, color=color_cont, linewidth=2)
     contpos = contour!(ax, range(tinit,tinit+Nt-1,step=1).*sdm.tu, sdm.ygrid./sdm.Ly, fcont', levels=levels_pos, linestyle=:solid, color=color_cont)
-    cbarticklabs = (F->@sprintf("%+3.2f",F)).(cbartickvals)
-    cbar = Colorbar(lout[1,2], img, vertical=true, labelsize=15, ticklabelsize=12, ticks=(cbartickvals,cbarticklabs))
     # zonal mean 
     # topography
     topo_zonal_mean = vec(SB.mean(cop.topography[:,:,2], dims=1))
-    lblargs[:xticklabelrotation] = pi/2
     lblargs[:ylabelvisible] = lblargs[:yticklabelsvisible] = false
-    xtickfun(f) = (maximum(f)-minimum(f) == 0 ? [-1.0,0.0,1.0] : range(minimum(f),maximum(f), 3))
-    ax = Axis(lout[1,3]; title="Topo.", lblargs..., xticks=xtickfun(topo_zonal_mean))
-    lines!(ax, topo_zonal_mean, sdm.ygrid, color=:black)
+    ax = Axis(lout[1,3]; title="Topo.", lblargs..., xticks=QG2L.hatickvals(topo_zonal_mean))
+    lines!(ax, topo_zonal_mean, sdm.ygrid./sdm.Ly, color=:black)
     for (i_mom,mom_name) = zip(1:1:4, ("Mean","Std. Dev.","Skew.","Kurt."))
-        ax = Axis(lout[1,3+i_mom]; title=mom_name, lblargs..., xticks=xtickfun(fheat_mssk[:,i_mom]), xtickformat="{:.2f}")
+        if i_mom > 1
+            xticks=QG2L.hatickvals(fheat_mssk[:,i_mom])
+        else
+            xticks = QG2L.hatickvals(vcat((fheat_mssk[:,1] .+ sgn.*fheat_mssk[:,2] for sgn=[-1,0,1])...))
+        end
+        ax = Axis(lout[1,3+i_mom]; title=mom_name, lblargs..., xticks=xticks, limits=((xticks[1][1],xticks[1][end]), (0,1)))
         lines!(ax, fheat_mssk[:,i_mom], sdm.ygrid./sdm.Ly; color=:black)
         if i_mom == 4
             vlines!(ax, 3.0; color=:black, linestyle=:dash)

@@ -112,7 +112,7 @@ function plot_objective_response_linquad(
                    :xticksize=>2.0, 
                    :xticklabelsize=>10,
                    :xticklabelsvisible=>false, 
-                   :xticklabelrotation=>pi/2, 
+                   :xticklabelrotation=>0, 
                    :xgridvisible=>false, 
 
                    :ylabelsize=>10,
@@ -282,7 +282,6 @@ function plot_objective_response_linquad(
         best_pert["1"][:,i_leadtime] .= p12grid[argmax(vec(response_surface_linear)),:]
         best_pert["2"][:,i_leadtime] .= p12grid[argmax(vec(response_surface_quadratic)),:]
         best_pert["z"][:,i_leadtime] .= p12grid[argmax(vec(response_surface_zernike)),:]
-        @infiltrate
 
 
         #vmin = min((minimum(r) for r=(response_surface_linear, response_surface_quadratic))...)
@@ -368,7 +367,7 @@ function plot_objective_response_linquad(
     end
     ylims!(ax_r2, -0.1, 1.1)
 
-    # Slope magnitude 
+    # Slope 
     ydata = zeros(Float64, length(leadtimes))
     maxydata = 0.0
     for (coefs,color) in ((coefs_linear,color_lin),(coefs_quadratic,color_quad))
@@ -376,8 +375,11 @@ function plot_objective_response_linquad(
         maxydata = max(maxydata, maximum(abs.(ydata)))
         scatterlines!(ax_slope, -leadtimes.*sdm.tu, ydata, color=color)
     end
+    coefcosfun(c1,c2) = sum(c1[2:3,:,i_anc].*c2[2:3,:,i_anc]; dims=1)[1,:]
+    lin_quad_dotprod = coefcosfun(coefs_linear,coefs_quadratic) #./ sqrt.(coefcosfun(coefs_linear,coefs_linear) .* coefcosfun(coefs_quadratic,coefs_quadratic))
+    #scatterlines!(ax_slope, -leadtimes.*sdm.tu, lin_quad_dotprod, color=:black)
     hlines!(ax_slope, 0.0; color=:gray, alpha=0.5)
-    ylims!(ax_slope, -maxydata, maxydata)
+    ylims!(ax_slope, 0, maxydata)
     # Hessian
     maxydata = 0.0
     for i_eig = 1:2

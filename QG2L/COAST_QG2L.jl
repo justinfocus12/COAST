@@ -49,11 +49,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "evaluate_mixing_criteria" =>                       0,
                              "plot_objective" =>                                 0, 
-                             "plot_conditional_pdfs" =>                          1,
-                             "plot_mixcrits_overlay" =>                          1,
+                             "plot_conditional_pdfs" =>                          0,
+                             "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        0,
                              "plot_COAST_mixture" =>                             0,
-                             "mixture_COAST_phase_diagram" =>                    0,
+                             "mixture_COAST_phase_diagram" =>                    1,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
@@ -787,8 +787,10 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     if mc in ["pth","pim","r2"]
                         ylims!(ax, -0.05, 1.05)
                     elseif mc in ["globcorr","contcorr"]
-                        ylims!(ax, 0.0, 1.0)
                         hlines!(ax, 1-(3/8)^2; color=:gray, alpha=1.0, linewidth=2, linestyle=(:dash,:dense))
+                        ytickvalues = [0.0, 0.1, 0.5, 0.9, 1.0]
+                        ax.yticks = (ytickvalues, string.(ytickvalues))
+                        ylims!(ax, 0.0, 1.0)
                     end
                     if mc in ["globcorr","contcorr"]
                         println("After plotting, limits are ")
@@ -797,7 +799,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                 end
                 rowsize!(lout, 1, 3/(3+length(mixcrits2plot)))
                 for i_row = 1:nrows(lout_mixcrits)-1
-                    rowgap!(lout_mixcrits, i_row, 2.0)
+                    rowgap!(lout_mixcrits, i_row, 5.0)
                 end
                 for i_col = 1:ncols(lout_pdfs)-1
                     colgap!(lout_pdfs, i_col, 0.0)
@@ -840,7 +842,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     mclo .= SB.sum(mcofast .* (mcofast .<= mcmean); dims=2) ./ SB.sum(mcofast .<= mcmean; dims=2)
                     mchi .= SB.sum(mcofast .* (mcofast .>= mcmean); dims=2) ./ SB.sum(mcofast .>= mcmean; dims=2)
                 end
-                @infiltrate mc in ["globcorr","contcorr"]
                 ax = axs[i_mc]
                 @show i_mc,mc,ax.yscale
                 if mc in ["globcorr","contcorr"]
@@ -850,6 +851,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     ax.ylabel = mixcrit_labels[mc]
                     hlines!(ax, 1-(3/8)^2; color=:gray, alpha=1.0, linewidth=2, linestyle=(:dash,:dense))
                     ylims!(ax, 0.0, 1.0)
+                    ytickvalues = [0.0, 0.1, 0.5, 0.9, 1.0]
+                    ax.yticks = (ytickvalues, string.(ytickvalues))
                 end
                 if mc in ["pth","pim","r2"]
                     ylims!(ax, 0.0, 1.0)
@@ -867,7 +870,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     lines!(ax, -leadtimes.*sdm.tu, mchi[:,1,i_scl]; colargs..., linewidth=2, linestyle=(:dash,:dense))
                 end
                 if i_mc < Nmc
-                    rowgap!(lout, i_mc, 2.0)
+                    rowgap!(lout, i_mc, 5.0)
                 end
             end
             axs[1].title = "$(label_target(cfg, sdm)), μ[$(powerofhalfstring(i_thresh_cquantile))]"
@@ -1333,6 +1336,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                 end
 
                 if todosub["fdiv_heatmap"]
+
                     for (i_fdivname,fdivname) in enumerate(fdivs2plot)
                         # TODO put a circle on each grid cell, with the size proportional to the fraction of ancestors at which that lead time was the optimizer of entropy 
 
@@ -1351,7 +1355,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             end
                             hm = heatmap!(ax, transcorr.(mixobjs[corrkey]), distn_scales[dst], fdivs[dst][rsp][corrkey][est][fdivname][i_boot,:,:]; colormap=Reverse(:grays), colorscale=log10)
                             cbar = Colorbar(lout[1,2], hm, vertical=true)
-                            co = contour!(ax, transcorr.(mixobjs[corrkey]), distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*round.(Int, leadtimes[1:round(Int,Nleadtime/7):Nleadtime]), color=:red, labels=true)
+                            co = contour!(ax, mixobjs[corrkey], distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*round.(Int, leadtimes[1:round(Int,Nleadtime/7):Nleadtime]), color=:red, labels=true)
                             save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_syn$(corrkey)_$(est).png"), fig)
                         end
                         # --------------- AST as the independent variable ------------
@@ -1359,8 +1363,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         lout = fig[1,1] = GridLayout()
                         ax = Axis(lout[1,1], xlabel="−AST", ylabel="Scale", title="$(fdivlabels[i_fdivname]), $(label_target(cfg,sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular) 
                         hm = heatmap!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["lt"][est][fdivname][i_boot,:,:]; dims=1); colormap=Reverse(:grays), colorscale=log10)
-                        levels_contcorr = transcorr.(mixobjs["contcorr"][1:round(Int,Nmcs["contcorr"]/7):Nmcs["contcorr"]])
-                        co = contour!(ax, -sdm.tu.*reverse(leadtimes), distn_scales[dst], reverse(SB.mean(transcorr.(mixcrits[dst][rsp]["contcorr"]); dims=2)[1:Nleadtime,1,1:Nscales]; dims=1); levels=levels_contcorr, color=:red, labels=true)
+                        levels_contcorr = mixobjs["contcorr"][1:round(Int,Nmcs["contcorr"]/7):Nmcs["contcorr"]]
+                        co = contour!(ax, -sdm.tu.*reverse(leadtimes), distn_scales[dst], reverse(invtranscorr.(SB.mean(transcorr.(mixcrits[dst][rsp]["contcorr"]); dims=2)[1:Nleadtime,1,1:Nscales]); dims=1); levels=levels_contcorr, color=:red, labels=true)
                         cbar = Colorbar(lout[1,2], hm, vertical=true)
                         levels_pth = collect(range(mixobjs["pth"][[1,end]]..., length=12))
                         levels_pim = collect(range(mixobjs["pim"][[1,end]]..., length=12))

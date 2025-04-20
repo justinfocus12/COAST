@@ -16,6 +16,37 @@ function shortfmt(xrange::Float64)
     return fmt 
 end
 
+function signsymb(v::Float64)
+    if v > 0
+        return "+"
+    elseif v == 0
+        return " "
+    else
+        return "−"
+    end
+end
+
+function hatickvals(vals2plot::Array{Float64})
+    vmin,vmax = extrema(vals2plot)
+    vmid = (vmin+vmax)/2
+
+    if vmax-vmin < 1000*eps(Float64) 
+        if abs(vmid) < 1000*eps(Float64)
+            tickvals = [-1.0,0.0,1.0]
+        else
+            tickvals = [0.9,1.0,1.1] .* vmid
+        end
+    else
+        tickvals = range(vmin, vmax; length=3)
+    end
+    if 0.1 < tickvals[2] - tickvals[1] < 10
+        ticklabs = (v -> @sprintf("%s%.1f", signsymb(v), abs(v))).(tickvals)
+    else tickvals[2] - tickvals[1] < 0.1
+        ticklabs = (v -> @sprintf("%s%.1e", signsymb(v), abs(v))).(tickvals)
+    end
+    return (tickvals, ticklabs)
+end
+
 function nanquantile(x::Vector{Float64}, q::Float64)
     @assert 0 <= q <= 1
     return SB.quantile(filter(!isnan, x), q)
