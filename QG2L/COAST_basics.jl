@@ -1,25 +1,25 @@
 
-function sigmoid(x)
+function sigmoid(x::Union{Int,Real})
     return 1/(1+exp(-x))
 end
 
-function logit(x)
+function logit(x::Union{Int,Real})
     return log(x) - log1p(-x)
 end
 
-function logit_shifted_scaled(c::Float64, c0::Float64)
+function logit_shifted_scaled(c::Union{Int,Real}, c0::Float64)
     z0 = logit((1+c0)/(1+2*c0))
     z = z0 + logit(1/2*((c-1/2)/(c0+1/2) + 1))
     return z
 end
 
-function sigmoid_shifted_scaled(z::Float64, c0::Float64)
+function sigmoid_shifted_scaled(z::Union{Int,Real}, c0::Float64)
     z0 = logit((1+c0)/(1+2*c0))
     c = 1/2 + (1+2*c0)*(sigmoid(z-z0)-1/2)
     return c
 end
 
-function transcorr(x::Float64, fwd::Bool,; c0=0.01)
+function transcorr(x::Union{Int,Real}, fwd::Bool,; c0=0.01)
     # c denotes correlation (0 <= c <= 1)
     # z denotes transformed correlation (-infty < z < infty)
     if fwd # 
@@ -33,17 +33,17 @@ function transcorr(x::Float64, fwd::Bool,; c0=0.01)
     end
 end
 
-transcorr(x::Float64, c0::Float64=0.01) = transcorr(x, true; c0=c0)
-invtranscorr(x::Float64, c0::Float64=0.01) = transcorr(x, false; c0=c0)
+transcorr(x::Union{Int,Real}, c0::Float64=0.01) = transcorr(x, true; c0=c0)
+invtranscorr(x::Union{Int,Real}, c0::Float64=0.01) = transcorr(x, false; c0=c0)
 
 # ------------ harder-coded versions ------------
-function transcorr_hard(x::Float64)
+function transcorr_hard(x::Union{Int,Real})
     c0 = 0.01
     c = abs(x)
     z = logit_shifted_scaled(c, c0)
     return z*sign(x)
 end
-function invtranscorr_hard(x::Float64)
+function invtranscorr_hard(x::Union{Int,Real})
     c0 = 0.01
     z = abs(x)
     c = sigmoid_shifted_scaled(z, c0)
