@@ -177,7 +177,7 @@ function plot_objective_response_linquad(
     label_slope_text = """
     Linear fit
     magnitude
-      |β₁|
+      ‖θ₁‖
     """
     label_eig_text = """
     Quadratic fit
@@ -358,7 +358,9 @@ function plot_objective_response_linquad(
         lines!(ax1d, limits_1d, limits_1d; color=:black, linestyle=(:dash,:dense))
     end
 
-    scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_zernike[:,i_anc]; color=color_zern, label="Zern")
+    if plot_zernike_flag
+        scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_zernike[:,i_anc]; color=color_zern, label="Zern")
+    end
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_linear[:,i_anc]; color=color_lin, label="Lin")
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_quadratic[:,i_anc]; color=color_quad, label="Quad")
     vlines!(ax_r2, -leadtimes[idx_leadtimes2plot].*sdm.tu; color=:gray, alpha=0.5)

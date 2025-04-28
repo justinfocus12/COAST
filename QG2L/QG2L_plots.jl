@@ -509,7 +509,7 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, fco
     fcont = fcont_nom .- anomaly_cont .* fcont_mssk[:,1]
     @assert size(fcont,1) == sdm.Ny
     Nt = size(fheat,2)
-    lblargs = Dict(:xticklabelsize=>12,:xlabelsize=>15,:yticklabelsize=>12,:ylabelsize=>15,:yticklabelpad=>15,:titlesize=>15,:xticklabelrotation=>-pi/2,:titlefont=>:regular,:yticks=>(ytickvalues,yticklabels), :xgridvisible=>false, :ygridvisible=>false)
+    lblargs = Dict(:xticklabelsize=>15,:xlabelsize=>20,:yticklabelsize=>15,:ylabelsize=>20,:yticklabelpad=>15,:titlesize=>20,:xticklabelrotation=>0,:titlefont=>:regular,:yticks=>(ytickvalues,yticklabels), :xgridvisible=>false, :ygridvisible=>false)
     if anomaly_heat
         title *= " anomaly"
         vmin,vmax = maximum(abs.(fheat)) .* [-1,1] 
@@ -552,6 +552,7 @@ function plot_hovmoller_ydep!(lout::GridLayout, fheat_nom::Array{Float64,2}, fco
     # topography
     topo_zonal_mean = vec(SB.mean(cop.topography[:,:,2], dims=1))
     lblargs[:ylabelvisible] = lblargs[:yticklabelsvisible] = false
+    lblargs[:xticklabelrotation] = -pi/2
     ax = Axis(lout[1,3]; title="Topo.", lblargs..., xticks=QG2L.hatickvals(topo_zonal_mean))
     lines!(ax, topo_zonal_mean, sdm.ygrid./sdm.Ly, color=:black)
     for (i_mom,mom_name) = zip(1:1:4, ("Mean","Std. Dev.","Skew.","Kurt."))

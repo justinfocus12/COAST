@@ -68,10 +68,10 @@ end
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
-                             "plot_mixcrits_ydep" =>             1,
+                             "plot_mixcrits_ydep" =>             0,
                              "compile_fdivs" =>                  0,
-                             "plot_fdivs" =>                     1,
-                             "plot_ccdfs_latdep" =>              0,
+                             "plot_fdivs" =>                     0,
+                             "plot_ccdfs_latdep" =>              1,
                              # danger zone
                              "remove_pngs" =>                    0,
                              # defunct/hibernating
@@ -178,6 +178,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
 
         end
         # ----------------- Latitude dependent quantiles -------------------
+        # TODO synchronize axislabels and fix the legend
         colargs = Dict(:colormap=>Reverse(:roma), :colorrange=>(1,length(ccdf_levels)))
         fig = Figure(size=(400,400))
         lout = fig[1,1] = GridLayout()
@@ -562,9 +563,10 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
 
                     #
                     # --------------- F-divergence as a function of AST  -----------
-                    fig = Figure(size=(400,250))
+                    contour_flag = false
+                    fig = Figure(size=(500,250))
                     lout = fig[1,1] = GridLayout()
-                    axfdiv,axmc = [Axis(lout[2,i]; axargs...) for i=[1,3]]
+                    axfdiv,axmc,axiltfrac = [Axis(lout[2,i]; axargs...) for i=[1,3,5]]
                     axargs[:xticklabelrotation] = -pi/2
                     delete!(axargs, :xlabel)
                     axmaxfdiv = Axis(lout[2,2]; axargs...) 
@@ -572,9 +574,10 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     threshcquantstr = @sprintf("%.2E",thresh_cquantile)
                     suptitle = Label(lout[1,:], @sprintf("%s, 𝑠=%.2f", label_target(target_r, sdm), distn_scales[dst][i_scl]); fontsize=10)
                     axfdiv.title = fdivlabel
-                    axmaxfdiv.title = "bounds"
+                    axmaxfdiv.title = @sprintf("%s\nbounds", fdivlabel)
                     axmc.title = mclabel
-                    axmaxmc.title = "bounds"
+                    axmaxmc.title = @sprintf("%s\nbounds",mclabel)
+                    axiltfrac.title = @sprintf("%s-\nCOASTs", mclabel)
                     # First heatmap: overlay optimal-entropy leadtime distribution on fdiv
                     maxfdiv = maximum(fdiv_of_ast[:,:,i_scl]; dims=1)
                     minfdiv = minimum(fdiv_of_ast[:,:,i_scl]; dims=1)
@@ -585,12 +588,22 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     axmaxfdiv.xscale = log10
                     scatterlines!(axmaxmc, vec(maxmc), ytgts; color=:black, marker=:circle, markersize=4)
                     scatterlines!(axmaxmc, vec(minmc), ytgts; color=:black, marker=:circle, markersize=4)
-                    hmfdiv = heatmap!(axfdiv, -sdm.tu.*reverse(leadtimes), ytgts, (reverse(fdiv_of_ast[:,:,i_scl]; dims=1) .- minfdiv)./(maxfdiv .- minfdiv); colormap=Reverse(:grays), colorscale=colorscale, colorrange=colorrange_fdiv)
-                    #scatter!(axfdiv, -sdm.tu.*leadtimes[ilt_best_of_ast[:,i_scl]], ytgts; color=:red, marker=:cross)
-                    hmmc = heatmap!(axmc, -sdm.tu.*reverse(leadtimes), ytgts, (reverse(mc_of_ast[:,:,i_scl]; dims=1) .- minmc)./(maxmc .- minmc); colormap=:grays)
-                    for (i_ytgt,ytgt) in enumerate(ytgts)
-                        scatter!(axmc, -sdm.tu.*leadtimes, ytgt.*ones(Float64,Nleadtime); marker='O', markersize=60 .* iltfrac_mc_of_ast[:,i_ytgt,i_scl], color=:red)
+                    if contour_flag
+                        hmfdiv = contour!(axfdiv, -sdm.tu.*reverse(leadtimes), ytgts, (reverse(fdiv_of_ast[:,:,i_scl]; dims=1) .- minfdiv)./(maxfdiv .- minfdiv); levels=5) #colormap=Reverse(:grays), colorscale=colorscale, colorrange=colorrange_fdiv)
+                    else
+                        hmfdiv = heatmap!(axfdiv, -sdm.tu.*reverse(leadtimes), ytgts, (reverse(fdiv_of_ast[:,:,i_scl]; dims=1) .- minfdiv)./(maxfdiv .- minfdiv); colormap=Reverse(:grays), colorscale=colorscale, colorrange=colorrange_fdiv)
                     end
+                    if contour_flag
+                        hmmc = contour!(axmc, -sdm.tu.*reverse(leadtimes), ytgts, (reverse(mc_of_ast[:,:,i_scl]; dims=1) .- minmc)./(maxmc .- minmc); levels=5)
+                    else
+                        hmmc = heatmap!(axmc, -sdm.tu.*reverse(leadtimes), ytgts, (reverse(mc_of_ast[:,:,i_scl]; dims=1) .- minmc)./(maxmc .- minmc); colormap=:grays)
+                    end
+                    if contour_flag
+                        hmiltfrac = contour!(axiltfrac, -sdm.tu.*reverse(leadtimes), ytgts, reverse(iltfrac_mc_of_ast[:,:,i_scl]; dims=1); levels=5)
+                    else
+                        hmiltfrac = heatmap!(axiltfrac, -sdm.tu.*reverse(leadtimes), ytgts, reverse(iltfrac_mc_of_ast[:,:,i_scl]; dims=1); colormap=:grays)
+                    end
+
                     rowgap!(lout, 1, 5)
                     rowsize!(lout, 1, Relative(1/9))
 
@@ -598,20 +611,21 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     co_globcorr = contour!(axfdiv, -sdm.tu.*reverse(leadtimes), ytgts, reverse(globcorr_of_ast[:,:,i_scl]; dims=1); levels=[ϵ], color=:deepskyblue, linewidth=1.5, linestyle=(:dash,:dense))
                     resize_to_layout!(fig)
 
-                    colsize!(lout, 1, Relative(1/3))
-                    colsize!(lout, 2, Relative(1/6))
-                    colsize!(lout, 3, Relative(1/3))
-                    for ax = (axmaxfdiv,axmc,axmaxmc)
+                    colsize!(lout, 1, Relative(2/8))
+                    colsize!(lout, 2, Relative(1/8))
+                    colsize!(lout, 3, Relative(2/8))
+                    colsize!(lout, 4, Relative(1/8))
+                    for ax = (axmaxfdiv,axmc,axmaxmc,axiltfrac)
                         ax.ylabelvisible = ax.yticklabelsvisible=false
                     end
-                    for i_col = 1:3
+                    for i_col = 1:4
                         colgap!(lout, i_col, 0)
                     end
 
 
                     save(joinpath(resultdir,"heatmap_$(fdivname)_ofASTandY_$(dst)_$(rsp)_$(i_scl)_nocoast.png"), fig)
-                    for ax = (axfdiv,axmc)
-                        scatter!(ax, -sdm.tu.*leadtimes[ilt_best_of_ast[:,i_scl]], ytgts; color=:green, marker=:cross)
+                    for ax = (axfdiv,)
+                        scatter!(ax, -sdm.tu.*leadtimes[ilt_best_of_ast[:,i_scl]], ytgts; color=:firebrick, marker=:cross)
                     end
                     for ax = (axmaxfdiv,axmaxmc)
                         ax.xticklabelrotation = -pi/2
@@ -631,9 +645,9 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     # First heatmap: overlay optimal-entropy leadtime distribution on fdiv
                     hm1 = heatmap!(ax1, transcorr.(mixobjs["contcorr"]), ytgts, fdiv_of_contcorr[:,:,i_scl]; colormap=colormap, colorscale=colorscale, colorrange=colorrange_fdiv)
                     co1 = contour!(ax1, transcorr.(mixobjs["contcorr"]), ytgts, mc_of_contcorr[:,:,i_scl]; levels=range(mcrange...; length=7), color=:cyan, labels=false)
-                    for (i_ytgt,ytgt) in enumerate(ytgts)
-                        scatter!(ax1, transcorr.(mixobjs["contcorr"]), ytgt.*ones(Float64,Nmcs["contcorr"]); marker='O', markersize=60 .* iccfrac_mc_of_contcorr[:,i_ytgt,i_scl], color=:black)
-                    end
+                    #for (i_ytgt,ytgt) in enumerate(ytgts)
+                    #    scatter!(ax1, transcorr.(mixobjs["contcorr"]), ytgt.*ones(Float64,Nmcs["contcorr"]); marker='O', markersize=60 .* iccfrac_mc_of_contcorr[:,i_ytgt,i_scl], color=:black)
+                    #end
                     cbar1 = Colorbar(lout[1,1], hm1; vertical=false, label=title, cbarargs...)
                     rowgap!(lout, 1, 5)
                     rowsize!(lout, 1, Relative(1/9))

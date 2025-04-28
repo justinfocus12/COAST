@@ -52,8 +52,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        0,
-                             "plot_COAST_mixture" =>                             0,
-                             "mixture_COAST_phase_diagram" =>                    1,
+                             "plot_COAST_mixture" =>                             1,
+                             "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
@@ -358,10 +358,10 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
         shortlabel,longlabel = [
                                 @sprintf(
-                                         "%s (%d-day) DNS & %d%% CI", 
-                                         squal, squant, confint*100
+                                         "%s (%.1E-day) DNS & %d%% CI", 
+                                         squal, squant, round(Int,confint*100)
                                          ) 
-                                for (squal,squant)=[("Short",time_ancgen_dns_ph),("Long",time_valid_dns_ph)]
+                                for (squal,squant)=[("Short",time_ancgen_dns_ph),("Long",time_valid_dns_ph*sdm.Nx)]
                                ]
         #
         fig = Figure()
@@ -1005,7 +1005,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                     ccdfs_opt[mc][est][:,i_boot] .= ccdfmixs[dst][rsp][mc][est][:,i_boot,imcs_opt[mc][est][i_boot],i_scl]
                                 end
                                 if mc in ["globcorr","contcorr"]
-                                    mcstrs_opt[mc][est] = @sprintf("σ(%.1f)",transcorr(mixobjs[mc][imcs_opt[mc][est][1]]))
+                                    mcstrs_opt[mc][est] = @sprintf("%.3f",mixobjs[mc][imcs_opt[mc][est][1]])
                                 elseif mc in ["lt"]
                                     mcstrs_opt[mc][est] = @sprintf("%d",mixobjs[mc][imcs_opt[mc][est][1]])
                                 else
@@ -1013,8 +1013,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                 end
                                 fdivstrs_opt[mc][est] = @sprintf("%.1E",fdivs_opt[mc][est][1])
                             end
+                            labels_opt[mc] = mixcrit_labels[mc]
                             if mc in ["globcorr","contcorr","lt"]
-                                labels_opt[mc] = "$(mixcrit_labels[mc])\n=$(mcstrs_opt[mc]["mix"]) / $(mcstrs_opt[mc]["pool"])" #\n$(fdivlabel) = $(fdivstrs_opt[mc]["mix"]) / $(fdivstrs_opt[mc]["pool"])"
+                                labels_opt[mc] = "$(mixcrit_labels[mc])\n=$(mcstrs_opt[mc]["mix"]) ($(mcstrs_opt[mc]["pool"]))" 
                             else
                                 labels_opt[mc] = "max $(mixcrit_labels[mc])" # \n$(fdivlabel) = $(fdivstrs_opt[mc]["mix"]) / $(fdivstrs_opt[mc]["pool"])"
                             end
@@ -1028,24 +1029,25 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         dnspot = thresh_cquantile.*ccdf_pot_valid_pt
                         # ---------------- Figure layout -------------------
                         Nmcs2mix = length(mcs2mix)
-                        fig = Figure(size=(100*(Nmcs2mix+2),400))
+                        fig = Figure(size=(100*(Nmcs2mix+2),450))
                         lout = fig[1,1] = GridLayout()
                         axargs = Dict(:xscale=>log10, :ylabel=>"Severity 𝑅*", :titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :ylabelvisible=>false, :yticklabelsvisible=>false, :ylabelsize=>12, :yticklabelsize=>10, :titlesize=>10, :xlabelsize=>10, :xticklabelsize=>9, :xticklabelrotation=>-pi/2, )
+                        toplabel = Label(lout[1,1:Nmcs2mix+1], label_target(cfg, sdm, distn_scales[dst][i_scl]),fontsize=14,font=:regular,valign=:bottom)
                         axs_mcseps = [
-                                      Axis(lout[1,1+i_mc]; axargs..., title=labels_opt[mcs2mix[i_mc]], )
+                                      Axis(lout[2,1+i_mc]; axargs..., title=labels_opt[mcs2mix[i_mc]], )
                                       for i_mc=1:Nmcs2mix
                                      ]
                         axargs[:title] = "Short DNS"
-                        axancgen = Axis(lout[1,1]; axargs...)
+                        axancgen = Axis(lout[2,1]; axargs...)
                         axargs[:xlabel] = "CCDF/(DNS CCDF)" 
                         delete!(axargs, :title)
-                        axratio = Axis(lout[1,1+Nmcs2mix+1]; axargs...)
+                        axratio = Axis(lout[2,1+Nmcs2mix+1]; axargs...)
                         axargs[:xscale],axargs[:yscale] = identity,log10
                         axargs[:ylabel],axargs[:ylabelvisible],axargs[:yticklabelsvisible] = "KL",true,true
                         delete!(axargs, :xlabel)
                         delete!(axargs, :title)
                         axargs[:xticklabelsvisible] = false
-                        axfdiv = Axis(lout[2,1:Nmcs2mix+1]; axargs...)
+                        axfdiv = Axis(lout[3,1:Nmcs2mix+1]; axargs...)
 
                         # GPD
                         lines!(axancgen, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3)
@@ -1070,6 +1072,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         lines!(axfdiv, [1,1], [fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi]; color=:black, linewidth=2)
                         scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; marker=:circle, linewidth=3, colargs...)
                         for (i_mc,mc) in enumerate(mcs2mix)
+                            # include the values of the the thresholded mixing criteria 
                             for (est,linestyle,marker,yoffset) in (("mix",:solid,:xcross,0.1),("pool",(:dot,:dense),'O',-0.1))
                                 fdivlo,fdivhi = [SB.quantile(fdivs_opt[mc][est][2:Nboot+1], q) for q=[0.05,0.95]]
                                 ccdflo,ccdfhi = [thresh_cquantile.*QG2L.quantile_sliced(ccdfs_opt[mc][est][i_thresh_cquantile:end,2:Nboot+1], q, 2)[:,1] for q=[0.05,0.95]]
@@ -1106,8 +1109,10 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             colgap!(lout, i_col, 0)
                         end
 
-                        rowsize!(lout, 1, Relative(4/5))
+                        rowsize!(lout, 1, Relative(50/450))
+                        rowsize!(lout, 2, Relative(320/450))
                         rowgap!(lout, 1, 0)
+                        rowgap!(lout, 2, 0)
 
                         save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(fdivname)_$(i_scl)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                     end
@@ -1208,7 +1213,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                 idx_desc_ilt = desc_by_leadtime(coast, i_anc, leadtime, sdm)
                 idx_desc_cont[i_leadtime] = idx_desc_ilt[argmax(coast.desc_Rmax[idx_desc_ilt])]
             end
-                # TODO
                 
             tRmaxs = zeros(Int64, length(mems_ordered))
             for (i_desc,desc) in enumerate(descendants)
@@ -1280,7 +1284,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
     
     if todo["mixture_COAST_phase_diagram"]
-        # TODO upgrade
         ytgtstr = @sprintf("%.2f", cfg.target_yPerL*sdm.Ly)
         rxystr = @sprintf("%.3f", cfg.target_ryPerL*sdm.Ly)
         # ------------- Lead-time parameterized ---------------
@@ -1338,7 +1341,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                 if todosub["fdiv_heatmap"]
 
                     for (i_fdivname,fdivname) in enumerate(fdivs2plot)
-                        # TODO put a circle on each grid cell, with the size proportional to the fraction of ancestors at which that lead time was the optimizer of entropy 
 
                         # globcorr and contcorr as the independent variable
                         for corrkey = ["globcorr","contcorr"]
@@ -1385,7 +1387,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])

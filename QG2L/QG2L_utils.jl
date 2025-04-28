@@ -39,10 +39,15 @@ function hatickvals(vals2plot::Array{Float64})
     else
         tickvals = range(vmin, vmax; length=3)
     end
-    if 0.1 < tickvals[2] - tickvals[1] < 10
-        ticklabs = (v -> @sprintf("%s%.1f", signsymb(v), abs(v))).(tickvals)
-    else tickvals[2] - tickvals[1] < 0.1
-        ticklabs = (v -> @sprintf("%s%.1e", signsymb(v), abs(v))).(tickvals)
+    optionalsignsymb(v) = (vmin < 0 <= vmax ? signsymb(v) : "")
+    if 0.01 < tickvals[2] - tickvals[1] <= 0.1
+        ticklabs = (v -> @sprintf("%s%3.2f", optionalsignsymb(v), abs(v))).(tickvals)
+    elseif 0.1 < tickvals[2] - tickvals[1] <= 1
+        ticklabs = (v -> @sprintf("%s%2.1f", optionalsignsymb(v), abs(v))).(tickvals)
+    elseif 1 < tickvals[2] - tickvals[1] <= 100
+        ticklabs = (v -> @sprintf("%s%.0f", optionalsignsymb(v), abs(v))).(tickvals)
+    else
+        ticklabs = (v -> @sprintf("%s%.1E", optionalsignsymb(v), abs(v))).(tickvals)
     end
     return (tickvals, ticklabs)
 end
