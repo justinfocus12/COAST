@@ -68,10 +68,10 @@ end
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
-                             "plot_mixcrits_ydep" =>             0,
-                             "compile_fdivs" =>                  0,
-                             "plot_fdivs" =>                     0,
-                             "plot_ccdfs_latdep" =>              1,
+                             "plot_mixcrits_ydep" =>             1,
+                             "compile_fdivs" =>                  1,
+                             "plot_fdivs" =>                     1,
+                             "plot_ccdfs_latdep" =>              0,
                              # danger zone
                              "remove_pngs" =>                    0,
                              # defunct/hibernating
@@ -377,22 +377,25 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 for rsp = rsps
                     for i_scl = scales2plot
                         scalestr = @sprintf("𝑠 = %.2f", distn_scales[dst][i_scl])
+                        boxradstr = label_target(cfgs[1], sdm, false)
                         syncmcs = ["lt","contcorr","globcorr","ei","ent"]
                         Nmcs2plot = length(syncmcs)
                         # ---------------- Put each mixing criterion into its own panel -------
                         fig = Figure(size=(100*Nmcs2plot,360))
                         lout = fig[1,1] = GridLayout()
+                        toplabel = Label(lout[1,1:Nmcs2plot], @sprintf("%s, %s", boxradstr, scalestr), fontsize=14,font=:regular,valign=:bottom)
+                        titlefun = (mc -> @sprintf("%s\n%s", (mc in ["lt","contcorr","globcorr"] ? "best" : "max"),mixcrit_labels[mc]))
                         axs_mc = [
                                 Axis(
-                                    lout[1,i_mc], 
+                                    lout[2,i_mc], 
                                     ylabel="𝑦₀/𝐿", ylabelvisible=(i_mc==1), yticklabelsvisible=(i_mc==1), ylabelsize=12, yticklabelsize=10, yticks=(ytickvalues,yticklabels),
                                     xlabel=fdivlabels[fdivname], xlabelvisible=false, xlabelsize=12, xticklabelsize=10, xticklabelrotation=-pi/2, 
-                                    title=mixcrit_labels[mc], titlevisible=true, titlefont=:regular, 
+                                    title=titlefun(mc), titlefont=:regular, 
                                     xscale=log10, xgridvisible=false, ygridvisible=false
                                    )
                                for (i_mc,mc) in enumerate(syncmcs)
                               ]
-                        shared_xlabel = Label(lout[2,1:Nmcs2plot], fdivlabels[fdivname])
+                        shared_xlabel = Label(lout[3,1:Nmcs2plot], fdivlabels[fdivname])
 
                         # Short simulation
                         for ax = axs_mc
@@ -421,7 +424,10 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         for i_col = 1:Nmcs2plot-1
                             colgap!(lout, i_col, 0)
                         end
-                        rowsize!(lout, 2, Relative(1/9))
+                        rowsize!(lout, 1, Relative(1/9))
+                        rowsize!(lout, 2, Relative(7/9))
+                        rowgap!(lout, 1, 0)
+                        rowgap!(lout, 2, 0)
 
                         save(joinpath(resultdir,"fdivofy_$(fdivname)_$(dst)_$(rsp)_$(i_scl).png"), fig)
                     end
@@ -444,7 +450,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         est = "mix"
         ϵ = 1-(3/8)^2
         for rsp = rsps2plot
-            for (fdivname,fdivlabel) = [("chi2","χ²"),("kl","KL"),("qrmse","𝐿²"),][2:2]
+            for (fdivname,fdivlabel) = [("chi2","χ²"),("kl","KL"),("qrmse","𝐿²"),][1:3]
                 (
                  fdiv_of_ast,
                  contcorr_of_ast,globcorr_of_ast,mc_of_ast,
@@ -546,6 +552,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     #hm = heatmap!(ax, -sdm.tu.*reverse(leadtimes), ytgts, reverse(transcorr.(contcorr_of_ast[1:Nleadtime,1:Nytgt,i_scl]); dims=1); colormap=Reverse(:grays), colorrange=transcorr.(ccrange))
                     # Separate contours into three tiers: greater, equal to, and less than 1-(3/8)^2
                     corrlevs_all = invtranscorr.(collect(range(0, transcorr(1); length=12))[2:end-1])
+                    
                     Nlevlo = searchsortedlast(corrlevs_all, ϵ)
                     Nlevhi = length(corrlevs_all) - Nlevlo
                     for (

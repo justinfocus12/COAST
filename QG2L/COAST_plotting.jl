@@ -55,7 +55,6 @@ function plot_objective_spaghetti(cfg, sdm, cop, pertop, ens, coast, i_anc, thre
             lines!(ax1, tph_desc[itpert:end] .- t0ph, coast.desc_Roft[i_anc][i_desc][itpert:end]; kwargs...)
             vlines!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph; kwargs...)
         end
-        scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Roft[i_anc][i_desc][itpert]; kwargs..., markersize=5)
         scatter!(ax1, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=6) 
         scatter!(ax2, coast.desc_tphpert[i_anc][i_desc]-t0ph, coast.anc_Rmax[i_anc]; kwargs..., markersize=8, label="Splits") 
         scatter!(ax2, coast.desc_tRmax[i_anc][i_desc]*sdm.tu-t0ph, coast.desc_Rmax[i_anc][i_desc]; kwargs..., markersize=8, marker=:star6, alpha=0.8, label="Peaks")
@@ -175,9 +174,9 @@ function plot_objective_response_linquad(
         𝑅²
     """
     label_slope_text = """
-    Linear fit
-    magnitude
-      ‖θ₁‖
+    Linear coefficient
+    magnitudes
+    ‖(θ₁,θ₂)‖
     """
     label_eig_text = """
     Quadratic fit

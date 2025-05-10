@@ -48,11 +48,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_contour_dispersion_distribution" =>           0,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "evaluate_mixing_criteria" =>                       0,
-                             "plot_objective" =>                                 0, 
+                             "plot_objective" =>                                 1, 
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        0,
-                             "plot_COAST_mixture" =>                             1,
+                             "plot_COAST_mixture" =>                             0,
                              "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
@@ -815,65 +815,74 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         mixcrits,ccdfs,pdfs,iltmixs = JLD2.jldopen(joinpath(resultdir,"mixcrits_ccdfs_pdfs.jld2"),"r") do f
             return f["mixcrits"],f["ccdfs"],f["pdfs"],f["ilts"]
         end
-        mixcrits2plot = ["ei","ent","globcorr","contcorr"] # TODO group them 
-        Nmc = length(mixcrits2plot)
+        mixcrit_groups_2plot = [["r2lin","r2quad"],["ei"],["ent"],["globcorr"],["contcorr"]] # TODO group them 
+
+        Nmcgroups = length(mixcrit_groups_2plot)
         dst = "b"
         for rsp = ["z","2","e"]
             Nscales = length(distn_scales[dst])
-            fig = Figure(size=(600,100*(Nmc+1)))
+            fig = Figure(size=(600,100*(Nmcgroups+1)))
             lout = fig[1,1] = GridLayout()
             axs = [
                    Axis(
-                        lout[i_mc,1]; 
-                        yscale = (mc in ["contcorr","globcorr"] ? transcorr_hard : identity),
-                        xlabel="−AST", ylabel=mixcrit_labels[mixcrits2plot[i_mc]], 
-                        titlefont=:regular, xlabelvisible=(i_mc==Nmc), xticklabelsvisible=(i_mc==Nmc), 
-                        xlabelsize=15, ylabelsize=15, xticklabelsize=12, yticklabelsize=12, 
+                        lout[i_mcgroup,1]; 
+                        yscale = (mcgroup[1] in ["contcorr","globcorr"] ? transcorr_hard : identity),
+                        xlabel="−AST", ylabel=join([mixcrit_labels[mc] for mc=mcgroup], ",\n"), 
+                        titlefont=:regular, xlabelvisible=(i_mcgroup==Nmcgroups), xticklabelsvisible=(i_mcgroup==Nmcgroups), 
+                        xlabelsize=15, ylabelsize=15, xticklabelsize=12, yticklabelsize=12, ylabelrotation=0,
                         xgridvisible=false, ygridvisible=false
                        ) 
-                   for (i_mc,mc) in enumerate(mixcrits2plot) 
+                   for (i_mcgroup,mcgroup) in enumerate(mixcrit_groups_2plot) 
                   ]
             println([ax.yscale for ax=axs])
             mcmean,mclo,mchi = (zeros(Float64, (Nleadtime,1,Nscales)) for _=1:3)
             scales2plot = [1,12]
-            for (i_mc,mc) in enumerate(mixcrits2plot)
-                let mcofast = mixcrits[dst][rsp][mc][1:Nleadtime,1:Nanc,1:Nscales] 
-                    mcmean .= SB.mean(mcofast; dims=2)
-                    mclo .= SB.sum(mcofast .* (mcofast .<= mcmean); dims=2) ./ SB.sum(mcofast .<= mcmean; dims=2)
-                    mchi .= SB.sum(mcofast .* (mcofast .>= mcmean); dims=2) ./ SB.sum(mcofast .>= mcmean; dims=2)
-                end
-                ax = axs[i_mc]
-                @show i_mc,mc,ax.yscale
-                if mc in ["globcorr","contcorr"]
-                    #for mcstat = (mcmean,mclo,mchi)
-                    #    mcstat .= transcorr.(mcstat)
-                    #end
-                    ax.ylabel = mixcrit_labels[mc]
+            for (i_mcgroup,mcgroup) in enumerate(mixcrit_groups_2plot)
+                ax = axs[i_mcgroup]
+                if any([mc in mcgroup for mc in ["globcorr", "contcorr"]])
                     hlines!(ax, 1-(3/8)^2; color=:gray, alpha=1.0, linewidth=2, linestyle=(:dash,:dense))
                     ylims!(ax, 0.0, 1.0)
                     ytickvalues = [0.0, 0.1, 0.5, 0.9, 1.0]
                     ax.yticks = (ytickvalues, string.(ytickvalues))
                 end
-                if mc in ["pth","pim","r2"]
+                if any([mc in mcgroup for mc in ["pth","pim","r2lin","r2quad"]])
                     ylims!(ax, 0.0, 1.0)
+                    hlines!(ax, 0.5, linestyle=(:dash,:dense), linewidth=2, color=:gray)
                 end
-                if mc in ["ei","eot","ent"]
-                    ylims!(ax, 0.0, maximum(mchi)) #mixcrits[dst][rsp][mc]))
+                if Set(mcgroup) == Set(["r2lin","r2quad"])
+                    ax.ylabel = "Coefficient of\ndetermination\n𝑅²"
                 end
-                for i_scl = scales2plot
-                    band!(ax, -leadtimes.*sdm.tu, mclo[:,1,i_scl], mchi[:,1,i_scl]; color=:gray, alpha=0.25)
-                end
-                for i_scl = scales2plot
-                    colargs = Dict(:color=>i_scl, :colorrange=>(0,Nscales), :colormap=>:RdYlBu_4)
-                    scatterlines!(ax, -leadtimes.*sdm.tu, mcmean[:,1,i_scl]; colargs..., linewidth=2, label="scale $(@sprintf("%.1f",distn_scales[dst][i_scl]))")
-                    lines!(ax, -leadtimes.*sdm.tu, mclo[:,1,i_scl]; colargs..., linewidth=2, linestyle=(:dash,:dense))
-                    lines!(ax, -leadtimes.*sdm.tu, mchi[:,1,i_scl]; colargs..., linewidth=2, linestyle=(:dash,:dense))
-                end
-                if i_mc < Nmc
-                    rowgap!(lout, i_mc, 5.0)
+                #if any([mc in mcgroup for mc in ["ei","eot","ent"]])
+                #    ylims!(ax, 0.0, maximum(mchi)) #mixcrits[dst][rsp][mc]))
+                #end
+                for (i_mc,mc) in enumerate(mcgroup)
+                    let mcofast = mixcrits[dst][rsp][mc][1:Nleadtime,1:Nanc,1:Nscales] 
+                        mcmean .= SB.mean(mcofast; dims=2)
+                        mclo .= SB.sum(mcofast .* (mcofast .<= mcmean); dims=2) ./ SB.sum(mcofast .<= mcmean; dims=2)
+                        mchi .= SB.sum(mcofast .* (mcofast .>= mcmean); dims=2) ./ SB.sum(mcofast .>= mcmean; dims=2)
+                    end
+                    for i_scl = scales2plot
+                        band!(ax, -leadtimes.*sdm.tu, mclo[:,1,i_scl], mchi[:,1,i_scl]; color=:gray, alpha=0.25)
+                    end
+                    for i_scl = scales2plot
+                        if mc == "r2lin"
+                            colargs = Dict(:color=>:cyan)
+                        elseif mc == "r2quad"
+                            colargs = Dict(:color=>:orange)
+                        else
+                            colargs = Dict(:color=>i_scl, :colorrange=>(0,Nscales), :colormap=>:RdYlBu_4)
+                        end
+                        scatterlines!(ax, -leadtimes.*sdm.tu, mcmean[:,1,i_scl]; colargs..., linewidth=2, label="scale $(@sprintf("%.1f",distn_scales[dst][i_scl]))")
+                        lines!(ax, -leadtimes.*sdm.tu, mclo[:,1,i_scl]; colargs..., linewidth=2, linestyle=(:dash,:dense))
+                        lines!(ax, -leadtimes.*sdm.tu, mchi[:,1,i_scl]; colargs..., linewidth=2, linestyle=(:dash,:dense))
+                    end
+                    if i_mcgroup < Nmcgroups
+                        rowgap!(lout, i_mcgroup, 5.0)
+                    end
                 end
             end
-            axs[1].title = "$(label_target(cfg, sdm)), μ[$(powerofhalfstring(i_thresh_cquantile))]"
+            axs[1].title = "$(label_target(cfg, sdm))"
+            axs[1].titlesize = 20
             #lout[Nmc+1,1] = Legend(fig, axs[Nmc]; framevisible=false, labelsize=15)
             #rowsize!(lout, Nmc+1, Relative(1/(3*Nmc)))
 
@@ -1043,7 +1052,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         delete!(axargs, :title)
                         axratio = Axis(lout[2,1+Nmcs2mix+1]; axargs...)
                         axargs[:xscale],axargs[:yscale] = identity,log10
-                        axargs[:ylabel],axargs[:ylabelvisible],axargs[:yticklabelsvisible] = "KL",true,true
+                        axargs[:ylabel],axargs[:ylabelvisible],axargs[:yticklabelsvisible] = fdivlabel,true,true
                         delete!(axargs, :xlabel)
                         delete!(axargs, :title)
                         axargs[:xticklabelsvisible] = false

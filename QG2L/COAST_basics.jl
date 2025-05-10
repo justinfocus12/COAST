@@ -678,6 +678,8 @@ function label_target(rsp::String)
     return get_rsp_labels()[rsp]
 end
 
+
+
 function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, rsp::String)
     rspstr = label_target(rsp)
     label = "$(label_target(cfg, sdm)), $(rspstr) 𝑅"
@@ -704,15 +706,20 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, scale::Float64)
     return label
 end
 
-function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain)
+function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, specify_y0::Bool=true)
     N = sdm.Ny
     yN = round(Int, cfg.target_yPerL*N)
     xN = round(Int, cfg.target_xPerL*N)
     ryN = round(Int, cfg.target_ryPerL*N)
     rxN = round(Int, cfg.target_ryPerL*N)
-    label = "𝑦₀ = ($yN/$N)𝐿, ℓ = ($ryN/$N)𝐿"
+    if specify_y0
+        label = "𝑦₀ = ($yN/$N)𝐿, ℓ = ($ryN/$N)𝐿"
+    else
+        label = "ℓ = ($ryN/$N)𝐿"
+    end
     return label
 end
+
 
 function label_target(target_ryPerL::Float64, sdm::QG2L.SpaceDomain, short::Bool=true)
     rxystr = @sprintf("(%d/%d)𝐿",round(Int,target_ryPerL*sdm.Ny),sdm.Ny)
