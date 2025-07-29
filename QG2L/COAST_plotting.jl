@@ -168,11 +168,6 @@ function plot_objective_response_linquad(
       ↑             
       𝑅* → Fit
     """
-    label_r2_text = """
-    Coefficient of 
-    determination
-        𝑅²
-    """
     label_slope_text = """
     Linear coefficient
     magnitudes
@@ -183,12 +178,17 @@ function plot_objective_response_linquad(
     eigenvalues 
       λ₁,λ₂
     """
-    leftlab2d,leftlab1d,leftlabr2,leftlabslope,leftlabeig = [Axis(lout[i_row,1], limits=(0,1,0,1)) for i_row=2:6] 
+    label_r2_text = """
+    Coefficient of 
+    determination
+        𝑅²
+    """
+    leftlab2d,leftlab1d,leftlabslope,leftlabeig,leftlabr2 = [Axis(lout[i_row,1], limits=(0,1,0,1)) for i_row=2:6] 
     Makie.text!(leftlab2d, 0, 0.5; text=label_pert_text, fontsize=12, align=(:left,:center))
     Makie.text!(leftlab1d, 0, 0.5; text=label_resp_text, fontsize=12, align=(:left,:center))
-    Makie.text!(leftlabr2, 0, 0.5; text=label_r2_text, fontsize=12, align=(:left,:center))
     Makie.text!(leftlabslope, 0, 0.5; text=label_slope_text, fontsize=12, align=(:left,:center))
     Makie.text!(leftlabeig, 0, 0.5; text=label_eig_text, fontsize=12, align=(:left,:center))
+    Makie.text!(leftlabr2, 0, 0.5; text=label_r2_text, fontsize=12, align=(:left,:center))
     for lab = [leftlab2d,leftlab1d,leftlabr2,leftlabslope,leftlabeig]
         hidedecorations!(lab)
         hidespines!(lab)
@@ -201,10 +201,10 @@ function plot_objective_response_linquad(
     axs1d = [Axis(lout[3,i_col]; lblargs...) for i_col=2:Nleadtimes2plot+1]
 
     lblargs[:yticklabelsvisible] = true
-    ax_r2 = Axis(lout[4,2:Nleadtimes2plot+1]; yticks=[0.0,0.5,1.0], lblargs...)
-    ax_slope = Axis(lout[5,2:Nleadtimes2plot+1]; lblargs...)
+    ax_slope = Axis(lout[4,2:Nleadtimes2plot+1]; lblargs...)
+    ax_eig = Axis(lout[5,2:Nleadtimes2plot+1]; xlabelsize=12, lblargs...)
     lblargs[:xticklabelsvisible] = true
-    ax_eig = Axis(lout[6,2:Nleadtimes2plot+1]; xlabelsize=12, lblargs...)
+    ax_r2 = Axis(lout[6,2:Nleadtimes2plot+1]; yticks=[0.0,0.5,1.0], lblargs...)
 
     scores = vcat(coast.desc_Rmax[i_anc], [coast.anc_Rmax[i_anc]])
     scorerange = maximum(abs.(scores .- coast.anc_Rmax[i_anc])).*[-1,1].+coast.anc_Rmax[i_anc]
@@ -362,7 +362,9 @@ function plot_objective_response_linquad(
     end
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_linear[:,i_anc]; color=color_lin, label="Lin")
     scatterlines!(ax_r2, -leadtimes.*sdm.tu, rsquared_quadratic[:,i_anc]; color=color_quad, label="Quad")
-    vlines!(ax_r2, -leadtimes[idx_leadtimes2plot].*sdm.tu; color=:gray, alpha=0.5)
+    for ax = (ax_slope,ax_eig,ax_r2)
+        vlines!(ax, -leadtimes[idx_leadtimes2plot].*sdm.tu; color=:gray, alpha=0.5)
+    end
     for r2lev = [0,0.5,1]
         hlines!(ax_r2, r2lev; color=:gray, alpha=0.5)
     end
@@ -411,9 +413,9 @@ function plot_objective_response_linquad(
     rowsize!(lout, 1, Relative(vert_shares["toplabel"]/vert_shares_total))
     rowsize!(lout, 2, Relative(vert_shares["pert"]/vert_shares_total))
     rowsize!(lout, 3, Relative(vert_shares["resp"]/vert_shares_total))
-    rowsize!(lout, 4, Relative(vert_shares["r2"]/vert_shares_total))
-    rowsize!(lout, 5, Relative(vert_shares["slope"]/vert_shares_total))
-    rowsize!(lout, 6, Relative(vert_shares["eig"]/vert_shares_total))
+    rowsize!(lout, 4, Relative(vert_shares["slope"]/vert_shares_total))
+    rowsize!(lout, 5, Relative(vert_shares["eig"]/vert_shares_total))
+    rowsize!(lout, 6, Relative(vert_shares["r2"]/vert_shares_total))
     rowsize!(lout, 7, Relative(vert_shares["bottomlabel"]/vert_shares_total))
 
     #colsize!(lout, 1, Relative(1/(1+length(idx_leadtimes2plot))))

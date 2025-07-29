@@ -1,5 +1,5 @@
 function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
-    # No need to go through thissong and dance of intermediate highly discretized CCDFs. Just estimate entropy and expected improvement empirically 
+    # No need to go through this song and dance of intermediate highly discretized CCDFs. Just estimate entropy and expected improvement empirically 
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
