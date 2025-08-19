@@ -47,7 +47,7 @@ function metaCOAST_latdep_boxsizedep_procedure(expt_supdir::String, resultdir_dn
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
-     fdivnames,Nboot,ccdf_levels,
+     fdivnames,Nancmax,Nancsub,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
      i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfgs[1],pertop)

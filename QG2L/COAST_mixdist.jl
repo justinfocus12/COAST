@@ -3,11 +3,11 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
-     fdivnames,Nboot,ccdf_levels,
+     fdivnames,Nancmax,Nancsub,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
-    Nanc = length(coast.ancestors)
+    Nanc = length(coast.ancestors) # might be shorter than the Nanc from cfg 
     Nleadtime = length(leadtimes)
     Nr2th = length(r2threshes)
     Nscales = Dict(dst=>length(distn_scales[dst]) for dst=dsts)
@@ -209,7 +209,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
-     fdivnames,Nboot,ccdf_levels,
+     fdivnames,Nancmax,Nancsub,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
@@ -278,6 +278,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     dlev = diff(levels)
     Nlev = length(levels)
     i_level_highest_shortdns = Nlev #findlast(levels_exc .< maximum(Rccdf_ancgen_seplon))
+    # TODO vary the number of ancestors used 
     Nanc = length(coast.ancestors)
     # Load the various notions of field correlation
     globcorr,contcorr = JLD2.jldopen(joinpath(resultdir,"contour_dispersion.jld2"), "r") do f

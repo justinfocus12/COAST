@@ -48,11 +48,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_contour_dispersion_distribution" =>           0,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "evaluate_mixing_criteria" =>                       0,
-                             "plot_objective" =>                                 1, 
+                             "plot_objective" =>                                 0, 
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
-                             "mix_COAST_distributions" =>                        0,
-                             "plot_COAST_mixture" =>                             0,
+                             "mix_COAST_distributions" =>                        0, # At this point, quantify the cost 
+                             "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
@@ -104,7 +104,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
-     fdivnames,Nboot,ccdf_levels,
+     fdivnames,Nancmax,Nancsub,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
      i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
@@ -943,7 +943,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
         # ------------- Plots -----------------------
         # For each distribution type, plot the PDFs along the top and a row for each mixing criterion
-        ylims = (thresh, max(max_score, levels[end]))
+        ylimits = [thresh, max(max_score, levels[end], maximum(Roft_valid_seplon))]
+        #@infiltrate
 
 
         for dst = ["b"]
@@ -1105,7 +1106,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         end
                         lines!(axratio, clipccdfratio.(dnspot./dnspot), levels_exc; linewidth=3, color=:black, linestyle=(:dash,:dense))
                         for ax = (axancgen,axs_mcseps...,axratio)
-                            ylims!(ax, 1.1*levels[i_thresh_cquantile]-0.1*levels[i_thresh_cquantile+1], 1.1*levels[end]-0.1*levels[end-1])
+                            ylims!(ax, ylimits...) #1.5*levels[i_thresh_cquantile]-0.5*levels[i_thresh_cquantile+1], 1.5*levels[end]-0.5*levels[end-1])
                         end
                         for ax = (axancgen, axs_mcseps...)
                             xlims!(ax, 1/(time_valid_dns_ph*sdm.tu*10), thresh_cquantile*1.1)
@@ -1304,7 +1305,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         (
          leadtimes,r2threshes,dsts,rsps,mixobjs,
          mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
-         fdivnames,Nboot,ccdf_levels,
+         fdivnames,Nancmax,Nancsub,Nboot,ccdf_levels,
          time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
          i_thresh_cquantile,adjust_ccdf_per_ancestor
         ) = expt_config_COAST_analysis(cfg,pertop)
@@ -1396,7 +1397,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])
