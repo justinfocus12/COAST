@@ -1,7 +1,7 @@
 function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
     # No need to go through this song and dance of intermediate highly discretized CCDFs. Just estimate entropy and expected improvement empirically 
     (
-     leadtimes,r2threshes,dsts,rsps,mixobjs,
+     leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
      fdivnames,Nancmax,Nancsubs,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
@@ -78,13 +78,13 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
         ilts[dst] = Dict{String,Dict}()
         iltcounts[dst] = Dict{String,Dict}()
         ccdfs[dst],pdfs[dst] = (Dict{String,Array{Float64}}() for _=1:2)
-        for rsp = ["z","2","e"]
+        for rsp = ["z","2","e"][2:2]
             mixcrits[dst][rsp] = Dict{String,Array{Float64}}()
             ilts[dst][rsp] = Dict{String,Array{Int64}}()
             iltcounts[dst][rsp] = Dict{String,Array{Int64}}()
             ccdfs[dst][rsp] = zeros(Float64, (Nlev,Nleadtime,Nanc,Nscales[dst]))
             pdfs[dst][rsp] = zeros(Float64, (Nlev-1,Nleadtime,Nanc,Nscales[dst]))
-            for mc = keys(mixobjs)
+            for mc = mcs2mix #keys(mixobjs)
                 mixcrits[dst][rsp][mc] = zeros(Float64, (Nleadtime,Nanc,Nscales[dst]))
                 ilts[dst][rsp][mc] = zeros(Int64, (length(mixobjs[mc]),Nanc,Nscales[dst]))
                 iltcounts[dst][rsp][mc] = zeros(Int64, (length(mixobjs[mc]),Nleadtime,Nscales[dst]))
@@ -155,9 +155,9 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
         end
         ilt_upper_bound = Nleadtime #findlast(leadtimes .<= cfg.dtRmax_max)
         for dst = ["b"]
-            for rsp = ["z","2","e"]
+            for rsp = ["2"] #"z","2","e"]
                 for i_scl = 1:Nscales[dst]
-                    for mc = keys(mixobjs)
+                    for mc = mcs2mix #keys(mixobjs)
                         for (i_mcval,mcval) in enumerate(mixobjs[mc])
                             if "lt" == mc
                                 ilts[dst][rsp][mc][i_mcval,i_anc,i_scl] = i_mcval
@@ -207,7 +207,7 @@ end
 
 function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     (
-     leadtimes,r2threshes,dsts,rsps,mixobjs,
+     leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
      fdivnames,Nancmax,Nancsubs,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
@@ -290,7 +290,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     color_quadratic = :sienna1
     color_zernike = :purple
     i_mode_sf = 1
-    max_score = maximum(vcat(coast.anc_Rmax, (coast.desc_Rmax[i_anc] for i_anc=1:Nanc)...))
+    max_score = maximum(vcat(coast.anc_Rmax, (coast.desc_Rmax[i_anc] for i_anc=1:Nancmax)...))
     # Set up bootstrap resamplings
     rng_boot = Random.MersenneTwister(871940)
     ancs_boot = Vector{Matrix{Int64}}([])
@@ -298,13 +298,13 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
         push!(ancs_boot, Random.rand(rng_boot, 1:Nancmax, (Nancsub, Nboot+1)))
         push!(anc_boot_mults, zeros(Int64, (Nancmax,Nboot+1)))
-        if Nancsub == Nancmax
-            anc_boot_mults[i_Nancsub][:,1] .= 1
-        end
-        for i_boot = 2:Nboot+1
+        for i_boot = 1:Nboot+1 # TODO come up with a more principled "best" estimate with smaller sample size. Maybe with fractional weighting
             for i_anc = 1:Nancsub
                 anc_boot_mults[i_Nancsub][ancs_boot[i_Nancsub][i_anc,i_boot],i_boot] += 1
             end
+        end
+        if Nancsub == Nancmax
+            anc_boot_mults[i_Nancsub][:,1] .= 1
         end
     end
 
@@ -315,9 +315,9 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     ccdfmixs,pdfmixs,fdivs = (Dict{String,Dict}() for _=1:3)
     for dst = ["b"]
         ccdfmixs[dst],pdfmixs[dst],fdivs[dst] = (Dict{String,Dict}() for _=1:3)
-        for rsp = ["z","2","e"]
+        for rsp = ["z","2","e"][2:2]
             ccdfmixs[dst][rsp],pdfmixs[dst][rsp],fdivs[dst][rsp] = (Dict{String,Dict}() for _=1:3)
-            for mc = keys(mixobjs)
+            for mc = mcs2mix
                 ccdfmixs[dst][rsp][mc],pdfmixs[dst][rsp][mc] = (Dict{String,Array{Float64}}() for _=1:2)
                 fdivs[dst][rsp][mc] = Dict{String,Dict}()
                 for est = ["mix","pool"]
@@ -334,28 +334,25 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
 
 
     Nmem = EM.get_Nmem(ens)
-    Ndsc = Nmem - Nanc
+    Ndsc = Nmem - Nancmax
     idx_lev = collect(range(i_thresh_cquantile,i_level_highest_shortdns; step=1)) 
-    Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nanc)
+    Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nancmax)
     for dst = ["b"]
-        for rsp = ["z","2","e"]
-            for mc = keys(mixobjs)
+        for rsp = ["z","2","e"][2:2]
+            for mc = mcs2mix #keys(mixobjs)
                 for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
                     for i_boot = 1:Nboot+1
                         if mod(i_boot,10) == 0
-                            println("i_boot = $(i_boot)")
+                            println("rsp = $(rsp), mc = $(mc), Nancsub = $(Nancsub), i_boot = $(i_boot)")
                         end
                         @infiltrate (any(isnan.(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,:,:,:,:]))) #i_mcval,i_scl])))
                         for i_scl = 1:length(distn_scales[dst])
                         # Iterate through each mixing objective of each mixing criterion
                             Nmcv = length(mixobjs[mc])
                             for i_mcval = 1:Nmcv
-                                for i_anc = 1:Nanc
+                                for i_anc = 1:Nancmax
                                     ilt = iltmixs[dst][rsp][mc][i_mcval,i_anc,i_scl]
-                                    @infiltrate (any(isnan.(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,i_Nancsub,i_boot,i_mcval,i_scl])))
                                     ccdfmixs[dst][rsp][mc]["pool"][:,i_Nancsub,i_boot,i_mcval,i_scl] .+= (anc_boot_mults[i_Nancsub][i_anc,i_boot]/Nancsub) .* ccdfs[dst][rsp][:,ilt,i_anc,i_scl]
-                                    @infiltrate !all(isfinite.((anc_boot_mults[i_anc,i_boot]/Nancsub) .* ccdfs[dst][rsp][:,ilt,i_anc,i_scl]))
-                                    @infiltrate (any(isnan.(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,i_Nancsub,i_boot,i_mcval,i_scl])))
                                     pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
                                     @assert pth > 0
                                     #pthpool = ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile,i_boot,i_mcval,i_scl]

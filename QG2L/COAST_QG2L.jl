@@ -51,8 +51,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_objective" =>                                 0, 
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
-                             "mix_COAST_distributions" =>                        0, # At this point, quantify the cost 
-                             "plot_COAST_mixture" =>                             1,
+                             "mix_COAST_distributions" =>                        1, # At this point, quantify the cost 
+                             "plot_COAST_mixture" =>                             0,
                              "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
@@ -102,7 +102,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     time_spinup_dns_ph = 500.0
     cfgstr = strrep_ConfigCOAST(cfg)
     (
-     leadtimes,r2threshes,dsts,rsps,mixobjs,
+     leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
      fdivnames,Nancmax,Nancsub,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
@@ -1303,7 +1303,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                     "fdiv_heatmap" =>               1,
                                    )
         (
-         leadtimes,r2threshes,dsts,rsps,mixobjs,
+         leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
          mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
          fdivnames,Nancmax,Nancsub,Nboot,ccdf_levels,
          time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,

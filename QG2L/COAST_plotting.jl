@@ -80,7 +80,7 @@ function plot_objective_response_linquad(
         figdir
     )
     (
-     leadtimes,r2threshes,dsts,rsps,mixobjs,
+     leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
      mixcrit_labels,mixobj_labels,distn_scales,
      fdivnames,Nancmax,Nancsub,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
@@ -509,7 +509,7 @@ function plot_contours_1family(
         figfile::String
     )
     (
-     leadtimes,r2threshes,dsts,rsps,mixobjs,
+     leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
      mixcrit_labels,mixobj_labels,distn_scales,
      fdivnames,Nancmax,Nancsub,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,

@@ -45,7 +45,7 @@ function metaCOAST_latdep_boxsizedep_procedure(expt_supdir::String, resultdir_dn
     end
     cfgs = reshape(cfgs, (Nytgt,Nrtgt))
     (
-     leadtimes,r2threshes,dsts,rsps,mixobjs,
+     leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
      fdivnames,Nancmax,Nancsub,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
@@ -119,7 +119,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         push!(cfgs, cfg)
     end
     (
-     leadtimes,r2threshes,dsts,rsps,mixobjs,
+     leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
      fdivnames,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
