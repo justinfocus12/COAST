@@ -288,6 +288,7 @@ function compute_GPD_params(peak_vals, thresh; method="MLE") #Xoft::Vector{Float
 end
 
 function compute_local_objective_and_stats_zonsym(hist_filenames::Vector{String}, tfins::Vector{Int64}, tinitreq::Int64, tfinreq::Int64, obs_fun_xshifts, ccdf_levels::Vector{Float64})
+    # TODO compute for multiple timespans 
     # req = requested or required
     @assert tfinreq <= tfins[end]
     @assert minimum(diff(tfins)) > 0
@@ -307,11 +308,13 @@ function compute_local_objective_and_stats_zonsym(hist_filenames::Vector{String}
     return (tgridreq,Roft_seplon,Rccdf_seplon,Rccdf_agglon)
 end
 
-function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thresh::Vector{Float64}, prebuffer::Int64, postbuffer::Int64, initbuffer::Int64)
+function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thresh::Vector{Float64}, prebuffer::Int64, postbuffer::Int64, initbuffer::Int64, equal_cost_timespans::Vector{Int64})
     # first entry of levels_geq_thresh is thresh itself 
     Nt,Nlon = size(Roft_seplon)
     Nlev = length(levels_geq_thresh)
+    Nect = length(equal_cost_timespans)
     @show Nlev
+    ccdf_pot_seplon_eqcost = zeros(Float64, (Nlev,Nlon,Nect))
     ccdf_pot_seplon = zeros(Float64, (Nlev,Nlon))
     ccdf_pot_agglon = zeros(Float64, Nlev)
     num_peaks_total = 0
@@ -321,19 +324,25 @@ function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thres
         if isnothing(pot_results)
             continue
         end
-        #IFT.@infiltrate isnothing(pot_results) || length(pot_results[1]) == 1
         peak_vals,peak_tidx,upcross_tidx,downcross_tidx = pot_results
         num_peaks_exceeding_level = sum(peak_vals .> levels_geq_thresh'; dims=1)[1,:]
         ccdf_pot_seplon[:,i_lon] .= num_peaks_exceeding_level ./ length(peak_vals)
         num_peaks_total += length(peak_vals)
         ccdf_pot_agglon .+= num_peaks_exceeding_level
         append!(all_peaks, peak_vals)
+        # Take only subsets 
+        for (i_ect,ect) in enumerate(equal_cost_timespans)
+            num_peaks_ect = findlast(downcross_tidx .< ect)
+            num_peaks_exceeding_level = sum(peak_vals[1:num_peaks_ect] .> levels_geq_thresh'; dims=1)[1,:]
+            ccdf_pot_seplon_eqcost[:,i_lon,i_ect] .= num_peaks_exceeding_level ./ num_peaks_ect
+        end
     end
     ccdf_pot_agglon ./= num_peaks_total
+    mean_return_period = num_peaks_total / (Nt*Nlon)
     # Also compute GPD parameters here
     gpdpar_agglon = compute_GPD_params(all_peaks, levels_geq_thresh[1])
     std_agglon = SB.mean(SB.std(Roft_seplon; dims=1); dims=2)[1,1]
-    return (ccdf_pot_seplon, ccdf_pot_agglon, gpdpar_agglon, std_agglon)
+    return (ccdf_pot_seplon, ccdf_pot_agglon, gpdpar_agglon, std_agglon, ccdf_pot_seplon_eqcost, mean_return_period)
 end
 
 function compute_local_GPD_params_zonsym_multiple_fits(hist_filenames::Vector{String}, obs_fun_xshiftable::Function, prebuffer_time::Int64, follow_time::Int64, initbuffer::Int64, Nxshifts::Int64, xstride::Int64, figdir::String, obs_label)
