@@ -8,6 +8,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
     ) = expt_config_COAST_analysis(cfg,pertop)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
     Nanc = length(coast.ancestors) # might be shorter than the Nanc from cfg 
+    N_Nancsub = length(Nancsubs)
     Nleadtime = length(leadtimes)
     Nr2th = length(r2threshes)
     Nscales = Dict(dst=>length(distn_scales[dst]) for dst=dsts)
@@ -390,16 +391,20 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
         end
     end
     fdivs_ancgen_valid = Dict()
+    fdivs_eqcostvalid_valid = Dict()
     for fdivname = fdivnames
-
-        fdivs_ancgen_valid[fdivname] = mapslices(ccdf_pot->QG2L.fdiv_fun_ccdf(
-                                                                              ccdf_pot[1:length(idx_lev)], 
-                                                                              ccdf_pot_valid_agglon[1:length(idx_lev)], 
-                                                                              levels[idx_lev], 
-                                                                              levels[idx_lev], 
-                                                                              fdivname
-                                                                         ), 
-                                                 ccdf_pot_ancgen_seplon; dims=1)[1,:]
+        fdiv_from_valid(ccdf_pot) = QG2L.fdiv_fun_ccdf(
+                                                       ccdf_pot[1:length(idx_lev)], 
+                                                       ccdf_pot_valid_agglon[1:length(idx_lev)], 
+                                                       levels[idx_lev], 
+                                                       levels[idx_lev], 
+                                                       fdivname
+                                                      )
+        fdivs_ancgen_valid[fdivname] = mapslices(fdiv_from_valid, ccdf_pot_ancgen_seplon; dims=1)[1,:]
+        fdivs_eqcostvalid_valid[fdivname] = zeros(Float64, (N_Nancsub,Nboot+1))
+        for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
+            fdivs_eqcostvalid_valid[fdivname][i_Nancsub,:] .= mapslices(fdiv_from_valid, ccdf_pot_valid_seplon_eqcost[:,i_Nancsub,:]; dims=1)[1,:]
+        end
         #@infiltrate any(isnan.(fdivs_ancgen_valid[fdivname]))
     end
 
@@ -416,6 +421,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
         f["pdfs"] = pdfs
         f["fdivs"] = fdivs
         f["fdivs_ancgen_valid"] = fdivs_ancgen_valid
+        f["fdivs_eqcostvalid_valid"] = fdivs_eqcostvalid_valid
         f["mixcrits"] = mixcrits
         f["iltmixs"] = iltmixs
         f["iltcounts"] = iltcounts

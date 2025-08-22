@@ -39,7 +39,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_transcorr" =>                                 0,
                              "plot_pertop" =>                                    0,
                              "plot_bumps" =>                                     0,
-                             "compute_dns_objective" =>                          1,
+                             "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
                              "use_backups" =>                                    0,
                              "anchor" =>                                         0,
@@ -52,7 +52,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        0, # At this point, quantify the cost 
-                             "plot_COAST_mixture" =>                             0,
+                             "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
@@ -1032,7 +1032,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                 for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
                                     for i_boot = 1:Nboot+1
                                         fdivs_opt[mc][est][i_Nancsub,i_boot],imcs_opt[mc][est][i_Nancsub,i_boot] = findmin(fdivs[dst][rsp][mc][est][fdivname][i_Nancsub,i_boot,:,i_scl])
-                                        ccdfs_opt[mc][est][:,i_Nancsubi_boot] .= ccdfmixs[dst][rsp][mc][est][:,i_Nancsub,i_boot,imcs_opt[mc][est][i_boot],i_scl]
+                                        ccdfs_opt[mc][est][:,i_Nancsub,i_boot] .= ccdfmixs[dst][rsp][mc][est][:,i_Nancsub,i_boot,imcs_opt[mc][est][i_Nancsub,i_boot],i_scl]
                                     end
                                 end
                                 if mc in ["globcorr","contcorr"]
@@ -1062,16 +1062,23 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         # ---------------- Figure layout -------------------
                         Nmcs2mix = length(mcs2mix)
                         # TODO whole separate figure on reduction in the error metric  as more ancestors are added
-                        fig = Figure(size=(400,100))
+                        fig = Figure(size=(400,300))
                         lout = fig[1,1] = GridLayout()
-                        ax = Axis(lout[1,1], xlabel="𝑁 (ancestors)", ylabel=fdivlabel, xscallog10, titlefont=:regular, xgridvisible=false, ygridvisible=false, xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10)
+                        ax = Axis(lout[1,1], xlabel="𝑁 (ancestors)", ylabel=fdivlabel, xscale=log2, titlefont=:regular, xgridvisible=false, ygridvisible=false, xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10)
                         for (i_mc,mc) in enumerate(mcs2mix)
                             # include the values of the the thresholded mixing criteria 
-                            for (est,linestyle,marker) in (("mix",:solid,:xcross),("pool",(:dot,:dense),'O'))
-                                fdivlo,fdivhi = [SB.quantile(fdivs_opt[mc][est][2:Nboot+1], q) for q=[0.05,0.95]]
-                        for mc = mcs2mix
-                            scatterlines!(Nancubs, fdivs[dst][rsp][mc][est][fdivname][:,1,i_mcval,i_scl]; color=colors[mc])
+                            for (est,linestyle,marker) in (("mix",:solid,:xcross),("pool",(:dot,:dense),'O'))[1:1]
+                                fdivlo,fdivhi = [QG2L.quantile_sliced(fdivs_opt[mc][est][:,2:Nboot+1], q, 2)[:,1] for q=[0.05,0.95]]
+                                fdiv1 = fdivs_opt[mc][est][:,1]
+                                scatterlines!(ax, Nancsubs, fdiv1;
+                                              color=mixcrit_colors[mc], marker=marker)
+                                lines!(ax, Nancsubs, fdivlo;
+                                       color=mixcrit_colors[mc], linestyle=:dash)
+                                lines!(ax, Nancsubs, fdivhi;
+                                       color=mixcrit_colors[mc], linestyle=:dash)
+                            end
                         end
+                        save(joinpath(figdir,"eqcostaccuracy_$(dst)_$(rsp)_$(fdivname)_$(i_scl)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                         # -----------------------------------------------
                         fig = Figure(size=(100*(Nmcs2mix+2),450))
                         lout = fig[1,1] = GridLayout()
@@ -1119,7 +1126,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             # include the values of the the thresholded mixing criteria 
                             for (est,linestyle,marker,yoffset) in (("mix",:solid,:xcross,0.1),("pool",(:dot,:dense),'O',-0.1))
                                 fdivlo,fdivhi = [SB.quantile(fdivs_opt[mc][est][2:Nboot+1], q) for q=[0.05,0.95]]
-                                ccdflo,ccdfhi = [thresh_cquantile.*QG2L.quantile_sliced(ccdfs_opt[mc][est][i_thresh_cquantile:end,2:Nboot+1], q, 2)[:,1] for q=[0.05,0.95]]
+                                ccdflo,ccdfhi = [thresh_cquantile.*QG2L.quantile_sliced(ccdfs_opt[mc][est][i_thresh_cquantile:end,N_Nancsub,2:Nboot+1], q, 2)[:,1] for q=[0.05,0.95]]
                                 if est == "mix"
                                     band!(axs_mcseps[i_mc], Point2f.(ccdflo, levels_exc), Point2f.(ccdfhi, levels_exc); color=mixcrit_colors[mc], alpha=0.5)
                                 end
@@ -1127,9 +1134,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                 scatter!(axfdiv, (1+i_mc+yoffset), fdivs_opt[mc][est][1]; color=mixcrit_colors[mc], marker=marker, markersize=12)
                                 lines!(axfdiv, (1+i_mc+yoffset).*ones(Float64, 2), [fdivlo,fdivhi]; color=mixcrit_colors[mc], linestyle=linestyle)
                                 for i_boot = 1:1
-                                    scatterlines!(axs_mcseps[i_mc], thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end,i_boot], levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, label=labels_opt[mc], linewidth=1.5, )
+                                    scatterlines!(axs_mcseps[i_mc], thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end,N_Nancsub,i_boot], levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, label=labels_opt[mc], linewidth=1.5, )
                                     if est == "mix"
-                                        scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end,i_boot]./dnspot), levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, linewidth=1.5)
+                                        scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end,N_Nancsub,i_boot]./dnspot), levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, linewidth=1.5)
                                     end
                                 end
                             end
@@ -1158,7 +1165,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         rowgap!(lout, 1, 0)
                         rowgap!(lout, 2, 0)
 
-                        save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(fdivname)_$(i_scl)_Nanc$(Nancsub)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
+                        save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(fdivname)_$(i_scl)_Nanc$(Nancsubs[N_Nancsub])_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                     end
                 end
                 
