@@ -296,6 +296,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
          ccdf_pot_valid_agglon,
          gpdpar_valid_agglon,
          std_valid_agglon,
+         ccdf_pot_valid_seplon_eqcost,
+         mean_return_period,
         ) = (
              JLD2.jldopen(dns_objective_filename, "r") do f
                  return (
@@ -313,11 +315,14 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                          f["ccdf_pot_valid_agglon"],
                          f["gpdpar_valid_agglon"],
                          f["std_valid_agglon"],
+                         f["ccdf_pot_valid_seplon_eqcost"],
+                         f["mean_return_period"],
                         )
              end
             )
     end
     if todo["plot_dns_objective_stats"]
+        # TODO augment the plot with the sequence of shorter, more error-prone CCDF estimates
         bin_edges = collect(range(0,1,200))
         bin_centers = (bin_edges[2:end] .+ bin_edges[1:end-1]) ./ 2
         levels = Rccdf_valid_agglon
@@ -944,11 +949,13 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         #@infiltrate
         levels_exc = levels[i_thresh_cquantile:end]
         Nlev = length(levels)
+        N_Nancsub = length(Nancsubs)
         levels_exc_mid = (levels_exc[1:end-1] .+ levels_exc[2:end]) ./ 2
         pdf_valid_agglon = - diff(ccdf_levels) ./ diff(Rccdf_valid_agglon)
         pdf_valid_seplon = - diff(ccdf_levels) ./ diff(Rccdf_valid_seplon; dims=1)
         pdf_pot_valid_agglon = -diff(ccdf_pot_valid_agglon) ./ diff(levels_exc)
         pdf_pot_valid_seplon = -diff(ccdf_pot_valid_seplon; dims=1) ./ diff(levels_exc)
+        pdf_pot_valid_seplon_eqcost = -diff(ccdf_pot_valid_seplon_eqcost; dims=1) ./ diff(levels_exc)
 
         # ------------- Plots -----------------------
         # For each distribution type, plot the PDFs along the top and a row for each mixing criterion
@@ -964,183 +971,197 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     continue
                 end
                 scales2plot = [1,4,8,12]
-                for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
-                    boot_midlohi_pdf(p,avg=false) = begin
-                        pmid = clippdf.((avg ? SB.mean(p; dims=2) : p)[:,1])
-                        plo,phi = (clippdf.(QG2L.quantile_sliced(p, q, 2)[:,1]) for q=(0.05,0.95))
-                        return (pmid,plo,phi)
-                    end
-                    boot_midlohi_ccdf(cc,avg=false) = begin
-                        ccmid = clipccdf.((avg ? SB.mean(cc; dims=2) : cc)[:,1])
-                        cclo,cchi = (clipccdf.(QG2L.quantile_sliced(cc, q, 2)[:,1]) for q=(0.05,0.95))
-                        return (ccmid,cclo,cchi)
-                    end
-                    levels_exc = levels[i_thresh_cquantile:end]
-                    levels_exc_mid = 0.5 .* (levels_exc[1:end-1] .+ levels_exc[2:end])
-                    # Straight tails (not peaks)
-                    # ancestors
-                    Rccdf_ancgen_pt,Rccdf_ancgen_lo,Rccdf_ancgen_hi = boot_midlohi_ccdf(Rccdf_ancgen_seplon)
-                    pdf_ancgen_seplon = -diff(ccdf_levels) ./ diff(Rccdf_ancgen_seplon, dims=1)
-                    pdf_ancgen_pt,pdf_ancgen_lo,pdf_ancgen_hi = boot_midlohi_pdf(pdf_ancgen_seplon)
-                    # validation
-                    Rccdf_valid_pt,Rccdf_valid_lo,Rccdf_valid_hi = boot_midlohi_ccdf(Rccdf_valid_seplon, true)
-                    pdf_valid_seplon = -diff(ccdf_levels) ./ diff(Rccdf_valid_seplon, dims=1)
-                    pdf_valid_pt,pdf_valid_lo,pdf_valid_hi = boot_midlohi_pdf(pdf_valid_seplon, true)
-                    # peaks over thresholds 
-                    # ancestors
-                    ccdf_pot_ancgen_pt,ccdf_pot_ancgen_lo,ccdf_pot_ancgen_hi = boot_midlohi_ccdf(ccdf_pot_ancgen_seplon, false)
-                    pdf_pot_ancgen_seplon = -diff(ccdf_pot_ancgen_seplon; dims=1) ./ diff(levels_exc)
-                    pdf_pot_ancgen_pt,pdf_pot_ancgen_lo,pdf_pot_ancgen_hi = boot_midlohi_pdf(pdf_pot_ancgen_seplon, false)
-                    # validation
-                    ccdf_pot_valid_pt,ccdf_pot_valid_lo,ccdf_pot_valid_hi = boot_midlohi_ccdf(ccdf_pot_valid_seplon, true)
-                    pdf_pot_valid_seplon = -diff(ccdf_pot_valid_seplon; dims=1) ./ diff(levels_exc)
-                    pdf_pot_valid_pt,pdf_pot_valid_lo,pdf_pot_valid_hi = boot_midlohi_pdf(pdf_pot_valid_seplon, true)
+                boot_midlohi_pdf(p,avg=false) = begin
+                    pmid = clippdf.((avg ? SB.mean(p; dims=2) : p)[:,1])
+                    plo,phi = (clippdf.(QG2L.quantile_sliced(p, q, 2)[:,1]) for q=(0.05,0.95))
+                    return (pmid,plo,phi)
+                end
+                boot_midlohi_ccdf(cc,avg=false) = begin
+                    ccmid = clipccdf.((avg ? SB.mean(cc; dims=2) : cc)[:,1])
+                    cclo,cchi = (clipccdf.(QG2L.quantile_sliced(cc, q, 2)[:,1]) for q=(0.05,0.95))
+                    return (ccmid,cclo,cchi)
+                end
+                levels_exc = levels[i_thresh_cquantile:end]
+                levels_exc_mid = 0.5 .* (levels_exc[1:end-1] .+ levels_exc[2:end])
+                # Straight tails (not peaks)
+                # ancestors
+                Rccdf_ancgen_pt,Rccdf_ancgen_lo,Rccdf_ancgen_hi = boot_midlohi_ccdf(Rccdf_ancgen_seplon)
+                pdf_ancgen_seplon = -diff(ccdf_levels) ./ diff(Rccdf_ancgen_seplon, dims=1)
+                pdf_ancgen_pt,pdf_ancgen_lo,pdf_ancgen_hi = boot_midlohi_pdf(pdf_ancgen_seplon)
+                # validation
+                Rccdf_valid_pt,Rccdf_valid_lo,Rccdf_valid_hi = boot_midlohi_ccdf(Rccdf_valid_seplon, true)
+                pdf_valid_seplon = -diff(ccdf_levels) ./ diff(Rccdf_valid_seplon, dims=1)
+                pdf_valid_pt,pdf_valid_lo,pdf_valid_hi = boot_midlohi_pdf(pdf_valid_seplon, true)
+                # peaks over thresholds 
+                # ancestors
+                ccdf_pot_ancgen_pt,ccdf_pot_ancgen_lo,ccdf_pot_ancgen_hi = boot_midlohi_ccdf(ccdf_pot_ancgen_seplon, false)
+                pdf_pot_ancgen_seplon = -diff(ccdf_pot_ancgen_seplon; dims=1) ./ diff(levels_exc)
+                pdf_pot_ancgen_pt,pdf_pot_ancgen_lo,pdf_pot_ancgen_hi = boot_midlohi_pdf(pdf_pot_ancgen_seplon, false)
+                # validation
+                ccdf_pot_valid_pt,ccdf_pot_valid_lo,ccdf_pot_valid_hi = boot_midlohi_ccdf(ccdf_pot_valid_seplon, true)
+                pdf_pot_valid_seplon = -diff(ccdf_pot_valid_seplon; dims=1) ./ diff(levels_exc)
+                pdf_pot_valid_pt,pdf_pot_valid_lo,pdf_pot_valid_hi = boot_midlohi_pdf(pdf_pot_valid_seplon, true) # We probably should never even use the pot_valid_lo and pot_valid_hi from the full-length valid 
 
 
-                    GPD = Dists.GeneralizedPareto(levels[i_thresh_cquantile], gpdpar_valid_agglon...)
-                    pdf_gpd = thresh_cquantile.*clippdf.(Dists.pdf.(GPD, levels_exc_mid))
-                    ccdf_gpd = thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc))
 
-                    mcs2mix = ["lt","contcorr","globcorr","ei","ent"]
+                GPD = Dists.GeneralizedPareto(levels[i_thresh_cquantile], gpdpar_valid_agglon...)
+                pdf_gpd = thresh_cquantile.*clippdf.(Dists.pdf.(GPD, levels_exc_mid))
+                ccdf_gpd = thresh_cquantile.*clipccdf.(Dists.ccdf.(GPD, levels_exc))
 
-                    for i_scl = scales2plot
-                        for (fdivname,fdivlabel) = (("qrmse","𝐿²"),("kl","KL"),("chi2","χ²")) #("kl","KL"),("chi2","χ²"),("tv","TV"))
-                            scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
+                mcs2mix = ["lt","contcorr","globcorr","ei","ent"]
 
-                            ccdfs_opt,fdivs_opt,imcs_opt = (Dict{String,Dict}() for _=1:3)
-                            mcstrs_opt,fdivstrs_opt = (Dict{String,Dict}() for _=1:2)
-                            labels_opt = Dict{String,String}()
 
-                            colargs = Dict(:color=>:black,)
-                            for mc = mcs2mix
-                                ccdfs_opt[mc] = Dict{String,Array{Float64}}()
-                                fdivs_opt[mc] = Dict{String,Array{Float64}}()
-                                imcs_opt[mc] = Dict{String,Array{Int64}}()
-                                mcstrs_opt[mc],fdivstrs_opt[mc] = (Dict{String,String}() for _=1:2)
-                                for est = ["mix","pool"]
-                                    fdivs_opt[mc][est] = zeros(Float64, Nboot+1)
-                                    imcs_opt[mc][est] = zeros(Int64, Nboot+1)
-                                    ccdfs_opt[mc][est] = zeros(Float64, (Nlev,Nboot+1))
+                for i_scl = scales2plot
+                    for (fdivname,fdivlabel) = (("qrmse","𝐿²"),("kl","KL"),("chi2","χ²")) #("kl","KL"),("chi2","χ²"),("tv","TV"))
+                        scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
+
+                        ccdfs_opt,fdivs_opt,imcs_opt = (Dict{String,Dict}() for _=1:3)
+                        mcstrs_opt,fdivstrs_opt = (Dict{String,Dict}() for _=1:2)
+                        labels_opt = Dict{String,String}()
+
+                        colargs = Dict(:color=>:black,)
+                        for mc = mcs2mix
+                            ccdfs_opt[mc] = Dict{String,Array{Float64}}()
+                            fdivs_opt[mc] = Dict{String,Array{Float64}}()
+                            imcs_opt[mc] = Dict{String,Array{Int64}}()
+                            mcstrs_opt[mc],fdivstrs_opt[mc] = (Dict{String,String}() for _=1:2)
+                            for est = ["mix","pool"]
+                                fdivs_opt[mc][est] = zeros(Float64, (N_Nancsub,Nboot+1))
+                                imcs_opt[mc][est] = zeros(Int64, (N_Nancsub,Nboot+1))
+                                ccdfs_opt[mc][est] = zeros(Float64, (Nlev,N_Nancsub,Nboot+1))
+                                for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
                                     for i_boot = 1:Nboot+1
-                                        fdivs_opt[mc][est][i_boot],imcs_opt[mc][est][i_boot] = findmin(fdivs[dst][rsp][mc][est][fdivname][i_boot,:,i_scl])
-                                        ccdfs_opt[mc][est][:,i_boot] .= ccdfmixs[dst][rsp][mc][est][:,i_boot,imcs_opt[mc][est][i_boot],i_scl]
+                                        fdivs_opt[mc][est][i_Nancsub,i_boot],imcs_opt[mc][est][i_Nancsub,i_boot] = findmin(fdivs[dst][rsp][mc][est][fdivname][i_Nancsub,i_boot,:,i_scl])
+                                        ccdfs_opt[mc][est][:,i_Nancsubi_boot] .= ccdfmixs[dst][rsp][mc][est][:,i_Nancsub,i_boot,imcs_opt[mc][est][i_boot],i_scl]
                                     end
-                                    if mc in ["globcorr","contcorr"]
-                                        mcstrs_opt[mc][est] = @sprintf("%.3f",mixobjs[mc][imcs_opt[mc][est][1]])
-                                    elseif mc in ["lt"]
-                                        mcstrs_opt[mc][est] = @sprintf("%d",mixobjs[mc][imcs_opt[mc][est][1]])
-                                    else
-                                        mcstrs_opt[mc][est] = "max" #@sprintf("%.1f",mixobjs[mc][imcs_opt[mc][est]])
-                                    end
-                                    fdivstrs_opt[mc][est] = @sprintf("%.1E",fdivs_opt[mc][est][1])
                                 end
-                                labels_opt[mc] = mixcrit_labels[mc]
-                                if mc in ["globcorr","contcorr","lt"]
-                                    labels_opt[mc] = "$(mixcrit_labels[mc])\n=$(mcstrs_opt[mc]["mix"]) ($(mcstrs_opt[mc]["pool"]))" 
+                                if mc in ["globcorr","contcorr"]
+                                    # TODO make summary labels of the change in COAST with validation length 
+                                    mcstrs_opt[mc][est] = @sprintf("%.3f",mixobjs[mc][imcs_opt[mc][est][N_Nancsub,1]])
+                                elseif mc in ["lt"]
+                                    mcstrs_opt[mc][est] = @sprintf("%d",mixobjs[mc][imcs_opt[mc][est][N_Nancsub,1]])
                                 else
-                                    labels_opt[mc] = "max $(mixcrit_labels[mc])" # \n$(fdivlabel) = $(fdivstrs_opt[mc]["mix"]) / $(fdivstrs_opt[mc]["pool"])"
+                                    mcstrs_opt[mc][est] = "max" #@sprintf("%.1f",mixobjs[mc][imcs_opt[mc][est]])
                                 end
-                                
+                                fdivstrs_opt[mc][est] = @sprintf("%.1E",fdivs_opt[mc][est][1])
                             end
-                            fdiv_ancgen_valid_pt,fdiv_ancgen_valid_lo,fdiv_ancgen_valid_hi = let
-                                fdav = filter(isfinite, fdivs_ancgen_valid[fdivname]) 
-                                (SB.mean(fdav), SB.quantile(fdav, 0.05), SB.quantile(fdav, 0.95))
+                            labels_opt[mc] = mixcrit_labels[mc]
+                            if mc in ["globcorr","contcorr","lt"]
+                                labels_opt[mc] = "$(mixcrit_labels[mc])\n=$(mcstrs_opt[mc]["mix"]) ($(mcstrs_opt[mc]["pool"]))" 
+                            else
+                                labels_opt[mc] = "max $(mixcrit_labels[mc])" # \n$(fdivlabel) = $(fdivstrs_opt[mc]["mix"]) / $(fdivstrs_opt[mc]["pool"])"
                             end
-                            fdivstr_ancgen = @sprintf("%.1E\n(%.2E, %.2E)",fdiv_ancgen_valid_pt, fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi)
-                            dnspot = thresh_cquantile.*ccdf_pot_valid_pt
-                            # ---------------- Figure layout -------------------
-                            Nmcs2mix = length(mcs2mix)
-                            # TODO whole separate figure on reduction in the error metric  as more ancestors are added
-                            # -----------------------------------------------
-                            fig = Figure(size=(100*(Nmcs2mix+2),450))
-                            lout = fig[1,1] = GridLayout()
-                            axargs = Dict(:xscale=>log10, :ylabel=>"Severity 𝑅*", :titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :ylabelvisible=>false, :yticklabelsvisible=>false, :ylabelsize=>12, :yticklabelsize=>10, :titlesize=>10, :xlabelsize=>10, :xticklabelsize=>9, :xticklabelrotation=>-pi/2, )
-                            toplabel = Label(lout[1,1:Nmcs2mix+1], label_target(cfg, sdm, distn_scales[dst][i_scl]),fontsize=14,font=:regular,valign=:bottom)
-                            axs_mcseps = [
-                                          Axis(lout[2,1+i_mc]; axargs..., title=labels_opt[mcs2mix[i_mc]], )
-                                          for i_mc=1:Nmcs2mix
-                                         ]
-                            axargs[:title] = "Short DNS"
-                            axancgen = Axis(lout[2,1]; axargs...)
-                            axargs[:xlabel] = "CCDF/(DNS CCDF)" 
-                            delete!(axargs, :title)
-                            axratio = Axis(lout[2,1+Nmcs2mix+1]; axargs...)
-                            axargs[:xscale],axargs[:yscale] = identity,log10
-                            axargs[:ylabel],axargs[:ylabelvisible],axargs[:yticklabelsvisible] = fdivlabel,true,true
-                            delete!(axargs, :xlabel)
-                            delete!(axargs, :title)
-                            axargs[:xticklabelsvisible] = false
-                            axfdiv = Axis(lout[3,1:Nmcs2mix+1]; axargs...)
-
-                            # GPD
-                            lines!(axancgen, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3)
-                            lines!(axratio, clipccdfratio.(ccdf_gpd./dnspot), levels_exc; color=:gray, alpha=0.5, linewidth=3)
-                            # Short DNS 
-                            # TODO make into a band
-                            #nnidx = findlast((isfinite.(ccdf) for ccdf=[ccdf_pot_ancgen_lo,ccdf_pot_ancgen_hi,ccdf_pot_ancgen_pt])...)
-                            #band!(axancgen, Point2f.(thresh_cquantile.*ccdf_pot_ancgen_lo[1:nnidx], levels_exc[1:nnidx]), Point2f.(thresh_cquantile.*ccdf_pot_ancgen_hi[1:nnidx]), levels_exc[1:nnidx]; color=:gray, alpha=0.5)
-                            bandfinite = isfinite.(ccdf_pot_ancgen_lo) .& isfinite.(ccdf_pot_ancgen_pt) .& isfinite.(ccdf_pot_ancgen_hi) 
-                            if any(isfinite.(bandfinite))
-                                i_level_max = findlast(bandfinite) 
-                                band!(
-                                      axancgen, 
-                                      Point2f.(thresh_cquantile.*ccdf_pot_ancgen_lo[1:i_level_max], levels[i_thresh_cquantile:Nlev][1:i_level_max]), 
-                                      Point2f.(thresh_cquantile.*ccdf_pot_ancgen_hi[1:i_level_max], levels[i_thresh_cquantile:Nlev][1:i_level_max]),
-                                      ; 
-                                      color=:gray, alpha=0.5
-                                     )
-                            end
-                            scatterlines!(axancgen, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; linewidth=3, colargs..., marker=:circle)
-                            scatter!(axfdiv, 1, fdiv_ancgen_valid_pt; color=:black, marker=:circle, markersize=12)
-                            lines!(axfdiv, [1,1], [fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi]; color=:black, linewidth=2)
-                            scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; marker=:circle, linewidth=3, colargs...)
-                            for (i_mc,mc) in enumerate(mcs2mix)
-                                # include the values of the the thresholded mixing criteria 
-                                for (est,linestyle,marker,yoffset) in (("mix",:solid,:xcross,0.1),("pool",(:dot,:dense),'O',-0.1))
-                                    fdivlo,fdivhi = [SB.quantile(fdivs_opt[mc][est][2:Nboot+1], q) for q=[0.05,0.95]]
-                                    ccdflo,ccdfhi = [thresh_cquantile.*QG2L.quantile_sliced(ccdfs_opt[mc][est][i_thresh_cquantile:end,2:Nboot+1], q, 2)[:,1] for q=[0.05,0.95]]
-                                    if est == "mix"
-                                        band!(axs_mcseps[i_mc], Point2f.(ccdflo, levels_exc), Point2f.(ccdfhi, levels_exc); color=mixcrit_colors[mc], alpha=0.5)
-                                    end
-                                    #band!(axratio, Point2f.(ccdflo./dnspot, levels_exc), Point2f.(ccdfhi./dnspot, levels_exc); color=mixcrit_colors[mc], alpha=0.5) # TODO 
-                                    scatter!(axfdiv, (1+i_mc+yoffset), fdivs_opt[mc][est][1]; color=mixcrit_colors[mc], marker=marker, markersize=12)
-                                    lines!(axfdiv, (1+i_mc+yoffset).*ones(Float64, 2), [fdivlo,fdivhi]; color=mixcrit_colors[mc], linestyle=linestyle)
-                                    for i_boot = 1:1
-                                        scatterlines!(axs_mcseps[i_mc], thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end,i_boot], levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, label=labels_opt[mc], linewidth=1.5, )
-                                        if est == "mix"
-                                            scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end,i_boot]./dnspot), levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, linewidth=1.5)
-                                        end
-                                    end
-                                end
-                            end
-                            # Long DNS 
-                            for ax = (axancgen,axs_mcseps...)
-                                lines!(ax, dnspot, levels_exc; linewidth=1.5, color=:black, linestyle=(:dash,:dense))
-                            end
-                            lines!(axratio, clipccdfratio.(dnspot./dnspot), levels_exc; linewidth=3, color=:black, linestyle=(:dash,:dense))
-                            for ax = (axancgen,axs_mcseps...,axratio)
-                                ylims!(ax, ylimits...) #1.5*levels[i_thresh_cquantile]-0.5*levels[i_thresh_cquantile+1], 1.5*levels[end]-0.5*levels[end-1])
-                            end
-                            for ax = (axancgen, axs_mcseps...)
-                                xlims!(ax, 1/(time_valid_dns_ph*sdm.tu*10), thresh_cquantile*1.1)
-                            end
-                            xlims!(axratio, 1/10, 10)
-                            xlims!(axfdiv, 0.5, Nmcs2mix+1.5)
-
-                            axancgen.ylabelvisible = axancgen.yticklabelsvisible = true
-                            for i_col = 1:Nmcs2mix
-                                colgap!(lout, i_col, 0)
-                            end
-
-                            rowsize!(lout, 1, Relative(50/450))
-                            rowsize!(lout, 2, Relative(320/450))
-                            rowgap!(lout, 1, 0)
-                            rowgap!(lout, 2, 0)
-
-                            save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(fdivname)_$(i_scl)_Nanc$(Nancsub)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
+                            
                         end
+                        fdiv_ancgen_valid_pt,fdiv_ancgen_valid_lo,fdiv_ancgen_valid_hi = let
+                            fdav = filter(isfinite, fdivs_ancgen_valid[fdivname]) 
+                            (SB.mean(fdav), SB.quantile(fdav, 0.05), SB.quantile(fdav, 0.95))
+                        end
+                        fdivstr_ancgen = @sprintf("%.1E\n(%.2E, %.2E)",fdiv_ancgen_valid_pt, fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi)
+                        dnspot = thresh_cquantile.*ccdf_pot_valid_pt
+                        # ---------------- Figure layout -------------------
+                        Nmcs2mix = length(mcs2mix)
+                        # TODO whole separate figure on reduction in the error metric  as more ancestors are added
+                        fig = Figure(size=(400,100))
+                        lout = fig[1,1] = GridLayout()
+                        ax = Axis(lout[1,1], xlabel="𝑁 (ancestors)", ylabel=fdivlabel, xscallog10, titlefont=:regular, xgridvisible=false, ygridvisible=false, xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10)
+                        for (i_mc,mc) in enumerate(mcs2mix)
+                            # include the values of the the thresholded mixing criteria 
+                            for (est,linestyle,marker) in (("mix",:solid,:xcross),("pool",(:dot,:dense),'O'))
+                                fdivlo,fdivhi = [SB.quantile(fdivs_opt[mc][est][2:Nboot+1], q) for q=[0.05,0.95]]
+                        for mc = mcs2mix
+                            scatterlines!(Nancubs, fdivs[dst][rsp][mc][est][fdivname][:,1,i_mcval,i_scl]; color=colors[mc])
+                        end
+                        # -----------------------------------------------
+                        fig = Figure(size=(100*(Nmcs2mix+2),450))
+                        lout = fig[1,1] = GridLayout()
+                        axargs = Dict(:xscale=>log10, :ylabel=>"Severity 𝑅*", :titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :ylabelvisible=>false, :yticklabelsvisible=>false, :ylabelsize=>12, :yticklabelsize=>10, :titlesize=>10, :xlabelsize=>10, :xticklabelsize=>9, :xticklabelrotation=>-pi/2, )
+                        toplabel = Label(lout[1,1:Nmcs2mix+1], label_target(cfg, sdm, distn_scales[dst][i_scl]),fontsize=14,font=:regular,valign=:bottom)
+                        axs_mcseps = [
+                                      Axis(lout[2,1+i_mc]; axargs..., title=labels_opt[mcs2mix[i_mc]], )
+                                      for i_mc=1:Nmcs2mix
+                                     ]
+                        axargs[:title] = "Short DNS"
+                        axancgen = Axis(lout[2,1]; axargs...)
+                        axargs[:xlabel] = "CCDF/(DNS CCDF)" 
+                        delete!(axargs, :title)
+                        axratio = Axis(lout[2,1+Nmcs2mix+1]; axargs...)
+                        axargs[:xscale],axargs[:yscale] = identity,log10
+                        axargs[:ylabel],axargs[:ylabelvisible],axargs[:yticklabelsvisible] = fdivlabel,true,true
+                        delete!(axargs, :xlabel)
+                        delete!(axargs, :title)
+                        axargs[:xticklabelsvisible] = false
+                        axfdiv = Axis(lout[3,1:Nmcs2mix+1]; axargs...)
+
+                        # GPD
+                        lines!(axancgen, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3)
+                        lines!(axratio, clipccdfratio.(ccdf_gpd./dnspot), levels_exc; color=:gray, alpha=0.5, linewidth=3)
+                        # Short DNS 
+                        # TODO make into a band
+                        #nnidx = findlast((isfinite.(ccdf) for ccdf=[ccdf_pot_ancgen_lo,ccdf_pot_ancgen_hi,ccdf_pot_ancgen_pt])...)
+                        #band!(axancgen, Point2f.(thresh_cquantile.*ccdf_pot_ancgen_lo[1:nnidx], levels_exc[1:nnidx]), Point2f.(thresh_cquantile.*ccdf_pot_ancgen_hi[1:nnidx]), levels_exc[1:nnidx]; color=:gray, alpha=0.5)
+                        bandfinite = isfinite.(ccdf_pot_ancgen_lo) .& isfinite.(ccdf_pot_ancgen_pt) .& isfinite.(ccdf_pot_ancgen_hi) 
+                        if any(isfinite.(bandfinite))
+                            i_level_max = findlast(bandfinite) 
+                            band!(
+                                  axancgen, 
+                                  Point2f.(thresh_cquantile.*ccdf_pot_ancgen_lo[1:i_level_max], levels[i_thresh_cquantile:Nlev][1:i_level_max]), 
+                                  Point2f.(thresh_cquantile.*ccdf_pot_ancgen_hi[1:i_level_max], levels[i_thresh_cquantile:Nlev][1:i_level_max]),
+                                  ; 
+                                  color=:gray, alpha=0.5
+                                 )
+                        end
+                        scatterlines!(axancgen, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; linewidth=3, colargs..., marker=:circle)
+                        scatter!(axfdiv, 1, fdiv_ancgen_valid_pt; color=:black, marker=:circle, markersize=12)
+                        lines!(axfdiv, [1,1], [fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi]; color=:black, linewidth=2)
+                        scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; marker=:circle, linewidth=3, colargs...)
+                        for (i_mc,mc) in enumerate(mcs2mix)
+                            # include the values of the the thresholded mixing criteria 
+                            for (est,linestyle,marker,yoffset) in (("mix",:solid,:xcross,0.1),("pool",(:dot,:dense),'O',-0.1))
+                                fdivlo,fdivhi = [SB.quantile(fdivs_opt[mc][est][2:Nboot+1], q) for q=[0.05,0.95]]
+                                ccdflo,ccdfhi = [thresh_cquantile.*QG2L.quantile_sliced(ccdfs_opt[mc][est][i_thresh_cquantile:end,2:Nboot+1], q, 2)[:,1] for q=[0.05,0.95]]
+                                if est == "mix"
+                                    band!(axs_mcseps[i_mc], Point2f.(ccdflo, levels_exc), Point2f.(ccdfhi, levels_exc); color=mixcrit_colors[mc], alpha=0.5)
+                                end
+                                #band!(axratio, Point2f.(ccdflo./dnspot, levels_exc), Point2f.(ccdfhi./dnspot, levels_exc); color=mixcrit_colors[mc], alpha=0.5) # TODO 
+                                scatter!(axfdiv, (1+i_mc+yoffset), fdivs_opt[mc][est][1]; color=mixcrit_colors[mc], marker=marker, markersize=12)
+                                lines!(axfdiv, (1+i_mc+yoffset).*ones(Float64, 2), [fdivlo,fdivhi]; color=mixcrit_colors[mc], linestyle=linestyle)
+                                for i_boot = 1:1
+                                    scatterlines!(axs_mcseps[i_mc], thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end,i_boot], levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, label=labels_opt[mc], linewidth=1.5, )
+                                    if est == "mix"
+                                        scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdfs_opt[mc][est][i_thresh_cquantile:end,i_boot]./dnspot), levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, linewidth=1.5)
+                                    end
+                                end
+                            end
+                        end
+                        # Long DNS 
+                        for ax = (axancgen,axs_mcseps...)
+                            lines!(ax, dnspot, levels_exc; linewidth=1.5, color=:black, linestyle=(:dash,:dense))
+                        end
+                        lines!(axratio, clipccdfratio.(dnspot./dnspot), levels_exc; linewidth=3, color=:black, linestyle=(:dash,:dense))
+                        for ax = (axancgen,axs_mcseps...,axratio)
+                            ylims!(ax, ylimits...) #1.5*levels[i_thresh_cquantile]-0.5*levels[i_thresh_cquantile+1], 1.5*levels[end]-0.5*levels[end-1])
+                        end
+                        for ax = (axancgen, axs_mcseps...)
+                            xlims!(ax, 1/(time_valid_dns_ph*sdm.tu*10), thresh_cquantile*1.1)
+                        end
+                        xlims!(axratio, 1/10, 10)
+                        xlims!(axfdiv, 0.5, Nmcs2mix+1.5)
+
+                        axancgen.ylabelvisible = axancgen.yticklabelsvisible = true
+                        for i_col = 1:Nmcs2mix
+                            colgap!(lout, i_col, 0)
+                        end
+
+                        rowsize!(lout, 1, Relative(50/450))
+                        rowsize!(lout, 2, Relative(320/450))
+                        rowgap!(lout, 1, 0)
+                        rowgap!(lout, 2, 0)
+
+                        save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(fdivname)_$(i_scl)_Nanc$(Nancsub)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                     end
-                end 
+                end
+                
             end
         end
     end
