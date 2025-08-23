@@ -331,14 +331,15 @@ function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thres
         ccdf_pot_agglon .+= num_peaks_exceeding_level
         append!(all_peaks, peak_vals)
         # Take only subsets 
+        # TODO detect when it' an unfair comparison, and restrict Nancsubs where necessary 
         for (i_ect,ect) in enumerate(equal_cost_timespans)
-            num_peaks_ect = findlast(downcross_tidx .< ect)
+            num_peaks_ect = sum(downcross_tidx .< ect)
             num_peaks_exceeding_level = sum(peak_vals[1:num_peaks_ect] .> levels_geq_thresh'; dims=1)[1,:]
             ccdf_pot_seplon_eqcost[:,i_lon,i_ect] .= num_peaks_exceeding_level ./ num_peaks_ect
         end
     end
     ccdf_pot_agglon ./= num_peaks_total
-    mean_return_period = num_peaks_total / (Nt*Nlon)
+    mean_return_period = Nt*Nlon / num_peaks_total
     # Also compute GPD parameters here
     gpdpar_agglon = compute_GPD_params(all_peaks, levels_geq_thresh[1])
     std_agglon = SB.mean(SB.std(Roft_seplon; dims=1); dims=2)[1,1]

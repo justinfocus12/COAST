@@ -79,7 +79,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
         ilts[dst] = Dict{String,Dict}()
         iltcounts[dst] = Dict{String,Dict}()
         ccdfs[dst],pdfs[dst] = (Dict{String,Array{Float64}}() for _=1:2)
-        for rsp = ["z","2","e"][2:2]
+        for rsp = ["z","2","e"]
             mixcrits[dst][rsp] = Dict{String,Array{Float64}}()
             ilts[dst][rsp] = Dict{String,Array{Int64}}()
             iltcounts[dst][rsp] = Dict{String,Array{Int64}}()
@@ -156,7 +156,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
         end
         ilt_upper_bound = Nleadtime #findlast(leadtimes .<= cfg.dtRmax_max)
         for dst = ["b"]
-            for rsp = ["2"] #"z","2","e"]
+            for rsp = ["z","2","e"]
                 for i_scl = 1:Nscales[dst]
                     for mc = mcs2mix #keys(mixobjs)
                         for (i_mcval,mcval) in enumerate(mixobjs[mc])
@@ -285,7 +285,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     Nlev = length(levels)
     i_level_highest_shortdns = Nlev #findlast(levels_exc .< maximum(Rccdf_ancgen_seplon))
     # TODO vary the number of ancestors used 
-    Nancmax = length(coast.ancestors)
+    Nancall = length(coast.ancestors)
     # Load the various notions of field correlation
     globcorr,contcorr = JLD2.jldopen(joinpath(resultdir,"contour_dispersion.jld2"), "r") do f
         return f["globcorr"], f["contcorr"]
@@ -296,21 +296,21 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     color_quadratic = :sienna1
     color_zernike = :purple
     i_mode_sf = 1
-    max_score = maximum(vcat(coast.anc_Rmax, (coast.desc_Rmax[i_anc] for i_anc=1:Nancmax)...))
+    max_score = maximum(vcat(coast.anc_Rmax, (coast.desc_Rmax[i_anc] for i_anc=1:Nancall)...))
     # Set up bootstrap resamplings
     rng_boot = Random.MersenneTwister(871940)
     ancs_boot = Vector{Matrix{Int64}}([])
     anc_boot_mults = Vector{Matrix{Int64}}([])
+    # try sampling without replacement
     for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
-        push!(ancs_boot, Random.rand(rng_boot, 1:Nancmax, (Nancsub, Nboot+1)))
-        push!(anc_boot_mults, zeros(Int64, (Nancmax,Nboot+1)))
-        for i_boot = 1:Nboot+1 # TODO come up with a more principled "best" estimate with smaller sample size. Maybe with fractional weighting
+        push!(ancs_boot, zeros(Int64, (Nancsub, Nboot+1))) #Random.rand(rng_boot, 1:Nancall, (Nancsub, Nboot+1)))
+        push!(anc_boot_mults, zeros(Int64, (Nancall,Nboot+1)))
+        anc_boot_mults[i_Nancsub][1:Nancsub,1] .= 1
+        for i_boot = 2:Nboot+1 # TODO come up with a more principled "best" estimate with smaller sample size. Maybe with fractional weighting
+            ancs_boot[i_Nancsub][:,i_boot] .= Random.randperm(rng_boot, Nancall)[1:Nancsub]
             for i_anc = 1:Nancsub
                 anc_boot_mults[i_Nancsub][ancs_boot[i_Nancsub][i_anc,i_boot],i_boot] += 1
             end
-        end
-        if Nancsub == Nancmax
-            anc_boot_mults[i_Nancsub][:,1] .= 1
         end
     end
 
@@ -321,7 +321,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     ccdfmixs,pdfmixs,fdivs = (Dict{String,Dict}() for _=1:3)
     for dst = ["b"]
         ccdfmixs[dst],pdfmixs[dst],fdivs[dst] = (Dict{String,Dict}() for _=1:3)
-        for rsp = ["z","2","e"][2:2]
+        for rsp = ["z","2","e"]
             ccdfmixs[dst][rsp],pdfmixs[dst][rsp],fdivs[dst][rsp] = (Dict{String,Dict}() for _=1:3)
             for mc = mcs2mix
                 ccdfmixs[dst][rsp][mc],pdfmixs[dst][rsp][mc] = (Dict{String,Array{Float64}}() for _=1:2)
@@ -340,11 +340,11 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
 
 
     Nmem = EM.get_Nmem(ens)
-    Ndsc = Nmem - Nancmax
+    Ndsc = Nmem - Nancall
     idx_lev = collect(range(i_thresh_cquantile,i_level_highest_shortdns; step=1)) 
-    Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nancmax)
+    Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nancall)
     for dst = ["b"]
-        for rsp = ["z","2","e"][2:2]
+        for rsp = ["z","2","e"]
             Threads.@threads for mc = mcs2mix #keys(mixobjs)
                 for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
                     for i_boot = 1:Nboot+1
@@ -356,7 +356,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                         # Iterate through each mixing objective of each mixing criterion
                             Nmcv = length(mixobjs[mc])
                             for i_mcval = 1:Nmcv
-                                for i_anc = 1:Nancmax
+                                for i_anc = 1:Nancall
                                     ilt = iltmixs[dst][rsp][mc][i_mcval,i_anc,i_scl]
                                     ccdfmixs[dst][rsp][mc]["pool"][:,i_Nancsub,i_boot,i_mcval,i_scl] .+= (anc_boot_mults[i_Nancsub][i_anc,i_boot]/Nancsub) .* ccdfs[dst][rsp][:,ilt,i_anc,i_scl]
                                     pth = ccdfs[dst][rsp][i_thresh_cquantile,ilt,i_anc,i_scl]
@@ -386,6 +386,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                                         # Only integrte up to the maximum achieved by short DNS 
                                         pmf1,pmf2 = ccdfmixs[dst][rsp][mc][est][idx_lev,i_Nancsub,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1:length(idx_lev)]
                                         fdivs[dst][rsp][mc][est][fdivname][i_Nancsub,i_boot,i_mcval,i_scl] = QG2L.fdiv_fun_ccdf(ccdfmixs[dst][rsp][mc][est][idx_lev,i_Nancsub,i_boot,i_mcval,i_scl], ccdf_pot_valid_agglon[1:length(idx_lev)], levels_exc[1:length(idx_lev)], levels_exc[1:length(idx_lev)], fdivname)
+                                        # TODO add more fdivs (not-actually f-divergences)
                                     end
                                 end
                             end

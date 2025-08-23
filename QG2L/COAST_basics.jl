@@ -794,7 +794,7 @@ function expt_config_COAST_analysis(cfg::ConfigCOAST, pertop::QG2L.PerturbationO
     leadtimes = collect(range(cfg.lead_time_min,cfg.lead_time_max; step=cfg.lead_time_inc))
     Nleadtime = length(leadtimes)
     Nancmax = cfg.num_init_conds_max
-    Nancsubs = collect(2 .^ range(0, floor(Int, log2(Nancmax)); step=1))
+    Nancsubs = collect(2 .^ range(0, floor(Int, log2(Nancmax)-1); step=1))
     
 
     r2threshes = [0.7] #[0.8,0.7,0.6,0.5]
