@@ -921,7 +921,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
          levels,levels_mid,
          dsts,rsps,mixobjs,distn_scales,
          ccdfs,pdfs,
-         fdivs,fdivs_ancgen_valid,
+         fdivs,fdivs_ancgen_valid,fdivs_eqcostvalid_valid,
          mixcrits,iltmixs,
          ccdfmixs,pdfmixs,
         ) = (JLD2.jldopen(joinpath(resultdir,"ccdfs_combined.jld2"),"r") do f
@@ -938,6 +938,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     f["pdfs"],# pdfs
                     f["fdivs"],# fdivs
                     f["fdivs_ancgen_valid"],
+                    f["fdivs_eqcostvalid_valid"],
                     f["mixcrits"],# mixcrits
                     f["iltmixs"],# iltmixs
                     f["ccdfmixs"],# ccdfmixs
@@ -1064,7 +1065,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         # TODO whole separate figure on reduction in the error metric  as more ancestors are added
                         fig = Figure(size=(400,300))
                         lout = fig[1,1] = GridLayout()
-                        ax = Axis(lout[1,1], xlabel="𝑁 (ancestors)", ylabel=fdivlabel, xscale=log2, titlefont=:regular, xgridvisible=false, ygridvisible=false, xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10)
+                        yscale = (fdivname in ["chi2","kl"] ? log10 : identity)
+                        ax = Axis(lout[1,1], xlabel="𝑁 (ancestors)", ylabel=fdivlabel, xscale=log2, titlefont=:regular, xgridvisible=false, ygridvisible=false, xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10, yscale=yscale)
                         for (i_mc,mc) in enumerate(mcs2mix)
                             # include the values of the the thresholded mixing criteria 
                             for (est,linestyle,marker) in (("mix",:solid,:xcross),("pool",(:dot,:dense),'O'))[1:1]
@@ -1078,6 +1080,10 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                        color=mixcrit_colors[mc], linestyle=:dash)
                             end
                         end
+                        fdivs_eqcost_lo,fdivs_eqcost_mid,fdivs_eqcost_hi = (QG2L.quantile_sliced(fdivs_eqcostvalid_valid[fdivname], q, 2)[:,1] for q=[0.05,0.5,0.95])
+                        scatterlines!(ax, Nancsubs, fdivs_eqcost_mid; color=:black, linestyle=:solid)
+                        scatterlines!(ax, Nancsubs, fdivs_eqcost_lo; color=:black, linestyle=(:dash,:dense))
+                        scatterlines!(ax, Nancsubs, fdivs_eqcost_hi; color=:black, linestyle=(:dash,:dense))
                         save(joinpath(figdir,"eqcostaccuracy_$(dst)_$(rsp)_$(fdivname)_$(i_scl)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                         # -----------------------------------------------
                         fig = Figure(size=(100*(Nmcs2mix+2),450))
