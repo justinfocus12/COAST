@@ -794,7 +794,8 @@ function expt_config_COAST_analysis(cfg::ConfigCOAST, pertop::QG2L.PerturbationO
     leadtimes = collect(range(cfg.lead_time_min,cfg.lead_time_max; step=cfg.lead_time_inc))
     Nleadtime = length(leadtimes)
     Nancmax = cfg.num_init_conds_max
-    Nancsubs = collect(2 .^ range(0, floor(Int, log2(Nancmax)-1); step=1))
+    #Nancsubs = [1,4,7,10,13,16]
+    #Nancsubs = unique(round.(Int, collect(2 .^ range(0, floor(Int, log2(Nancmax)-1); step=1))
     
 
     r2threshes = [0.7] #[0.8,0.7,0.6,0.5]
@@ -876,7 +877,7 @@ function expt_config_COAST_analysis(cfg::ConfigCOAST, pertop::QG2L.PerturbationO
     xstride_valid_dns = 1
     adjust_ccdf_per_ancestor = Bool(0)
     # Return a NamedTuple to be robust to ordering
-    return (; leadtimes, r2threshes, distns, rsps, mixobjs, mcs2mix, mixcrit_labels, mixobj_labels, mixcrit_colors, distn_scales, fdivnames, Nancmax, Nancsubs, Nboot, ccdf_levels,time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor)
+    return (; leadtimes, r2threshes, distns, rsps, mixobjs, mcs2mix, mixcrit_labels, mixobj_labels, mixcrit_colors, distn_scales, fdivnames, Nancmax, Nboot, ccdf_levels,time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor)
 end
 
 

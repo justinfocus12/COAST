@@ -308,17 +308,16 @@ function compute_local_objective_and_stats_zonsym(hist_filenames::Vector{String}
     return (tgridreq,Roft_seplon,Rccdf_seplon,Rccdf_agglon)
 end
 
-function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thresh::Vector{Float64}, prebuffer::Int64, postbuffer::Int64, initbuffer::Int64, equal_cost_timespans::Vector{Int64})
+function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thresh::Vector{Float64}, prebuffer::Int64, postbuffer::Int64, initbuffer::Int64, boost_cost_per_ancestor::Int64)
     # first entry of levels_geq_thresh is thresh itself 
     Nt,Nlon = size(Roft_seplon)
     Nlev = length(levels_geq_thresh)
-    Nect = length(equal_cost_timespans)
     @show Nlev
-    ccdf_pot_seplon_eqcost = zeros(Float64, (Nlev,Nlon,Nect))
     ccdf_pot_seplon = zeros(Float64, (Nlev,Nlon))
     ccdf_pot_agglon = zeros(Float64, Nlev)
     num_peaks_total = 0
     all_peaks = Vector{Float64}([])
+    Npeaks_per_lon = zeros(Int64, Nlon)
     for i_lon = 1:Nlon
         pot_results = peaks_over_threshold(Roft_seplon[:,i_lon], levels_geq_thresh[1], prebuffer, postbuffer, initbuffer)
         if isnothing(pot_results)
@@ -332,18 +331,26 @@ function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thres
         append!(all_peaks, peak_vals)
         # Take only subsets 
         # TODO detect when it' an unfair comparison, and restrict Nancsubs where necessary 
-        for (i_ect,ect) in enumerate(equal_cost_timespans)
-            num_peaks_ect = sum(downcross_tidx .< ect)
-            num_peaks_exceeding_level = sum(peak_vals[1:num_peaks_ect] .> levels_geq_thresh'; dims=1)[1,:]
-            ccdf_pot_seplon_eqcost[:,i_lon,i_ect] .= num_peaks_exceeding_level ./ num_peaks_ect
-        end
     end
     ccdf_pot_agglon ./= num_peaks_total
     mean_return_period = Nt*Nlon / num_peaks_total
+    Nancsub_comparable_max = floor(Int, Nt/(boost_cost_per_ancestor + mean_return_period))
+    Nancsubs = collect(unique(round.(Int,range(1, Nancsub_comparable_max; length=8))))
+    N_Nancsub = length(Nancsubs)
+    ccdf_pot_seplon_eqcost = zeros(Float64, (Nlev,Nlon,N_Nancsub))
+    @infiltrate
+    for i_lon = 1:Nlon
+        for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
+            equal_cost_timespan = (boost_cost_per_ancestor + mean_return_period) * Nancsub
+            num_peaks = sum(downcross_tidx .< equal_cost_timespan)
+            num_peaks_exceeding_level = sum(peak_vals[1:num_peaks] .> levels_geq_thresh'; dims=1)[1,:]
+            ccdf_pot_seplon_eqcost[:,i_lon,i_ect] .= num_peaks_exceeding_level ./ num_peaks
+        end
+    end
     # Also compute GPD parameters here
     gpdpar_agglon = compute_GPD_params(all_peaks, levels_geq_thresh[1])
     std_agglon = SB.mean(SB.std(Roft_seplon; dims=1); dims=2)[1,1]
-    return (ccdf_pot_seplon, ccdf_pot_agglon, gpdpar_agglon, std_agglon, ccdf_pot_seplon_eqcost, mean_return_period)
+    return (ccdf_pot_seplon, ccdf_pot_agglon, gpdpar_agglon, std_agglon, ccdf_pot_seplon_eqcost, mean_return_period,Nancsubs)
 end
 
 function compute_local_GPD_params_zonsym_multiple_fits(hist_filenames::Vector{String}, obs_fun_xshiftable::Function, prebuffer_time::Int64, follow_time::Int64, initbuffer::Int64, Nxshifts::Int64, xstride::Int64, figdir::String, obs_label)

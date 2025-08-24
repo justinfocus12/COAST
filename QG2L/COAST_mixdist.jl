@@ -79,7 +79,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
         ilts[dst] = Dict{String,Dict}()
         iltcounts[dst] = Dict{String,Dict}()
         ccdfs[dst],pdfs[dst] = (Dict{String,Array{Float64}}() for _=1:2)
-        for rsp = ["z","2","e"]
+        for rsp = ["z","2","e"][2:2]
             mixcrits[dst][rsp] = Dict{String,Array{Float64}}()
             ilts[dst][rsp] = Dict{String,Array{Int64}}()
             iltcounts[dst][rsp] = Dict{String,Array{Int64}}()
@@ -98,7 +98,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
             idx_dsc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
             Rs[2:Npert+1] .= coast.desc_Rmax[i_anc][idx_dsc]
             for dst = ["b"]
-                for rsp = ["z","2","e"]
+                for rsp = ["z","2","e"][2:2]
                     for i_scl = 1:Nscales[dst]
                         mixcrits[dst][rsp]["lt"][i_leadtime,i_anc,i_scl] = leadtimes[i_leadtime]
                         if "e" == rsp
@@ -156,7 +156,7 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
         end
         ilt_upper_bound = Nleadtime #findlast(leadtimes .<= cfg.dtRmax_max)
         for dst = ["b"]
-            for rsp = ["z","2","e"]
+            for rsp = ["z","2","e"][2:2]
                 for i_scl = 1:Nscales[dst]
                     for mc = mcs2mix #keys(mixobjs)
                         for (i_mcval,mcval) in enumerate(mixobjs[mc])
@@ -210,13 +210,12 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
-     fdivnames,Nancmax,Nancsubs,Nboot,ccdf_levels,
+     fdivnames,Nancmax,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
     Nleadtime = length(leadtimes)
     Nr2th = length(r2threshes)
-    N_Nancsub = length(Nancsubs)
     Nscales = Dict(dst=>length(distn_scales[dst]) for dst=dsts)
     (
      coefs_zernike,residmse_zernike,rsquared_zernike,resid_range_zernike,
@@ -256,6 +255,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
      ccdf_pot_valid_agglon,
      ccdf_pot_valid_seplon_eqcost,
      mean_return_period,
+     Nancsubs,
     ) = (
          JLD2.jldopen(joinpath(resultdir,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
              return (
@@ -273,9 +273,11 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                      f["ccdf_pot_valid_agglon"],
                      f["ccdf_pot_valid_seplon_eqcost"],
                      f["mean_return_period"],
+                     f["Nancsubs"],
                     )
          end
         )
+    N_Nancsub = length(Nancsubs)
     thresh = Rccdf_valid_agglon[i_thresh_cquantile] 
     levels = Rccdf_valid_agglon
     levels_mid = 0.5 .* (levels[1:end-1] .+ levels[2:end])
@@ -321,7 +323,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     ccdfmixs,pdfmixs,fdivs = (Dict{String,Dict}() for _=1:3)
     for dst = ["b"]
         ccdfmixs[dst],pdfmixs[dst],fdivs[dst] = (Dict{String,Dict}() for _=1:3)
-        for rsp = ["z","2","e"]
+        for rsp = ["z","2","e"][2:2]
             ccdfmixs[dst][rsp],pdfmixs[dst][rsp],fdivs[dst][rsp] = (Dict{String,Dict}() for _=1:3)
             for mc = mcs2mix
                 ccdfmixs[dst][rsp][mc],pdfmixs[dst][rsp][mc] = (Dict{String,Array{Float64}}() for _=1:2)
@@ -344,7 +346,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     idx_lev = collect(range(i_thresh_cquantile,i_level_highest_shortdns; step=1)) 
     Ndsc_per_leadtime = div(Ndsc, Nleadtime*Nancall)
     for dst = ["b"]
-        for rsp = ["z","2","e"]
+        for rsp = ["z","2","e"][2:2]
             Threads.@threads for mc = mcs2mix #keys(mixobjs)
                 for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
                     for i_boot = 1:Nboot+1
@@ -407,10 +409,10 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                                                        fdivname
                                                       )
         fdivs_ancgen_valid[fdivname] = mapslices(fdiv_from_valid, ccdf_pot_ancgen_seplon; dims=1)[1,:]
-        fdivs_eqcostvalid_valid[fdivname] = zeros(Float64, (N_Nancsub,size(ccdf_pot_valid_seplon,2)))
+        fdivs_eqcostvalid_valid[fdivname] = zeros(Float64, (N_Nancsub_comparable,size(ccdf_pot_valid_seplon,2)))
         @show size(ccdf_pot_valid_seplon)
         @show size(fdivs_eqcostvalid_valid[fdivname])
-        for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
+        for (i_Nancsub,Nancsub) in enumerate(Nancsubs[1:N_Nancsub_comparable])
             fdivs_eqcostvalid_valid[fdivname][i_Nancsub,:] .= mapslices(fdiv_from_valid, ccdf_pot_valid_seplon_eqcost[:,:,i_Nancsub]; dims=1)[1,:]
         end
         #@infiltrate any(isnan.(fdivs_ancgen_valid[fdivname]))
