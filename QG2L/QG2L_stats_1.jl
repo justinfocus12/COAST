@@ -318,12 +318,17 @@ function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thres
     num_peaks_total = 0
     all_peaks = Vector{Float64}([])
     Npeaks_per_lon = zeros(Int64, Nlon)
+    peak_tidx_eachlon = Vector{Vector{Int64}}([])
+    peak_vals_eachlon = Vector{Vector{Float64}}([])
     for i_lon = 1:Nlon
         pot_results = peaks_over_threshold(Roft_seplon[:,i_lon], levels_geq_thresh[1], prebuffer, postbuffer, initbuffer)
         if isnothing(pot_results)
             continue
         end
         peak_vals,peak_tidx,upcross_tidx,downcross_tidx = pot_results
+        # Record peak values and timings for the following loop with smaller sample sizes
+        push!(peak_tidx_eachlon, peak_tidx)
+        push!(peak_vals_eachlon, peak_vals)
         num_peaks_exceeding_level = sum(peak_vals .> levels_geq_thresh'; dims=1)[1,:]
         ccdf_pot_seplon[:,i_lon] .= num_peaks_exceeding_level ./ length(peak_vals)
         num_peaks_total += length(peak_vals)
@@ -338,13 +343,12 @@ function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thres
     Nancsubs = collect(unique(round.(Int,range(1, Nancsub_comparable_max; length=8))))
     N_Nancsub = length(Nancsubs)
     ccdf_pot_seplon_eqcost = zeros(Float64, (Nlev,Nlon,N_Nancsub))
-    @infiltrate
     for i_lon = 1:Nlon
         for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
             equal_cost_timespan = (boost_cost_per_ancestor + mean_return_period) * Nancsub
-            num_peaks = sum(downcross_tidx .< equal_cost_timespan)
-            num_peaks_exceeding_level = sum(peak_vals[1:num_peaks] .> levels_geq_thresh'; dims=1)[1,:]
-            ccdf_pot_seplon_eqcost[:,i_lon,i_ect] .= num_peaks_exceeding_level ./ num_peaks
+            num_peaks = sum(peak_tidx_eachlon[i_lon].< equal_cost_timespan)
+            num_peaks_exceeding_level = sum(peak_vals_eachlon[i_lon][1:num_peaks] .> levels_geq_thresh'; dims=1)[1,:]
+            ccdf_pot_seplon_eqcost[:,i_lon,i_Nancsub] .= num_peaks_exceeding_level ./ num_peaks
         end
     end
     # Also compute GPD parameters here

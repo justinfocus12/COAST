@@ -2,7 +2,7 @@
 
 #SBATCH -n 1
 #SBATCH -N 1
-#SBATCH -t 12:00:00
+#SBATCH -t 02:00:00
 #SBATCH -p sched_mit_pog_r8
 #SBATCH -e /orcd/archive/pog/001/ju26596/COAST/QG2L/logs/COAST_%A_%a_error.out
 #SBATCH -o /orcd/archive/pog/001/ju26596/COAST/QG2L/logs/COAST_%A_%a_output.out

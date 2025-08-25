@@ -277,6 +277,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                     )
          end
         )
+    #@infiltrate
     N_Nancsub = length(Nancsubs)
     thresh = Rccdf_valid_agglon[i_thresh_cquantile] 
     levels = Rccdf_valid_agglon
@@ -398,21 +399,25 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
             end
         end
     end
+    # TODO make a new function for just evaluating equal-cost
     fdivs_ancgen_valid = Dict()
     fdivs_eqcostvalid_valid = Dict()
     for fdivname = fdivnames
-        fdiv_from_valid(ccdf_pot) = QG2L.fdiv_fun_ccdf(
-                                                       ccdf_pot[1:length(idx_lev)], 
-                                                       ccdf_pot_valid_agglon[1:length(idx_lev)], 
-                                                       levels[idx_lev], 
-                                                       levels[idx_lev], 
-                                                       fdivname
-                                                      )
+        fdiv_from_valid(ccdf_pot) = (
+                                     all(isnan.(ccdf_pot)) ? NaN : 
+                                     QG2L.fdiv_fun_ccdf(
+                                                        ccdf_pot[1:length(idx_lev)], 
+                                                        ccdf_pot_valid_agglon[1:length(idx_lev)], 
+                                                        levels[idx_lev], 
+                                                        levels[idx_lev], 
+                                                        fdivname
+                                                        )
+                                    )
         fdivs_ancgen_valid[fdivname] = mapslices(fdiv_from_valid, ccdf_pot_ancgen_seplon; dims=1)[1,:]
-        fdivs_eqcostvalid_valid[fdivname] = zeros(Float64, (N_Nancsub_comparable,size(ccdf_pot_valid_seplon,2)))
+        fdivs_eqcostvalid_valid[fdivname] = zeros(Float64, (N_Nancsub,size(ccdf_pot_valid_seplon,2)))
         @show size(ccdf_pot_valid_seplon)
         @show size(fdivs_eqcostvalid_valid[fdivname])
-        for (i_Nancsub,Nancsub) in enumerate(Nancsubs[1:N_Nancsub_comparable])
+        for (i_Nancsub,Nancsub) in enumerate(Nancsubs[1:N_Nancsub])
             fdivs_eqcostvalid_valid[fdivname][i_Nancsub,:] .= mapslices(fdiv_from_valid, ccdf_pot_valid_seplon_eqcost[:,:,i_Nancsub]; dims=1)[1,:]
         end
         #@infiltrate any(isnan.(fdivs_ancgen_valid[fdivname]))

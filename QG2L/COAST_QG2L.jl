@@ -51,12 +51,12 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_objective" =>                                 0, 
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
-                             "mix_COAST_distributions" =>                        1, # At this point, quantify the cost 
+                             "mix_COAST_distributions" =>                        1, 
                              "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
-                             "remove_pngs" =>                                    0,
+                             "remove_pngs" =>                                    1,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -138,7 +138,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
     if todo["remove_pngs"]
         for filename = readdir(figdir, join=true)
-            revised_figure_substrings = ["conditionalpdf","objectives_anc","nodesc","contours_anc","corrs_anc","linquad"]
+            revised_figure_substrings = ["ccdfmixs_"]
             if endswith(filename,"png") && any(occursin.(revised_figure_substrings,filename))
                 rm(filename)
             end
@@ -248,7 +248,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         levels_mid = 0.5 .* (levels[1:end-1] .+ levels[2:end])
         buffers = (cfg.peak_prebuffer_time, cfg.follow_time, cfg.lead_time_max)
         num_lead_times = length(range(cfg.lead_time_min,cfg.lead_time_max; step=cfg.lead_time_inc))
-        boost_cost_per_ancestor = round(Int, mean_return_period + (cfg.lead_time_max+cfg.follow_time) * cfg.num_perts_max/num_lead_times)
+        boost_cost_per_ancestor = round(Int, (cfg.lead_time_max/2+cfg.dtRmax_max) * cfg.num_perts_max/num_lead_times)
+        #boost_cost_per_ancestor = round(Int, (cfg.lead_time_max+cfg.follow_time) * cfg.num_perts_max/num_lead_times)
         ccdf_pot_valid_seplon,ccdf_pot_valid_agglon,gpdpar_valid_agglon,std_valid_agglon,ccdf_pot_valid_seplon_eqcost,mean_return_period,Nancsubs = QG2L.compute_local_pot_zonsym(Roft_valid_seplon, levels[i_thresh_cquantile:end], buffers..., boost_cost_per_ancestor)
 
         ccdf_pot_ancgen_seplon,ccdf_pot_ancgen_agglon,gpdpar_ancgen_agglon,std_ancgen_agglon,_,_,_ = QG2L.compute_local_pot_zonsym(Roft_ancgen_seplon, levels[i_thresh_cquantile:end], buffers..., boost_cost_per_ancestor)
@@ -960,7 +961,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         pdf_pot_valid_seplon_eqcost = -diff(ccdf_pot_valid_seplon_eqcost; dims=1) ./ diff(levels_exc)
 
         # ----------- Define a common confidence interval ---------
-       cilo,cimid,cihi = 0.25,0.5,0.75
+        cilo,cimid,cihi = 0.25,0.5,0.75
 
         # ------------- Plots -----------------------
         # For each distribution type, plot the PDFs along the top and a row for each mixing criterion
@@ -969,6 +970,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
 
         for dst = ["b"]
+            println(" -------- Starting dst $(dst) --------")
             Nscales = length(distn_scales[dst])
             for rsp = ["z","2","e"][2:2] #,"2"]
                 # TODO insert another loop over training set size 
@@ -1015,10 +1017,13 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
                 mcs2mix = ["lt","contcorr","globcorr","ei","ent"]
 
+                println("About to start loop over scales")
 
                 for i_scl = scales2plot
+                    println("i_scl = $(i_scl)")
                     for (fdivname,fdivlabel) = (("qrmse","𝐿²"),("kl","KL"),("chi2","χ²")) #("kl","KL"),("chi2","χ²"),("tv","TV"))
                         scalestr = @sprintf("%.3f", distn_scales[dst][i_scl])
+                        println("scalestr = $(scalestr)")
 
                         ccdfs_opt,fdivs_opt,imcs_opt = (Dict{String,Dict}() for _=1:3)
                         mcstrs_opt,fdivstrs_opt = (Dict{String,Dict}() for _=1:2)
@@ -1069,6 +1074,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         ccdf_pot_valid_seplon_eqcost_lo,ccdf_pot_valid_seplon_eqcost_mid,ccdf_pot_valid_seplon_eqcost_hi = (QG2L.quantile_sliced(ccdf_pot_valid_seplon_eqcost, q, 2)[:,1,:] for q=[cilo,cimid,cihi])
                         # ---------------- Convergence with Nancsub -------------------
                         Nmcs2mix = length(mcs2mix)
+                        println("About to make first figure")
                         fig = Figure(size=(150*Nmcs2mix,150))
                         lout = fig[1,1] = GridLayout()
                         axargs = Dict(:ylabel=>fdivlabel, :xscale=>identity, :titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :xlabelsize=>8, :ylabelsize=>8, :xticklabelsize=>6, :yticklabelsize=>6, :yscale=>log10) #i(fdivname in ["chi2","kl"] ? log10 : identity))
@@ -1097,14 +1103,16 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         end
 
                         save(joinpath(figdir,"eqcostaccuracy_$(dst)_$(rsp)_$(fdivname)_$(i_scl)_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
+                        println("Saved eqcostaccuracy convergence plot")
                         # -----------------------------------------------
                         # TODO add to the short DNS plot all the intermediate-length DNSs so we can examine visually and diagnose how each of the others might be better or worse 
                         xlimits = [1/(time_valid_dns_ph*sdm.tu*10), thresh_cquantile*1.1]
                         for (i_Nancsub,Nancsub) in enumerate(Nancsubs[1:N_Nancsub])
+                            println("About to make CCDFMIX fig for Nancsub = $(Nancsub)")
                             fig = Figure(size=(100*(Nmcs2mix+2),450))
                             lout = fig[1,1] = GridLayout()
                             axargs = Dict(:xscale=>log10, :ylabel=>"Severity 𝑅*", :titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :ylabelvisible=>false, :yticklabelsvisible=>false, :ylabelsize=>12, :yticklabelsize=>10, :titlesize=>10, :xlabelsize=>10, :xticklabelsize=>9, :xticklabelrotation=>-pi/2, )
-                            toplabel = Label(lout[1,1:Nmcs2mix+1], label_target(cfg, sdm, distn_scales[dst][i_scl]),fontsize=14,font=:regular,valign=:bottom)
+                            toplabel = Label(lout[1,1:Nmcs2mix+1], @sprintf("𝑁 = %d, %s", Nancsub, label_target(cfg, sdm, distn_scales[dst][i_scl])),fontsize=14,font=:regular,valign=:bottom)
                             axs_mcseps = [
                                           Axis(lout[2,1+i_mc]; axargs..., title=labels_opt[mcs2mix[i_mc]], )
                                           for i_mc=1:Nmcs2mix
@@ -1128,6 +1136,20 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             # TODO make into a band
                             #nnidx = findlast((isfinite.(ccdf) for ccdf=[ccdf_pot_ancgen_lo,ccdf_pot_ancgen_hi,ccdf_pot_ancgen_pt])...)
                             #band!(axancgen, Point2f.(thresh_cquantile.*ccdf_pot_ancgen_lo[1:nnidx], levels_exc[1:nnidx]), Point2f.(thresh_cquantile.*ccdf_pot_ancgen_hi[1:nnidx]), levels_exc[1:nnidx]; color=:gray, alpha=0.5)
+                            if false
+                                band!(axancgen, 
+                                      Point2f.(
+                                               max.(xlimits[1], thresh_cquantile.*ccdf_pot_ancgen_lo),
+                                               levels_exc,
+                                              ),
+                                      Point2f.(
+                                               min.(xlimits[2], thresh_cquantile.*ccdf_pot_ancgen_hi),
+                                               levels_exc,
+                                              ),
+                                      color=:gray, alpha=0.5
+                                     )
+                            end
+                            println("About to bandit,,,")
                             band!(axancgen, 
                                   Point2f.(
                                            max.(xlimits[1], thresh_cquantile.*ccdf_pot_valid_seplon_eqcost_lo[:,i_Nancsub]),
@@ -1139,12 +1161,26 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                           ),
                                   color=:gray, alpha=0.5
                                  )
+                            println("Made  out like bandit")
+                            println("scatterlines 1:")
                             scatterlines!(axancgen, thresh_cquantile.*ccdf_pot_valid_seplon_eqcost_mid[:,i_Nancsub], levels[i_thresh_cquantile:end]; linewidth=1, colargs..., marker=:star5)
+                            println("scatterlines 2:")
                             scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdf_pot_valid_seplon_eqcost_mid[:,i_Nancsub]./dnspot), levels[i_thresh_cquantile:end]; color=:black)
+                            println("scatterlines 3:")
                             scatterlines!(axancgen, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; linewidth=1, colargs..., marker=:circle)
+                            # Ancestor fdivs
+                            println("scattering ancgen fdiv")
                             scatter!(axfdiv, 1, fdiv_ancgen_valid_pt; color=:black, marker=:circle, markersize=12)
+                            println("lining ancgen fdiv")
                             lines!(axfdiv, [1,1], [fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi]; color=:black, linewidth=2)
+                            # Equal-cost DNS fdivs
+                            println("scattering eqcost fdiv")
+                            scatter!(axfdiv, 1, fdivs_eqcost_mid[i_Nancsub]; color=:black, marker=:star5, markersize=12)
+                            println("lining eqcost fdiv")
+                            lines!(axfdiv, [1,1], [fdivs_eqcost_lo[i_Nancsub], fdivs_eqcost_hi[i_Nancsub]]; color=:black, linewidth=2)
+
                             #scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; marker=:circle, linewidth=1, colargs...)
+                            println("About to enumerate mc")
                             for (i_mc,mc) in enumerate(mcs2mix)
                                 # include the values of the the thresholded mixing criteria 
                                 for (est,linestyle,marker,yoffset) in (("mix",:solid,:xcross,0.1),("pool",(:dot,:dense),'O',-0.1))
@@ -1164,6 +1200,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                     end
                                 end
                             end
+                            println("Finished MCs")
                             # Long DNS 
                             for ax = (axancgen,axs_mcseps...)
                                 lines!(ax, dnspot, levels_exc; linewidth=1.5, color=:black, linestyle=(:dash,:dense))
@@ -1188,6 +1225,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             rowgap!(lout, 1, 0)
                             rowgap!(lout, 2, 0)
 
+                            println("About to save")
                             save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(fdivname)_$(i_scl)_Nanc$(Nancsubs[i_Nancsub])_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
                         end
                     end
