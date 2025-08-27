@@ -254,6 +254,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
      ccdf_pot_valid_seplon,
      ccdf_pot_valid_agglon,
      ccdf_pot_valid_seplon_eqcost,
+     ccdf_pot_valid_seplon_eqnanc,
      mean_return_period,
      Nancsubs,
     ) = (
@@ -272,6 +273,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                      f["ccdf_pot_valid_seplon"],
                      f["ccdf_pot_valid_agglon"],
                      f["ccdf_pot_valid_seplon_eqcost"],
+                     f["ccdf_pot_valid_seplon_eqnanc"],
                      f["mean_return_period"],
                      f["Nancsubs"],
                     )
@@ -289,6 +291,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     i_level_highest_shortdns = Nlev #findlast(levels_exc .< maximum(Rccdf_ancgen_seplon))
     # TODO vary the number of ancestors used 
     Nancall = length(coast.ancestors)
+    @assert Nancall >= maximum(Nancsubs)
     # Load the various notions of field correlation
     globcorr,contcorr = JLD2.jldopen(joinpath(resultdir,"contour_dispersion.jld2"), "r") do f
         return f["globcorr"], f["contcorr"]
@@ -402,6 +405,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
     # TODO make a new function for just evaluating equal-cost
     fdivs_ancgen_valid = Dict()
     fdivs_eqcostvalid_valid = Dict()
+    fdivs_eqnancvalid_valid = Dict()
     for fdivname = fdivnames
         fdiv_from_valid(ccdf_pot) = (
                                      all(isnan.(ccdf_pot)) ? NaN : 
@@ -415,10 +419,12 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                                     )
         fdivs_ancgen_valid[fdivname] = mapslices(fdiv_from_valid, ccdf_pot_ancgen_seplon; dims=1)[1,:]
         fdivs_eqcostvalid_valid[fdivname] = zeros(Float64, (N_Nancsub,size(ccdf_pot_valid_seplon,2)))
+        fdivs_eqnancvalid_valid[fdivname] = zeros(Float64, (N_Nancsub,size(ccdf_pot_valid_seplon,2)))
         @show size(ccdf_pot_valid_seplon)
         @show size(fdivs_eqcostvalid_valid[fdivname])
         for (i_Nancsub,Nancsub) in enumerate(Nancsubs[1:N_Nancsub])
             fdivs_eqcostvalid_valid[fdivname][i_Nancsub,:] .= mapslices(fdiv_from_valid, ccdf_pot_valid_seplon_eqcost[:,:,i_Nancsub]; dims=1)[1,:]
+            fdivs_eqnancvalid_valid[fdivname][i_Nancsub,:] .= mapslices(fdiv_from_valid, ccdf_pot_valid_seplon_eqnanc[:,:,i_Nancsub]; dims=1)[1,:]
         end
         #@infiltrate any(isnan.(fdivs_ancgen_valid[fdivname]))
     end
@@ -437,6 +443,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
         f["fdivs"] = fdivs
         f["fdivs_ancgen_valid"] = fdivs_ancgen_valid
         f["fdivs_eqcostvalid_valid"] = fdivs_eqcostvalid_valid
+        f["fdivs_eqnancvalid_valid"] = fdivs_eqnancvalid_valid
         f["mixcrits"] = mixcrits
         f["iltmixs"] = iltmixs
         f["iltcounts"] = iltcounts

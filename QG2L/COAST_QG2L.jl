@@ -52,11 +52,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        1, 
-                             "plot_COAST_mixture" =>                             1,
+                             "plot_COAST_mixture" =>                             0,
                              "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
-                             "remove_pngs" =>                                    1,
+                             "remove_pngs" =>                                    0,
                              # vestigial or hibernating
                              "fit_dns_pot" =>                                    0, 
                              "plot_contour_divergence" =>                        0,
@@ -250,7 +250,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         num_lead_times = length(range(cfg.lead_time_min,cfg.lead_time_max; step=cfg.lead_time_inc))
         boost_cost_per_ancestor = round(Int, (cfg.lead_time_max/2+cfg.dtRmax_max) * cfg.num_perts_max/num_lead_times)
         #boost_cost_per_ancestor = round(Int, (cfg.lead_time_max+cfg.follow_time) * cfg.num_perts_max/num_lead_times)
-        ccdf_pot_valid_seplon,ccdf_pot_valid_agglon,gpdpar_valid_agglon,std_valid_agglon,ccdf_pot_valid_seplon_eqcost,mean_return_period,Nancsubs = QG2L.compute_local_pot_zonsym(Roft_valid_seplon, levels[i_thresh_cquantile:end], buffers..., boost_cost_per_ancestor)
+        ccdf_pot_valid_seplon,ccdf_pot_valid_agglon,gpdpar_valid_agglon,std_valid_agglon,ccdf_pot_valid_seplon_eqcost,ccdf_pot_valid_seplon_eqnanc,mean_return_period,Nancsubs = QG2L.compute_local_pot_zonsym(Roft_valid_seplon, levels[i_thresh_cquantile:end], buffers..., boost_cost_per_ancestor)
+
+        Nancsubs = Nancsubs[Nancsubs .<= length(coast.ancestors)]
 
         ccdf_pot_ancgen_seplon,ccdf_pot_ancgen_agglon,gpdpar_ancgen_agglon,std_ancgen_agglon,_,_,_ = QG2L.compute_local_pot_zonsym(Roft_ancgen_seplon, levels[i_thresh_cquantile:end], buffers..., boost_cost_per_ancestor)
         # Now we can see how long is between each ancestor, we can prescribe equal-cost timespans
@@ -277,6 +279,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
             f["gpdpar_valid_agglon"] = gpdpar_valid_agglon
             f["std_valid_agglon"] = std_valid_agglon
             f["ccdf_pot_valid_seplon_eqcost"] = ccdf_pot_valid_seplon_eqcost
+            f["ccdf_pot_valid_seplon_eqnanc"] = ccdf_pot_valid_seplon_eqnanc
             f["mean_return_period"] = mean_return_period
             f["Nancsubs"] = Nancsubs
         end

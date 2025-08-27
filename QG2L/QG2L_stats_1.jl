@@ -343,18 +343,22 @@ function compute_local_pot_zonsym(Roft_seplon::Matrix{Float64}, levels_geq_thres
     Nancsubs = collect(unique(round.(Int,range(1, Nancsub_comparable_max; length=8))))
     N_Nancsub = length(Nancsubs)
     ccdf_pot_seplon_eqcost = zeros(Float64, (Nlev,Nlon,N_Nancsub))
+    ccdf_pot_seplon_eqnanc = zeros(Float64, (Nlev,Nlon,N_Nancsub))
     for i_lon = 1:Nlon
         for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
+            # Calculation of CCDF with equal cost 
             equal_cost_timespan = (boost_cost_per_ancestor + mean_return_period) * Nancsub
             num_peaks = sum(peak_tidx_eachlon[i_lon].< equal_cost_timespan)
             num_peaks_exceeding_level = sum(peak_vals_eachlon[i_lon][1:num_peaks] .> levels_geq_thresh'; dims=1)[1,:]
             ccdf_pot_seplon_eqcost[:,i_lon,i_Nancsub] .= num_peaks_exceeding_level ./ num_peaks
+            # Calculation of CCDF with equal number of ancestors (really just number of peaks)
+            ccdf_pot_seplon_eqnanc[:,i_lon,i_Nancsub] .= sum(peak_vals_eachlon[i_lon][1:Nancsub] .> levels_geq_thresh'; dims=1)[1,:] ./ Nancsub
         end
     end
     # Also compute GPD parameters here
     gpdpar_agglon = compute_GPD_params(all_peaks, levels_geq_thresh[1])
     std_agglon = SB.mean(SB.std(Roft_seplon; dims=1); dims=2)[1,1]
-    return (ccdf_pot_seplon, ccdf_pot_agglon, gpdpar_agglon, std_agglon, ccdf_pot_seplon_eqcost, mean_return_period,Nancsubs)
+    return (ccdf_pot_seplon, ccdf_pot_agglon, gpdpar_agglon, std_agglon, ccdf_pot_seplon_eqcost, ccdf_pot_seplon_eqnanc, mean_return_period, Nancsubs)
 end
 
 function compute_local_GPD_params_zonsym_multiple_fits(hist_filenames::Vector{String}, obs_fun_xshiftable::Function, prebuffer_time::Int64, follow_time::Int64, initbuffer::Int64, Nxshifts::Int64, xstride::Int64, figdir::String, obs_label)
