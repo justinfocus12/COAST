@@ -877,7 +877,12 @@ function expt_config_COAST_analysis(cfg::ConfigCOAST, pertop::QG2L.PerturbationO
     xstride_valid_dns = 1
     adjust_ccdf_per_ancestor = Bool(0)
     # Return a NamedTuple to be robust to ordering
-    return (; leadtimes, r2threshes, distns, rsps, mixobjs, mcs2mix, mixcrit_labels, mixobj_labels, mixcrit_colors, distn_scales, fdivnames, Nancmax, Nboot, ccdf_levels,time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor)
+    return (; 
+            leadtimes, r2threshes, distns, rsps, mixobjs, mcs2mix, 
+            mixcrit_labels, mixobj_labels, mixcrit_colors, distn_scales, 
+            fdivnames, Nancmax, Nboot, ccdf_levels,
+            time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
+           )
 end
 
 
@@ -1040,7 +1045,7 @@ function plot_contour_dispersion_distribution(
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
      mixcrit_labels,mixobj_labels,distn_scales,
-     fdivnames,Nancmax,Nancsubs,Nboot,ccdf_levels,
+     fdivnames,Nancmax,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
     globcorr,contcorr,contsymdiff,globlyap,contlyap = JLD2.jldopen(contour_dispersion_filename, "r") do f
@@ -1097,7 +1102,7 @@ function compute_contour_dispersion(
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
      mixcrit_labels,mixobj_labels,distn_scales,
-     fdivnames,Nancmax,Nancsubs,Nboot,ccdf_levels,
+     fdivnames,Nancmax,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]

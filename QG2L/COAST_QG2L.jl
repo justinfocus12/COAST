@@ -39,7 +39,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_transcorr" =>                                 0,
                              "plot_pertop" =>                                    0,
                              "plot_bumps" =>                                     0,
-                             "compute_dns_objective" =>                          1,
+                             "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
                              "use_backups" =>                                    0,
                              "anchor" =>                                         0,
@@ -51,8 +51,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_objective" =>                                 0, 
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
-                             "mix_COAST_distributions" =>                        1, 
-                             "plot_COAST_mixture" =>                             0,
+                             "mix_COAST_distributions" =>                        0, 
+                             "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
@@ -300,6 +300,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
          gpdpar_valid_agglon,
          std_valid_agglon,
          ccdf_pot_valid_seplon_eqcost,
+         ccdf_pot_valid_seplon_eqnanc,
          mean_return_period,
          Nancsubs,
         ) = (
@@ -320,6 +321,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                          f["gpdpar_valid_agglon"],
                          f["std_valid_agglon"],
                          f["ccdf_pot_valid_seplon_eqcost"],
+                         f["ccdf_pot_valid_seplon_eqnanc"],
                          f["mean_return_period"],
                          f["Nancsubs"],
                         )
@@ -927,7 +929,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
          levels,levels_mid,
          dsts,rsps,mixobjs,distn_scales,
          ccdfs,pdfs,
-         fdivs,fdivs_ancgen_valid,fdivs_eqcostvalid_valid,
+         fdivs,fdivs_ancgen_valid,fdivs_eqcostvalid_valid,fdivs_eqnancvalid_valid,
          mixcrits,iltmixs,
          ccdfmixs,pdfmixs,
         ) = (JLD2.jldopen(joinpath(resultdir,"ccdfs_combined.jld2"),"r") do f
@@ -945,6 +947,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     f["fdivs"],# fdivs
                     f["fdivs_ancgen_valid"],
                     f["fdivs_eqcostvalid_valid"],
+                    f["fdivs_eqnancvalid_valid"],
                     f["mixcrits"],# mixcrits
                     f["iltmixs"],# iltmixs
                     f["ccdfmixs"],# ccdfmixs
@@ -1032,7 +1035,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         mcstrs_opt,fdivstrs_opt = (Dict{String,Dict}() for _=1:2)
                         labels_opt = Dict{String,String}()
 
-                        colargs = Dict(:color=>:black,)
                         for mc = mcs2mix
                             ccdfs_opt[mc] = Dict{String,Array{Float64}}()
                             fdivs_opt[mc] = Dict{String,Array{Float64}}()
@@ -1074,24 +1076,30 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         dnspot = thresh_cquantile.*ccdf_pot_valid_pt
                         # Collect equal-cost DNS CCDFs and fdivs
                         fdivs_eqcost_lo,fdivs_eqcost_mid,fdivs_eqcost_hi = (QG2L.quantile_sliced(fdivs_eqcostvalid_valid[fdivname], q, 2)[:,1] for q=[cilo,cimid,cihi])
+                        fdivs_eqnanc_lo,fdivs_eqnanc_mid,fdivs_eqnanc_hi = (QG2L.quantile_sliced(fdivs_eqnancvalid_valid[fdivname], q, 2)[:,1] for q=[cilo,cimid,cihi])
                         ccdf_pot_valid_seplon_eqcost_lo,ccdf_pot_valid_seplon_eqcost_mid,ccdf_pot_valid_seplon_eqcost_hi = (QG2L.quantile_sliced(ccdf_pot_valid_seplon_eqcost, q, 2)[:,1,:] for q=[cilo,cimid,cihi])
+                        ccdf_pot_valid_seplon_eqnanc_lo,ccdf_pot_valid_seplon_eqnanc_mid,ccdf_pot_valid_seplon_eqnanc_hi = (QG2L.quantile_sliced(ccdf_pot_valid_seplon_eqnanc, q, 2)[:,1,:] for q=[cilo,cimid,cihi])
                         # ---------------- Convergence with Nancsub -------------------
                         Nmcs2mix = length(mcs2mix)
                         println("About to make first figure")
-                        fig = Figure(size=(150*Nmcs2mix,150))
+                        fig = Figure(size=(100*Nmcs2mix+50,200))
                         lout = fig[1,1] = GridLayout()
-                        axargs = Dict(:ylabel=>fdivlabel, :xscale=>identity, :titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :xlabelsize=>8, :ylabelsize=>8, :xticklabelsize=>6, :yticklabelsize=>6, :yscale=>log10) #i(fdivname in ["chi2","kl"] ? log10 : identity))
+                        axargs = Dict(:ylabel=>fdivlabel, :xlabel=>"𝑁", :xscale=>identity, :titlefont=>:regular, :titlesize=>12, :xgridvisible=>false, :ygridvisible=>false, :xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :yscale=>log10) #i(fdivname in ["chi2","kl"] ? log10 : identity))
                         axs = [Axis(lout[1,i_mc]; axargs...) for i_mc=1:Nmcs2mix]
                         for (i_mc,mc) in enumerate(mcs2mix)
                             ax = axs[i_mc]
                             # Short DNS 
+                            band!(ax, Point2f.(Nancsubs, fdivs_eqnanc_lo), Point2f.(Nancsubs, fdivs_eqnanc_hi); color=:orange4, alpha=0.25)
+                            scatterlines!(ax, Nancsubs, fdivs_eqnanc_mid; color=:orange4, linestyle=:solid, marker=:circle)
                             band!(ax, Point2f.(Nancsubs, fdivs_eqcost_lo), Point2f.(Nancsubs, fdivs_eqcost_hi); color=:gray, alpha=0.25)
-                            scatterlines!(ax, Nancsubs, fdivs_eqcost_mid; color=:black, linestyle=:solid)
+                            scatterlines!(ax, Nancsubs, fdivs_eqcost_mid; color=:black, linestyle=:solid, marker=:star5)
                             # include the values of the the thresholded mixing criteria 
-                            for (est,linestyle,marker) in (("mix",:solid,:xcross),("pool",(:dot,:dense),'O'))[1:1]
+                            for (est,linestyle,marker) in (("mix",:solid,:xcross),("pool",(:dot,:dense),'O'))[1:2]
                                 fdivlo,fdivmid,fdivhi = [QG2L.quantile_sliced(fdivs_opt[mc][est][:,2:Nboot+1], q, 2)[:,1] for q=[cilo,cimid,cihi]]
-                                band!(ax, Point2f.(Nancsubs, fdivlo), Point2f.(Nancsubs, fdivhi); color=mixcrit_colors[mc], alpha=0.25)
-                                scatterlines!(ax, Nancsubs, fdivmid; color=mixcrit_colors[mc], linestyle=:solid)
+                                if est == "mix"
+                                    band!(ax, Point2f.(Nancsubs, fdivlo), Point2f.(Nancsubs, fdivhi); color=mixcrit_colors[mc], alpha=0.25)
+                                end
+                                scatterlines!(ax, Nancsubs, fdivmid; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker)
                             end
                         end
                         for i_mc=1:Nmcs2mix
@@ -1120,7 +1128,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                           Axis(lout[2,1+i_mc]; axargs..., title=labels_opt[mcs2mix[i_mc]], )
                                           for i_mc=1:Nmcs2mix
                                          ]
-                            axargs[:title] = "Short DNS"
+                            axargs[:title] = "DNS"
                             axancgen = Axis(lout[2,1]; axargs...)
                             axargs[:xlabel] = "CCDF/(DNS CCDF)" 
                             delete!(axargs, :title)
@@ -1139,20 +1147,17 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             # TODO make into a band
                             #nnidx = findlast((isfinite.(ccdf) for ccdf=[ccdf_pot_ancgen_lo,ccdf_pot_ancgen_hi,ccdf_pot_ancgen_pt])...)
                             #band!(axancgen, Point2f.(thresh_cquantile.*ccdf_pot_ancgen_lo[1:nnidx], levels_exc[1:nnidx]), Point2f.(thresh_cquantile.*ccdf_pot_ancgen_hi[1:nnidx]), levels_exc[1:nnidx]; color=:gray, alpha=0.5)
-                            if false
-                                band!(axancgen, 
-                                      Point2f.(
-                                               max.(xlimits[1], thresh_cquantile.*ccdf_pot_ancgen_lo),
-                                               levels_exc,
-                                              ),
-                                      Point2f.(
-                                               min.(xlimits[2], thresh_cquantile.*ccdf_pot_ancgen_hi),
-                                               levels_exc,
-                                              ),
-                                      color=:gray, alpha=0.5
-                                     )
-                            end
-                            println("About to bandit,,,")
+                            band!(axancgen, 
+                                  Point2f.(
+                                           max.(xlimits[1], thresh_cquantile.*ccdf_pot_valid_seplon_eqnanc_lo[:,i_Nancsub]),
+                                           levels_exc,
+                                          ),
+                                  Point2f.(
+                                           min.(xlimits[2], thresh_cquantile.*ccdf_pot_valid_seplon_eqnanc_hi[:,i_Nancsub]),
+                                           levels_exc,
+                                          ),
+                                  color=:orange4, alpha=0.25
+                                 )
                             band!(axancgen, 
                                   Point2f.(
                                            max.(xlimits[1], thresh_cquantile.*ccdf_pot_valid_seplon_eqcost_lo[:,i_Nancsub]),
@@ -1162,15 +1167,12 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                            min.(xlimits[2], thresh_cquantile.*ccdf_pot_valid_seplon_eqcost_hi[:,i_Nancsub]),
                                            levels_exc,
                                           ),
-                                  color=:gray, alpha=0.5
+                                  color=:gray, alpha=0.25
                                  )
-                            println("Made  out like bandit")
-                            println("scatterlines 1:")
-                            scatterlines!(axancgen, thresh_cquantile.*ccdf_pot_valid_seplon_eqcost_mid[:,i_Nancsub], levels[i_thresh_cquantile:end]; linewidth=1, colargs..., marker=:star5)
-                            println("scatterlines 2:")
-                            scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdf_pot_valid_seplon_eqcost_mid[:,i_Nancsub]./dnspot), levels[i_thresh_cquantile:end]; color=:black)
-                            println("scatterlines 3:")
-                            scatterlines!(axancgen, thresh_cquantile.*ccdf_pot_ancgen_pt, levels[i_thresh_cquantile:end]; linewidth=1, colargs..., marker=:circle)
+                            scatterlines!(axancgen, thresh_cquantile.*ccdf_pot_valid_seplon_eqcost_mid[:,i_Nancsub], levels[i_thresh_cquantile:end]; linewidth=1, color=:black, marker=:star5)
+                            scatterlines!(axancgen, thresh_cquantile.*ccdf_pot_valid_seplon_eqnanc_mid[:,i_Nancsub], levels[i_thresh_cquantile:end]; linewidth=1, color=:orange4, marker=:circle)
+                            scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdf_pot_valid_seplon_eqcost_mid[:,i_Nancsub]./dnspot), levels[i_thresh_cquantile:end]; color=:black, marker=:star5)
+                            scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdf_pot_valid_seplon_eqnanc_mid[:,i_Nancsub]./dnspot), levels[i_thresh_cquantile:end]; color=:orange4, marker=:circle)
                             # Ancestor fdivs
                             println("scattering ancgen fdiv")
                             scatter!(axfdiv, 1, fdiv_ancgen_valid_pt; color=:black, marker=:circle, markersize=12)
@@ -1226,7 +1228,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             rowsize!(lout, 1, Relative(50/450))
                             rowsize!(lout, 2, Relative(320/450))
                             rowgap!(lout, 1, 0)
-                            rowgap!(lout, 2, 0)
+                            rowgap!(lout, 2, 5)
 
                             println("About to save")
                             save(joinpath(figdir,"ccdfmixs_$(dst)_$(rsp)_$(fdivname)_$(i_scl)_Nanc$(Nancsubs[i_Nancsub])_accpa$(Int(adjust_ccdf_per_ancestor)).png"), fig)
@@ -1411,7 +1413,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         (
          leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
          mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
-         fdivnames,Nancmax,Nancsubs,Nboot,ccdf_levels,
+         fdivnames,Nancmax,Nboot,ccdf_levels,
          time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
          i_thresh_cquantile,adjust_ccdf_per_ancestor
         ) = expt_config_COAST_analysis(cfg,pertop)
@@ -1503,7 +1505,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])

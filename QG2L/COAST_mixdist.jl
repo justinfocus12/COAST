@@ -3,12 +3,11 @@ function evaluate_mixing_criteria(cfg, cop, pertop, coast, ens, resultdir, )
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
-     fdivnames,Nancmax,Nancsubs,Nboot,ccdf_levels,
+     fdivnames,Nancmax,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfg,pertop)
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
     Nanc = length(coast.ancestors) # might be shorter than the Nanc from cfg 
-    N_Nancsub = length(Nancsubs)
     Nleadtime = length(leadtimes)
     Nr2th = length(r2threshes)
     Nscales = Dict(dst=>length(distn_scales[dst]) for dst=dsts)

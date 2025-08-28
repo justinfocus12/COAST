@@ -47,7 +47,7 @@ function metaCOAST_latdep_boxsizedep_procedure(expt_supdir::String, resultdir_dn
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
-     fdivnames,Nancmax,Nancsub,Nboot,ccdf_levels,
+     fdivnames,Nancmax,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
      i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfgs[1],pertop)
@@ -70,8 +70,8 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     todo = Dict{String,Bool}(
                              "plot_mixcrits_ydep" =>             0,
                              "compile_fdivs" =>                  0,
-                             "plot_fdivs" =>                     0,
-                             "plot_ccdfs_latdep" =>              1,
+                             "plot_fdivs" =>                     1,
+                             "plot_ccdfs_latdep" =>              0,
                              # danger zone
                              "remove_pngs" =>                    0,
                              # defunct/hibernating
@@ -121,7 +121,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     (
      leadtimes,r2threshes,dsts,rsps,mixobjs,mcs2mix,
      mixcrit_labels,mixobj_labels,mixcrit_colors,distn_scales,
-     fdivnames,Nboot,ccdf_levels,
+     fdivnames,Nancmax,Nboot,ccdf_levels,
      time_ancgen_dns_ph,time_ancgen_dns_ph_max,time_valid_dns_ph,xstride_valid_dns,
      i_thresh_cquantile,adjust_ccdf_per_ancestor
     ) = expt_config_COAST_analysis(cfgs[1],pertop)
@@ -299,12 +299,20 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
 
     if todo["compile_fdivs"] 
         # Plot the TV achieved by (a) maximizing entropy, and (b) choosing a specific lead time, as a function of latitude. Do this with two vertically stacked plots
-        dsts = ("b",)
-        rsps = ("z","2","e",)
+        dsts = ["b",]
+        rsps = ["z","2","e",][2:2]
 
+        Nancsubss = Vector{Vector{Int64}}([])
+        for (i_ytgt,ytgt) in enumerate(ytgts)
+            resultdir_y = joinpath(exptdirs_COAST[i_ytgt],"results")
+            dns_objective_filename = joinpath(resultdir_y,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2")
+            Nancsubs = JLD2.jldopen(joinpath(resultdir_y,dns_objective_filename),"r") do f
+                return f["Nancsubs"]
+            end
+            push!(Nancsubss,Nancsubs)
+        end
         @show Nleadtime
 
-        mcs2compile = ["contcorr","globcorr","ei","pim","pth","ent","lt","r2lin","r2quad"]
 
         # possibly also save the confidence intervals across bootstraps 
         fdivs = Dict{String,Dict}()
@@ -312,30 +320,35 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             fdivs[dst] = Dict{String,Dict}()
             for rsp = rsps
                 fdivs[dst][rsp] = Dict{String,Dict}()
-                for mc = mcs2compile
+                for mc = mcs2mix
                     fdivs[dst][rsp][mc] = Dict{String,Dict}()
                     for est = ["mix","pool"]
                         fdivs[dst][rsp][mc][est] = Dict{String,Array{Float64}}()
                         for fdivname = fdivnames
-                            fdivs[dst][rsp][mc][est][fdivname] = zeros(Float64, (Nytgt,Nboot+1,Nmcs[mc],Nscales[dst]))
+                            fdivs[dst][rsp][mc][est][fdivname] = zeros(Float64, (Nytgt,Nancmax,Nboot+1,Nmcs[mc],Nscales[dst])) # Not all entries will be populated
                         end
                     end
                 end
             end
         end
         fdivs_ancgen_valid = Dict()
+        fdivs_eqcostvalid_valid = Dict()
+        fdivs_eqnancvalid_valid = Dict()
+        Nxshift = div(sdm.Nx, xstride_valid_dns)
         for fdivname = fdivnames
-            fdivs_ancgen_valid[fdivname] = zeros(Float64, (Nytgt,div(sdm.Nx,xstride_valid_dns)))
+            fdivs_ancgen_valid[fdivname] = zeros(Float64, (Nytgt,Nxshift))
+            fdivs_eqcostvalid_valid[fdivname] = zeros(Float64, (Nytgt,Nancmax,Nxshift))
+            fdivs_eqnancvalid_valid[fdivname] = zeros(Float64, (Nytgt,Nancmax,Nxshift))
         end
         for (i_ytgt,ytgt) in enumerate(ytgts)
             resultdir_y = joinpath(exptdirs_COAST[i_ytgt],"results")
             JLD2.jldopen(joinpath(resultdir_y,"ccdfs_combined.jld2"),"r") do f
                 for dst = dsts
                     for rsp = rsps
-                        for mc = mcs2compile
+                        for mc = mcs2mix
                             for est = ["mix","pool"]
                                 for fdivname = fdivnames
-                                    fdivs[dst][rsp][mc][est][fdivname][i_ytgt,:,:,:] .= f["fdivs"][dst][rsp][mc][est][fdivname][:,:,:]
+                                    fdivs[dst][rsp][mc][est][fdivname][i_ytgt,Nancsubss[i_ytgt],:,:,:] .= f["fdivs"][dst][rsp][mc][est][fdivname][:,:,:,:]
                                 end
                             end
                         end
@@ -343,6 +356,8 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 end
                 for fdivname = fdivnames
                     fdivs_ancgen_valid[fdivname][i_ytgt,:] .= f["fdivs_ancgen_valid"][fdivname]
+                    fdivs_eqcostvalid_valid[fdivname][i_ytgt,Nancsubss[i_ytgt],:] .= f["fdivs_eqcostvalid_valid"][fdivname]
+                    fdivs_eqnancvalid_valid[fdivname][i_ytgt,Nancsubss[i_ytgt],:] .= f["fdivs_eqnancvalid_valid"][fdivname]
                 end
             end
         end
@@ -350,29 +365,74 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         JLD2.jldopen(joinpath(resultdir,"fdivs.jld2"),"w") do f
             f["fdivs"] = fdivs
             f["fdivs_ancgen_valid"] = fdivs_ancgen_valid
+            f["fdivs_eqcostvalid_valid"] = fdivs_eqcostvalid_valid
+            f["fdivs_eqnancvalid_valid"] = fdivs_eqnancvalid_valid
+            f["Nancsubss"] = Nancsubss # per-latitude , what are the chosen intermediate ancestor subset sizes? 
         end
     end
 
     #
 
     if todo["plot_fdivs"]
+        cilo,cimid,cihi = 0.25,0.5,0.75
+        (
+         fdivs,
+         fdivs_ancgen_valid,
+         fdivs_eqcostvalid_valid,
+         fdivs_eqnancvalid_valid,
+         Nancsubss,
+        ) = JLD2.jldopen(joinpath(resultdir,"fdivs.jld2"),"r") do f
+            return (
+                    f["fdivs"],
+                    f["fdivs_ancgen_valid"],
+                    f["fdivs_eqcostvalid_valid"],
+                    f["fdivs_eqnancvalid_valid"],
+                    f["Nancsubss"],
+                   )
 
-
-        fdivs,fdivs_ancgen_valid = JLD2.jldopen(joinpath(resultdir,"fdivs.jld2"),"r") do f
-            return f["fdivs"],f["fdivs_ancgen_valid"]
         end
-
-        dsts = ("b",)
-        rsps = ("z","2","e",)
+        dsts = ["b",]
+        rsps = ["z","2","e",][2:2]
 
         fdivs2plot = ["qrmse","kl","chi2","tv"]
 
 
+
         fdivlabels = Dict("qrmse"=>"𝐿²","tv"=>"TV","chi2"=>"χ²","kl"=>"KL")
+        # Choose a single representative Nanc
+        # Choose best Nancsub
+        Nancsubs_num_filled = zeros(Int64, Nancmax)
+        for i_ytgt = 1:Nytgt
+            Nancsubs_num_filled[Nancsubss[i_ytgt]] .+= 1
+        end
+        @show Nancsubs_num_filled
+        if !any(Nancsubs_num_filled .== Nytgt)
+            @infiltrate
+            error()
+        end
+
+
+
+        
         for fdivname = fdivs2plot
             fdivs_ancgen_valid_pt,fdivs_ancgen_valid_lo,fdivs_ancgen_valid_hi = let
                 fdav = fdivs_ancgen_valid[fdivname]
                 (SB.mean(fdav; dims=2)[:,1], (QG2L.quantile_sliced(fdav, q, 2)[:,1] for q=(0.05,0.95))...)
+            end
+            (
+             fdivs_eqcostvalid_valid_lo,fdivs_eqcostvalid_valid_mid,fdivs_eqcostvalid_valid_hi,
+             fdivs_eqnancvalid_valid_lo,fdivs_eqnancvalid_valid_mid,fdivs_eqnancvalid_valid_hi,
+            ) = (
+                 zeros(Float64, Nytgt) for _=1:6
+                )
+            idx_Nancsub = zeros(Int64, Nytgt)
+            for i_ytgt = 1:Nytgt
+                i_Nancsub = argmin(abs.(Nancsubss[i_ytgt] .- Nancmax/2))
+                idx_Nancsub[i_ytgt] = i_Nancsub
+                Nancsub = Nancsubss[i_ytgt][i_Nancsub]
+                @show i_Nancsub,Nancsub
+                fdivs_eqcostvalid_valid_lo[i_ytgt],fdivs_eqcostvalid_valid_mid[i_ytgt],fdivs_eqcostvalid_valid_hi[i_ytgt] = (QG2L.quantile_sliced(fdivs_eqcostvalid_valid[fdivname][i_ytgt,Nancsub,:], q, 1)[1] for q=(cilo,cimid,cihi))
+                fdivs_eqnancvalid_valid_lo[i_ytgt],fdivs_eqnancvalid_valid_mid[i_ytgt],fdivs_eqnancvalid_valid_hi[i_ytgt] = (QG2L.quantile_sliced(fdivs_eqnancvalid_valid[fdivname][i_ytgt,Nancsub,:], q, 1)[1] for q=(cilo,cimid,cihi))
             end
             for dst = dsts
                 for rsp = rsps
@@ -401,17 +461,20 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
 
                         # Short simulation
                         for ax = axs_mc
-                            band!(ax, Point2f.(fdivs_ancgen_valid_lo,ytgts), Point2f.(fdivs_ancgen_valid_hi,ytgts); color=:gray, alpha=0.5)
-                            lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=1)
+                            #band!(ax, Point2f.(fdivs_ancgen_valid_lo,ytgts), Point2f.(fdivs_ancgen_valid_hi,ytgts); color=:gray, alpha=0.5)
+                            #lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=1)
+                            band!(ax, Point2f.(fdivs_eqcostvalid_valid_lo,ytgts), Point2f.(fdivs_eqcostvalid_valid_hi,ytgts); color=:orange4, alpha=0.25)
+                            lines!(ax, fdivs_eqcostvalid_valid_mid, ytgts; color=:orange4, linewidth=1)
+
                         end
                         # All desired mixing criteria
                         for (i_syncmc,syncmc) in enumerate(syncmcs)
                             ax = axs_mc[i_syncmc]
                             for (est,marker,linestyle) = (("mix",:xcross,:solid),("pool",'O',(:dot,:dense)))
-                                fdiv_best = mapslices(minimum, fdivs[dst][rsp][syncmc][est][fdivname][1:Nytgt,1:Nboot+1,1:length(mixobjs[syncmc]),i_scl]; dims=3)[:,:,1]
-                                fdivofy_mid = fdiv_best[:,1]
-                                fdivofy_lo = QG2L.quantile_sliced(fdiv_best[:,2:Nboot+1], 0.05, 2)[1:Nytgt,1]
-                                fdivofy_hi = QG2L.quantile_sliced(fdiv_best[:,2:Nboot+1], 0.95, 2)[1:Nytgt,1]
+                                fdivs_midnanc = cat((fdivs[dst][rsp][syncmc][est][fdivname][i_ytgt:i_ytgt,Nancsubss[i_ytgt][idx_Nancsub[i_ytgt]],1:Nboot+1,1:length(mixobjs[syncmc]),i_scl] for i_ytgt=1:Nytgt)...; dims=1)
+                                fdiv_best = minimum(fdivs_midnanc, dims=3)[:,:,1]
+                                fdivofy_lo,fdivofy_mid,fdivofy_hi = (QG2L.quantile_sliced(fdiv_best[:,2:Nboot+1], q, 2)[:,1] for q=(cilo,cimid,cihi))
+                                @infiltrate
                                 if "mix" == est
                                     band!(ax, Point2f.(fdivofy_lo,ytgts), Point2f.(fdivofy_hi,ytgts); color=mixcrit_colors[syncmc], alpha=0.5)
                                 end
