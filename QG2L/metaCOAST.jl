@@ -425,18 +425,22 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             ) = (
                  zeros(Float64, Nytgt) for _=1:6
                 )
-            idx_Nancsub = zeros(Int64, Nytgt)
+            idx_Nancsub_mid = zeros(Int64, Nytgt)
+            Nancsubs_mid = zeros(Int64, Nytgt)
             for i_ytgt = 1:Nytgt
-                i_Nancsub = argmin(abs.(Nancsubss[i_ytgt] .- Nancmax/2))
-                idx_Nancsub[i_ytgt] = i_Nancsub
-                Nancsub = Nancsubss[i_ytgt][i_Nancsub]
-                @show i_Nancsub,Nancsub
-                fdivs_eqcostvalid_valid_lo[i_ytgt],fdivs_eqcostvalid_valid_mid[i_ytgt],fdivs_eqcostvalid_valid_hi[i_ytgt] = (QG2L.quantile_sliced(fdivs_eqcostvalid_valid[fdivname][i_ytgt,Nancsub,:], q, 1)[1] for q=(cilo,cimid,cihi))
-                fdivs_eqnancvalid_valid_lo[i_ytgt],fdivs_eqnancvalid_valid_mid[i_ytgt],fdivs_eqnancvalid_valid_hi[i_ytgt] = (QG2L.quantile_sliced(fdivs_eqnancvalid_valid[fdivname][i_ytgt,Nancsub,:], q, 1)[1] for q=(cilo,cimid,cihi))
+                i_Nancsub = argmin(abs.(Nancsubss[i_ytgt] .- Nancmax/3))
+                idx_Nancsub_mid[i_ytgt] = i_Nancsub
+                Nancsubs_mid[i_ytgt] = Nancsubss[i_ytgt][i_Nancsub]
+                fdivs_eqcostvalid_valid_lo[i_ytgt],fdivs_eqcostvalid_valid_mid[i_ytgt],fdivs_eqcostvalid_valid_hi[i_ytgt] = (QG2L.quantile_sliced(fdivs_eqcostvalid_valid[fdivname][i_ytgt,Nancsubs_mid[i_ytgt],:], q, 1)[1] for q=(cilo,cimid,cihi))
+                fdivs_eqnancvalid_valid_lo[i_ytgt],fdivs_eqnancvalid_valid_mid[i_ytgt],fdivs_eqnancvalid_valid_hi[i_ytgt] = (QG2L.quantile_sliced(fdivs_eqnancvalid_valid[fdivname][i_ytgt,Nancsubs_mid[i_ytgt],:], q, 1)[1] for q=(cilo,cimid,cihi))
             end
             for dst = dsts
+
                 for rsp = rsps
+
+
                     for i_scl = scales2plot
+
                         scalestr = @sprintf("𝑠 = %.2f", distn_scales[dst][i_scl])
                         boxradstr = label_target(cfgs[1], sdm, false)
                         syncmcs = ["lt","contcorr","globcorr","ei","ent"]
@@ -444,18 +448,18 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         # ---------------- Put each mixing criterion into its own panel -------
                         fig = Figure(size=(100*Nmcs2plot+60,360))
                         lout = fig[1,1] = GridLayout()
-                        toplabel = Label(lout[1,1:Nmcs2plot], @sprintf("%s, %s", boxradstr, scalestr), fontsize=14,font=:regular,valign=:bottom,padding=(0,0,0,0))
+                        toplabel = Label(lout[1,1:Nmcs2plot], @sprintf("%s, %s, %d≤𝑁≤%d", boxradstr, scalestr, minimum(Nancsubs_mid), maximum(Nancsubs_mid)), fontsize=14,font=:regular,valign=:bottom,padding=(0,0,0,0))
                         titlefun = (mc -> @sprintf("%s\n%s", (mc in ["lt","contcorr","globcorr"] ? "best" : "max"),mixcrit_labels[mc]))
                         axs_mc = [
-                                Axis(
-                                    lout[2,i_mc], 
-                                    ylabel="𝑦₀/𝐿", ylabelvisible=(i_mc==1), yticklabelsvisible=(i_mc==1), ylabelsize=12, yticklabelsize=10, yticks=(ytickvalues,yticklabels),
-                                    xlabel=fdivlabels[fdivname], xlabelvisible=false, xlabelsize=12, xticklabelsize=10, xticklabelrotation=-pi/2, 
-                                    title=titlefun(mc), titlefont=:regular, 
-                                    xscale=log10, xgridvisible=false, ygridvisible=false
-                                   )
-                               for (i_mc,mc) in enumerate(syncmcs)
-                              ]
+                                  Axis(
+                                       lout[2,i_mc], 
+                                       ylabel="𝑦₀/𝐿", ylabelvisible=(i_mc==1), yticklabelsvisible=(i_mc==1), ylabelsize=12, yticklabelsize=10, yticks=(ytickvalues,yticklabels),
+                                       xlabel=fdivlabels[fdivname], xlabelvisible=false, xlabelsize=12, xticklabelsize=10, xticklabelrotation=-pi/2, 
+                                       title=titlefun(mc), titlefont=:regular, 
+                                       xscale=log10, xgridvisible=false, ygridvisible=false
+                                      )
+                                  for (i_mc,mc) in enumerate(syncmcs)
+                                 ]
                         ax_topo = Axis(lout[2,Nmcs2plot+1], ylabelvisible=false, yticklabelsvisible=false, yticks=(ytickvalues,yticklabels), xticks=[-1,1].*maximum(cop.topography[1,:,2]), xgridvisible=false, ygridvisible=false, xticklabelsize=10, xlabelsize=12, xlabel="ℎ", xticklabelrotation=-pi/2, title="Topo", titlefont=:regular, )
                         shared_xlabel = Label(lout[3,1:Nmcs2plot], fdivlabels[fdivname])
 
@@ -463,18 +467,19 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         for ax = axs_mc
                             #band!(ax, Point2f.(fdivs_ancgen_valid_lo,ytgts), Point2f.(fdivs_ancgen_valid_hi,ytgts); color=:gray, alpha=0.5)
                             #lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=1)
-                            band!(ax, Point2f.(fdivs_eqcostvalid_valid_lo,ytgts), Point2f.(fdivs_eqcostvalid_valid_hi,ytgts); color=:orange4, alpha=0.25)
-                            lines!(ax, fdivs_eqcostvalid_valid_mid, ytgts; color=:orange4, linewidth=1)
+                            band!(ax, Point2f.(fdivs_eqnancvalid_valid_lo,ytgts), Point2f.(fdivs_eqnancvalid_valid_hi,ytgts); color=:orange4, alpha=0.25)
+                            scatterlines!(ax, fdivs_eqnancvalid_valid_mid, ytgts; color=:orange4, linewidth=1, marker=:circle, )
+                            band!(ax, Point2f.(fdivs_eqcostvalid_valid_lo,ytgts), Point2f.(fdivs_eqcostvalid_valid_hi,ytgts); color=:gray, alpha=0.25)
+                            scatterlines!(ax, fdivs_eqcostvalid_valid_mid, ytgts; color=:black, linewidth=1, marker=:star5)
 
                         end
                         # All desired mixing criteria
                         for (i_syncmc,syncmc) in enumerate(syncmcs)
                             ax = axs_mc[i_syncmc]
                             for (est,marker,linestyle) = (("mix",:xcross,:solid),("pool",'O',(:dot,:dense)))
-                                fdivs_midnanc = cat((fdivs[dst][rsp][syncmc][est][fdivname][i_ytgt:i_ytgt,Nancsubss[i_ytgt][idx_Nancsub[i_ytgt]],1:Nboot+1,1:length(mixobjs[syncmc]),i_scl] for i_ytgt=1:Nytgt)...; dims=1)
+                                fdivs_midnanc = cat((fdivs[dst][rsp][syncmc][est][fdivname][i_ytgt:i_ytgt,Nancsubs_mid[i_ytgt],1:Nboot+1,1:length(mixobjs[syncmc]),i_scl] for i_ytgt=1:Nytgt)...; dims=1)
                                 fdiv_best = minimum(fdivs_midnanc, dims=3)[:,:,1]
                                 fdivofy_lo,fdivofy_mid,fdivofy_hi = (QG2L.quantile_sliced(fdiv_best[:,2:Nboot+1], q, 2)[:,1] for q=(cilo,cimid,cihi))
-                                @infiltrate
                                 if "mix" == est
                                     band!(ax, Point2f.(fdivofy_lo,ytgts), Point2f.(fdivofy_hi,ytgts); color=mixcrit_colors[syncmc], alpha=0.5)
                                 end
