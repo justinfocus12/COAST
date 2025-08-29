@@ -368,7 +368,12 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                                     @assert pth > 0
                                     #pthpool = ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile,i_boot,i_mcval,i_scl]
                                     #@assert pthpool > 0
-                                    ccdfmixs[dst][rsp][mc]["mix"][i_thresh_cquantile:Nlev,i_Nancsub,i_boot,i_mcval,i_scl] .+= (anc_boot_mults[i_Nancsub][i_anc,i_boot]/Nancsub) .* (ccdfs[dst][rsp][i_thresh_cquantile:Nlev,ilt,i_anc,i_scl] .+ (1-pth).*(coast.anc_Rmax[i_anc] .> levels[i_thresh_cquantile:Nlev]))
+                                    ccdfmixs[dst][rsp][mc]["mix"][i_thresh_cquantile:Nlev,i_Nancsub,i_boot,i_mcval,i_scl] .+= (
+                                                                                                                               anc_boot_mults[i_Nancsub][i_anc,i_boot]/Nancsub
+                                                                                                                              ) .* (
+                                                                                                                                    ccdfs[dst][rsp][i_thresh_cquantile:Nlev,ilt,i_anc,i_scl] 
+                                                                                                                                    .+ (1-pth).*(coast.anc_Rmax[i_anc] .> levels[i_thresh_cquantile:Nlev])
+                                                                                                                                   )
                                 end
                                 mix_valid = QG2L.check_ccdf_validity(ccdfmixs[dst][rsp][mc]["mix"][i_thresh_cquantile:Nlev,i_Nancsub,i_boot,i_mcval,i_scl])
                                 pool_valid = QG2L.check_ccdf_validity(ccdfmixs[dst][rsp][mc]["pool"][i_thresh_cquantile:Nlev,i_Nancsub,i_boot,i_mcval,i_scl])
