@@ -36,11 +36,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
     todo = Dict{String,Bool}(
                              "upgrade_ensemble" =>                               0,
                              "update_paths" =>                                   0,
-                             "plot_transcorr" =>                                 1,
+                             "plot_transcorr" =>                                 0,
                              "plot_pertop" =>                                    0,
                              "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
-                             "plot_dns_objective_stats" =>                       0,
+                             "plot_dns_objective_stats" =>                       1,
                              "use_backups" =>                                    0,
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
@@ -372,18 +372,18 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
         # Determine the indices to plot. d = pdf; c = cdf; p = pot; a = ancgen; v = valid
         ida = findall(all(isfinite.(pdf_ci_ancgen); dims=2)[:,1])
-        ica = findall(all(isfinite.(Rccdf_ci_ancgen); dims=2)[:,1])
-        ipa = findall(all(isfinite.(ccdf_pot_ci_ancgen); dims=2)[:,1])
         idv = findall(all(isfinite.(pdf_ci_valid); dims=2)[:,1])
-        icv = findall(all(isfinite.(Rccdf_ci_valid); dims=2)[:,1])
-        ipv = findall(all(isfinite.(ccdf_pot_ci_valid); dims=2)[:,1])
+        ica = 1:length(ccdf_levels) #findall(all(isfinite.(Rccdf_ci_ancgen); dims=2)[:,1])
+        icv = 1:length(ccdf_levels) #findall(all(isfinite.(Rccdf_ci_valid); dims=2)[:,1])
+        ipa = 1:length(levels_exc) #findall(all(isfinite.(ccdf_pot_ci_ancgen); dims=2)[:,1])
+        ipv = 1:length(levels_exc) #findall(all(isfinite.(ccdf_pot_ci_valid); dims=2)[:,1])
 
         shortlabel,longlabel = [
                                 @sprintf(
                                          "%s (%.1E-day) DNS & %d%% CI", 
                                          squal, squant, round(Int,confint*100)
                                          ) 
-                                for (squal,squant)=[("Short",time_ancgen_dns_ph),("Long",time_valid_dns_ph*sdm.Nx)]
+                                for (squal,squant)=[("Short",time_ancgen_dns_ph),("Long",time_valid_dns_ph)]
                                ]
         #
         fig = Figure()
@@ -398,8 +398,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         #lines!(axpdf, thresh_cquantile.*clippdf.(Dists.pdf.(GPD, levels_exc_mid)), levels_exc_mid, color=:gray, linewidth=3, alpha=0.5)
         band!(axpdf, (Point2f.(pdf_ci_ancgen[ida,i_q],bin_centers[ida]) for i_q=1:2)...; color=shortcolor, alpha=0.5)
         band!(axpdf, (Point2f.(pdf_ci_valid[idv,i_q],bin_centers[idv]) for i_q=1:2)...; color=:gray60, alpha=0.5)
-        lines!(axpdf, zero2nan(SB.mean(pdfs_ancgen; dims=2)[:,1]), bin_centers; color=shortcolor, linewidth=2, linestyle=(:dash,:dense), label=shortlabel)
-        lines!(axpdf, pdf_valid_agglon, bin_centers; color=:black, linewidth=2, linestyle=(:dash,:dense), label=longlabel)
+        lines!(axpdf, zero2nan(SB.mean(pdfs_ancgen; dims=2)[:,1]), bin_centers; color=shortcolor, linewidth=1, linestyle=:solid, label=shortlabel)
+        lines!(axpdf, pdfs_valid[:,1], bin_centers; color=:black, linewidth=1, linestyle=:solid, label=longlabel)
+        lines!(axpdf, pdf_valid_agglon, bin_centers; color=:black, linewidth=2, linestyle=(:dash,:dense))
         for level = (levels[1],levels[end])
             hlines!(axpdf, level; color=:gray, linewidth=1, alpha=0.5)
         end
@@ -412,12 +413,14 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         band!(axccdf, (Point2f.(ccdf_levels[ica],Rccdf_ci_ancgen[ica,i_q]) for i_q=1:2)...; color=shortcolor, alpha=0.5)
         band!(axccdf, (Point2f.(ccdf_levels[icv],Rccdf_ci_valid[icv,i_q]) for i_q=1:2)...; color=:gray60, alpha=0.5)
         lines!(axccdf, ccdf_levels, zero2nan(SB.mean(Rccdf_valid_seplon; dims=2)[:,1]); color=:black, linewidth=2, linestyle=(:dash,:dense))
-        lines!(axccdf, ccdf_levels, zero2nan(Rccdf_ancgen_seplon[:,1]); color=shortcolor, linewidth=2, linestyle=(:dash,:dense))
+        lines!(axccdf, ccdf_levels, zero2nan(Rccdf_valid_seplon[:,1]); color=:black, linewidth=1, linestyle=:solid)
+        lines!(axccdf, ccdf_levels, zero2nan(Rccdf_ancgen_seplon[:,1]); color=shortcolor, linewidth=1, linestyle=:solid)
         # POT CCDF
         band!(axpot, (Point2f.(thresh_cquantile.*ccdf_pot_ci_ancgen[ipa,i_q],levels_exc[ipa]) for i_q=1:2)...; color=shortcolor, alpha=0.5)
         band!(axpot, (Point2f.(thresh_cquantile.*ccdf_pot_ci_valid[ipv,i_q],levels_exc[ipv]) for i_q=1:2)...; color=:gray60, alpha=0.5)
-        lines!(axpot, thresh_cquantile.*zero2nan(SB.mean(ccdf_pot_valid_seplon, ; dims=2)[:,1]), levels[i_thresh_cquantile:end]; color=:black, linestyle=(:dash,:dense), label=longlabel)
-        lines!(axpot, thresh_cquantile.*zero2nan(ccdf_pot_ancgen_seplon[:,1]), levels[i_thresh_cquantile:end]; color=shortcolor, linestyle=(:dash,:dense), label=shortlabel)
+        lines!(axpot, thresh_cquantile.*zero2nan(SB.mean(ccdf_pot_valid_seplon, ; dims=2)[:,1]), levels[i_thresh_cquantile:end]; color=:black, linestyle=(:dash,:dense), label="Truth")
+        lines!(axpot, thresh_cquantile.*zero2nan(ccdf_pot_valid_seplon[:,1]), levels[i_thresh_cquantile:end]; color=:black, linestyle=:solid, label=longlabel)
+        lines!(axpot, thresh_cquantile.*zero2nan(ccdf_pot_ancgen_seplon[:,1]), levels[i_thresh_cquantile:end]; color=shortcolor, linestyle=:solid, label=shortlabel)
 
         # ------------ Legend code from julia forum via Perplexity ------------
 
@@ -434,7 +437,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                        for ul in ulabels
                       ]
         
-        Legend(lout[3,:], mergedplots, ulabels, nbanks=3, merged=true, labelsize=10)
+        Legend(lout[3,:], mergedplots, ulabels, nbanks=2, merged=true, labelsize=10, framevisible=false)
         # ------------------------------------------------------------------
 
 
