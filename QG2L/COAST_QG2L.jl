@@ -40,7 +40,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_pertop" =>                                    0,
                              "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          0,
-                             "plot_dns_objective_stats" =>                       1,
+                             "plot_dns_objective_stats" =>                       0,
                              "use_backups" =>                                    0,
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
@@ -49,7 +49,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "evaluate_mixing_criteria" =>                       0,
                              "plot_objective" =>                                 0, 
-                             "plot_conditional_pdfs" =>                          0,
+                             "plot_conditional_pdfs" =>                          1,
                              "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        0, 
                              "plot_COAST_mixture" =>                             0,
@@ -741,10 +741,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                ) .* [-0.05, 1.05] .* thresh_cquantile
 
                 t0str = @sprintf("%d", coast.anc_tRmax[i_anc])
-                fig = Figure(size=(600,100*(3+length(mixcrits2plot))))
+                # ----------- TODO split into two figures and add a legend ----------
+                fig = Figure(size=(600,400)) 
                 lout = fig[1,1] = GridLayout()
-                lout_pdfs = lout[1,1] = GridLayout()
-                lout_mixcrits = lout[2,1] = GridLayout()
                 i_col = 0
                 for i_leadtime = idx_leadtimes2plot
                     leadtime = leadtimes[i_leadtime]
@@ -754,33 +753,49 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         ltstr = "−AST = $(ltstr)"
                     end
                     lblargs = Dict(:ylabelvisible=>(i_col==1), :yticklabelsvisible=>(i_col==1), :xlabelvisible=>false, :xticklabelsvisible=>true, :ylabelsize=>15, :xlabelsize=>15, :xticklabelsize=>12, :yticklabelsize=>12, :title=>ltstr, :xgridvisible=>false, :ygridvisible=>false, :titlealign=>:right, :titlefont=>:regular, :xticklabelrotation=>-pi/2)
-                    ax = Axis(lout_pdfs[1,i_col]; xlabel="PDF", ylabel="Severity 𝑅*", lblargs...)
+                    ax = Axis(lout[1,i_col]; xlabel="PDF", ylabel="Severity 𝑅*", lblargs...)
                     for (i_scl,scl) in enumerate(distn_scales[dst])
                         # TODO turn into a bar plot 
                         pth = ccdfs[dst][rsp][i_thresh_cquantile,i_leadtime,i_anc,i_scl]
+                        label = (i_scl in [1,length(distn_scales[dst])]) ? @sprintf("Desc. PDF, 𝑠=%.2f", scl) : nothing
                         scatterlines!(ax, 
                                 pdfs[dst][rsp][i_thresh_cquantile:Nlev-1,i_leadtime, i_anc, i_scl] .* (thresh_cquantile/pth), 
                                 levels_exc_mid, 
                                 ;
                                 color=i_scl,colorrange=(0,length(distn_scales[dst])), 
-                                colormap=:RdYlBu_4, marker=:star6
+                                colormap=:RdYlBu_4, marker=:star6, label=label
                                )
                     end
                     scatterlines!(ax, 
                             thresh_cquantile.*pdf_pot_valid_agglon, 
                             levels_exc_mid,
                             ; 
-                            color=:black, linestyle=:solid, marker=:star6,)
-                    hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linewidth=1.0)
+                            color=:black, linestyle=:solid, marker=:star6, label="Truth PDF")
+                    hlines!(ax, coast.anc_Rmax[i_anc]; color=:black, linewidth=1.0, label="Anc. severity")
                     idx_desc = desc_by_leadtime(coast, i_anc, leadtime, sdm)
-                    scatterlines!(ax, sum([.2,.8].*xlimits).*ones(Float64, length(idx_desc)), coast.desc_Rmax[i_anc][idx_desc]; color=:firebrick, markersize=10)
+                    scatterlines!(ax, sum([.2,.8].*xlimits).*ones(Float64, length(idx_desc)), coast.desc_Rmax[i_anc][idx_desc]; color=:firebrick, markersize=10, label="Desc. severities")
                     ylims!(ax, ylimits...)
                     xlims!(ax, xlimits...)
+                    if i_leadtime == idx_leadtimes2plot[end]
+                        legend = Legend(lout[2,:], ax, nbanks=2, framevisible=false)
+                    end
                 end
-                Label(lout_pdfs[1,:,Bottom()], "PDF", padding=(0,10,0,25), valign=:bottom, fontsize=16)
+                for i_col = 1:ncols(lout)-1
+                    colgap!(lout, i_col, 0.0)
+                end
+                rowsize!(lout, 2, Relative(1/4))
+                Label(lout[1,:,Bottom()], "PDF", padding=(0,10,0,25), valign=:bottom, fontsize=16)
+                Label(lout[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,20.0,5.0), valign=:bottom, fontsize=20)
+                save(joinpath(figdir,"conditionalpdfs_$(dst)_$(rsp)_anc$(i_anc).png"), fig)
+
+                fig = Figure(size=(600,100*length(mixcrits2plot)))
+                lout = fig[1,1] = GridLayout()
+                for i_row = 1:nrows(lout)-1
+                    rowgap!(lout, i_row, 5.0)
+                end
                 for (i_mc,mc) in enumerate(mixcrits2plot)
                     ax = Axis(
-                              lout_mixcrits[i_mc,1]; 
+                              lout[i_mc,1]; 
                               yscale=(mc in ["globcorr","contcorr"] ? transcorr_hard : identity),
                               ylabel=mixcrit_labels[mc], ylabelvisible=true, ylabelrotation=0, ylabelsize=15, 
                               titlefont=:regular, 
@@ -822,16 +837,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         @show ax.limits
                     end
                 end
-                rowsize!(lout, 1, 3/(3+length(mixcrits2plot)))
-                for i_row = 1:nrows(lout_mixcrits)-1
-                    rowgap!(lout_mixcrits, i_row, 5.0)
-                end
-                for i_col = 1:ncols(lout_pdfs)-1
-                    colgap!(lout_pdfs, i_col, 0.0)
-                end
-                Label(lout_pdfs[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,20.0,5.0), valign=:bottom, fontsize=20)
-                rowsize!(lout, 1, Relative(1.5/(1.5+length(mixcrits2plot))))
-                save(joinpath(figdir,"conditionalpdfs_$(dst)_$(rsp)_anc$(i_anc).png"), fig)
+                Label(lout[1,:,Top()], label_target(cfg, sdm), padding=(5.0,5.0,20.0,5.0), valign=:bottom, fontsize=20)
+                save(joinpath(figdir,"conditionalmixcrits_$(dst)_$(rsp)_anc$(i_anc).png"), fig)
             end
         end
     end
@@ -1509,7 +1516,7 @@ else
     if "metaCOAST" == all_procedures[i_proc]
         idx_expt = [1,2,]
     elseif "COAST" == all_procedures[i_proc]
-        idx_expt = (vec([9,15] .+ [0,1]'.*23))[1:1]
+        idx_expt = (vec([9,15] .+ [0,1]'.*23))[1:2]
         #idx_expt = [38]
     end
 end

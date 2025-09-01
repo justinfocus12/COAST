@@ -70,12 +70,12 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
     todo = Dict{String,Bool}(
                              "plot_mixcrits_ydep" =>             0,
                              "compile_fdivs" =>                  0,
-                             "plot_fdivs" =>                     1,
+                             "plot_fdivs" =>                     0,
                              "plot_ccdfs_latdep" =>              0,
                              # danger zone
                              "remove_pngs" =>                    0,
                              # defunct/hibernating
-                             "print_simtimes" =>                 0,
+                             "print_simtimes" =>                 1,
                              "plot_pot_ccdfs_latdep" =>          0,
                             )
     php,sdm = QG2L.expt_config()
@@ -311,7 +311,6 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             end
             push!(Nancsubss,Nancsubs)
         end
-        @show Nleadtime
 
 
         # possibly also save the confidence intervals across bootstraps 

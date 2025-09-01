@@ -706,17 +706,20 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, scale::Float64)
     return label
 end
 
-function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, specify_y0::Bool=true)
+function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, specify_y0::Bool=true, specify_scale::Bool=false)
     N = sdm.Ny
     yN = round(Int, cfg.target_yPerL*N)
     xN = round(Int, cfg.target_xPerL*N)
     ryN = round(Int, cfg.target_ryPerL*N)
     rxN = round(Int, cfg.target_ryPerL*N)
+    labelparts = Vector{String}([])
     if specify_y0
-        label = "𝑦₀ = ($yN/$N)𝐿, ℓ = ($ryN/$N)𝐿"
-    else
-        label = "ℓ = ($ryN/$N)𝐿"
+        push!(labelparts,"𝑦₀ = ($yN/$N)𝐿")
     end
+    if specify_scale
+        push!(labelparts,"ℓ = ($ryN/$N)𝐿")
+    end
+    label = join(labelparts, ", ")
     return label
 end
 
