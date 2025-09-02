@@ -39,8 +39,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_transcorr" =>                                 0,
                              "plot_pertop" =>                                    0,
                              "plot_bumps" =>                                     0,
-                             "compute_dns_objective" =>                          0,
-                             "plot_dns_objective_stats" =>                       0,
+                             "compute_dns_objective" =>                          1,
+                             "plot_dns_objective_stats" =>                       1,
                              "use_backups" =>                                    0,
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
@@ -48,11 +48,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_contour_dispersion_distribution" =>           0,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "evaluate_mixing_criteria" =>                       0,
-                             "plot_objective" =>                                 0, 
+                             "plot_objective" =>                                 1, 
                              "plot_conditional_pdfs" =>                          1,
-                             "plot_mixcrits_overlay" =>                          0,
-                             "mix_COAST_distributions" =>                        0, 
-                             "plot_COAST_mixture" =>                             0,
+                             "plot_mixcrits_overlay" =>                          1,
+                             "mix_COAST_distributions" =>                        1, 
+                             "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
@@ -252,7 +252,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         #boost_cost_per_ancestor = round(Int, (cfg.lead_time_max+cfg.follow_time) * cfg.num_perts_max/num_lead_times)
         ccdf_pot_valid_seplon,ccdf_pot_valid_agglon,gpdpar_valid_agglon,std_valid_agglon,ccdf_pot_valid_seplon_eqcost,ccdf_pot_valid_seplon_eqnanc,mean_return_period,Nancsubs = QG2L.compute_local_pot_zonsym(Roft_valid_seplon, levels[i_thresh_cquantile:end], buffers..., boost_cost_per_ancestor)
 
-        Nancsubs = Nancsubs[Nancsubs .<= length(coast.ancestors)]
+        Nancsubs = cat(Nancsubs[Nancsubs .< length(coast.ancestors)], [length(coast.ancestors)])
 
         ccdf_pot_ancgen_seplon,ccdf_pot_ancgen_agglon,gpdpar_ancgen_agglon,std_ancgen_agglon,_,_,_ = QG2L.compute_local_pot_zonsym(Roft_ancgen_seplon, levels[i_thresh_cquantile:end], buffers..., boost_cost_per_ancestor)
         # Now we can see how long is between each ancestor, we can prescribe equal-cost timespans
@@ -1079,7 +1079,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             fdav = filter(isfinite, fdivs_ancgen_valid[fdivname]) 
                             (SB.mean(fdav), SB.quantile(fdav, cilo), SB.quantile(fdav, cihi))
                         end
-                        fdivstr_ancgen = @sprintf("%.1E\n(%.2E, %.2E)",fdiv_ancgen_valid_pt, fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi)
                         dnspot = thresh_cquantile.*ccdf_pot_valid_pt
                         # Collect equal-cost DNS CCDFs and fdivs
                         fdivs_eqcost_lo,fdivs_eqcost_mid,fdivs_eqcost_hi = (QG2L.quantile_sliced(fdivs_eqcostvalid_valid[fdivname], q, 2)[:,1] for q=[cilo,cimid,cihi])
@@ -1124,19 +1123,17 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         # TODO add to the short DNS plot all the intermediate-length DNSs so we can examine visually and diagnose how each of the others might be better or worse 
                         xlimits = [1/(time_valid_dns_ph*sdm.tu*10), thresh_cquantile*1.1]
                         for (i_Nancsub,Nancsub) in enumerate(Nancsubs[1:N_Nancsub])
-                            fig = Figure(size=(100*(Nmcs2mix+2),450))
+                            fig = Figure(size=(100*(Nmcs2mix+1),450))
                             lout = fig[1,1] = GridLayout()
                             axargs = Dict(:xscale=>log10, :ylabel=>"Severity 𝑅*", :titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :ylabelvisible=>false, :yticklabelsvisible=>false, :ylabelsize=>12, :yticklabelsize=>10, :titlesize=>10, :xlabelsize=>10, :xticklabelsize=>9, :xticklabelrotation=>-pi/2, )
-                            toplabel = Label(lout[1,1:Nmcs2mix+1], @sprintf("%s, 𝑁=%d", label_target(cfg, sdm, distn_scales[dst][i_scl]), Nancsub),fontsize=14,font=:regular,valign=:bottom)
+                            toplabel = Label(lout[1,1:Nmcs2mix], @sprintf("%s, 𝑁=%d", label_target(cfg, sdm, distn_scales[dst][i_scl]), Nancsub),fontsize=14,font=:regular,valign=:bottom)
                             axs_mcseps = [
-                                          Axis(lout[2,1+i_mc]; axargs..., title=labels_opt[mcs2mix[i_mc]], )
+                                          Axis(lout[2,i_mc]; axargs..., title=labels_opt[mcs2mix[i_mc]], )
                                           for i_mc=1:Nmcs2mix
                                          ]
                             axargs[:title] = "DNS"
-                            axancgen = Axis(lout[2,1]; axargs...)
-                            axargs[:xlabel] = "CCDF/(DNS CCDF)" 
+                            axancgen = Axis(lout[2,Nmcs2mix+1]; axargs...)
                             delete!(axargs, :title)
-                            axratio = Axis(lout[2,1+Nmcs2mix+1]; axargs...)
                             axargs[:xscale],axargs[:yscale] = identity,log10
                             axargs[:ylabel],axargs[:ylabelvisible],axargs[:yticklabelsvisible] = fdivlabel,true,true
                             delete!(axargs, :xlabel)
@@ -1146,7 +1143,6 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
 
                             # GPD
                             lines!(axancgen, ccdf_gpd, levels_exc; color=:gray, alpha=0.5, linewidth=3)
-                            lines!(axratio, clipccdfratio.(ccdf_gpd./dnspot), levels_exc; color=:gray, alpha=0.5, linewidth=3)
                             # Short DNS 
                             # TODO make into a band
                             #nnidx = findlast((isfinite.(ccdf) for ccdf=[ccdf_pot_ancgen_lo,ccdf_pot_ancgen_hi,ccdf_pot_ancgen_pt])...)
@@ -1175,14 +1171,12 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                  )
                             scatterlines!(axancgen, thresh_cquantile.*ccdf_pot_valid_seplon_eqcost_mid[:,i_Nancsub], levels[i_thresh_cquantile:end]; linewidth=1, color=:black, marker=:star5)
                             scatterlines!(axancgen, thresh_cquantile.*ccdf_pot_valid_seplon_eqnanc_mid[:,i_Nancsub], levels[i_thresh_cquantile:end]; linewidth=1, color=:orange4, marker=:circle)
-                            scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdf_pot_valid_seplon_eqcost_mid[:,i_Nancsub]./dnspot), levels[i_thresh_cquantile:end]; color=:black, marker=:star5)
-                            scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdf_pot_valid_seplon_eqnanc_mid[:,i_Nancsub]./dnspot), levels[i_thresh_cquantile:end]; color=:orange4, marker=:circle)
                             # Ancestor fdivs
-                            scatter!(axfdiv, 1, fdiv_ancgen_valid_pt; color=:black, marker=:circle, markersize=12)
-                            lines!(axfdiv, [1,1], [fdiv_ancgen_valid_lo, fdiv_ancgen_valid_hi]; color=:black, linewidth=2)
-                            # Equal-cost DNS fdivs
-                            scatter!(axfdiv, 1, fdivs_eqcost_mid[i_Nancsub]; color=:black, marker=:star5, markersize=12)
-                            lines!(axfdiv, [1,1], [fdivs_eqcost_lo[i_Nancsub], fdivs_eqcost_hi[i_Nancsub]]; color=:black, linewidth=2)
+                            scatter!(axfdiv, Nmcs2mix+1+0.1, fdivs_eqnanc_mid[i_Nancsub]; color=:orange4, marker=:circle, markersize=12)
+                            lines!(axfdiv, [1,1].*(Nmcs2mix+1+0.1), [fdivs_eqnanc_lo[i_Nancsub], fdivs_eqnanc_hi[i_Nancsub]]; color=:orange4, linewidth=2)
+                            # Equal-cost DNS fdivls
+                            scatter!(axfdiv, Nmcs2mix+1-0.1, fdivs_eqcost_mid[i_Nancsub]; color=:black, marker=:star5, markersize=12)
+                            lines!(axfdiv, [1,1].*(Nmcs2mix+1-0.1), [fdivs_eqcost_lo[i_Nancsub], fdivs_eqcost_hi[i_Nancsub]]; color=:black, linewidth=2)
 
                             #scatterlines!(axratio, clipccdfratio.(thresh_cquantile.*ccdf_pot_ancgen_pt./dnspot), levels[i_thresh_cquantile:end]; marker=:circle, linewidth=1, colargs...)
                             for (i_mc,mc) in enumerate(mcs2mix)
@@ -1194,14 +1188,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                         band!(axs_mcseps[i_mc], Point2f.(ccdflo, levels_exc), Point2f.(ccdfhi, levels_exc); color=mixcrit_colors[mc], alpha=0.5)
                                     end
                                     #band!(axratio, Point2f.(ccdflo./dnspot, levels_exc), Point2f.(ccdfhi./dnspot, levels_exc); color=mixcrit_colors[mc], alpha=0.5) # TODO 
-                                    scatter!(axfdiv, (1+i_mc+yoffset), fdivmid; color=mixcrit_colors[mc], marker=marker, markersize=12)
-                                    lines!(axfdiv, (1+i_mc+yoffset).*ones(Float64, 2), [fdivlo,fdivhi]; color=mixcrit_colors[mc], linestyle=linestyle)
-                                    for i_boot = 1:1
-                                        scatterlines!(axs_mcseps[i_mc], ccdfmid, levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, label=labels_opt[mc], linewidth=1.5, )
-                                        if est == "mix"
-                                            scatterlines!(axratio, clipccdfratio.(ccdfmid./dnspot), levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, linewidth=1.5)
-                                        end
-                                    end
+                                    scatter!(axfdiv, (i_mc+yoffset), fdivmid; color=mixcrit_colors[mc], marker=marker, markersize=12)
+                                    lines!(axfdiv, (i_mc+yoffset).*ones(Float64, 2), [fdivlo,fdivhi]; color=mixcrit_colors[mc], linestyle=linestyle)
+                                    scatterlines!(axs_mcseps[i_mc], ccdfmid, levels_exc; color=mixcrit_colors[mc], linestyle=linestyle, marker=marker, label=labels_opt[mc], linewidth=1.5, )
                                 end
                             end
                             println("Finished MCs")
@@ -1209,17 +1198,15 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             for ax = (axancgen,axs_mcseps...)
                                 lines!(ax, dnspot, levels_exc; linewidth=1.5, color=:black, linestyle=(:dash,:dense))
                             end
-                            lines!(axratio, clipccdfratio.(dnspot./dnspot), levels_exc; linewidth=3, color=:black, linestyle=(:dash,:dense))
-                            for ax = (axancgen,axs_mcseps...,axratio)
+                            for ax = (axancgen,axs_mcseps...)
                                 ylims!(ax, ylimits...) #1.5*levels[i_thresh_cquantile]-0.5*levels[i_thresh_cquantile+1], 1.5*levels[end]-0.5*levels[end-1])
                             end
                             for ax = (axancgen, axs_mcseps...)
                                 xlims!(ax, 1/(time_valid_dns_ph*sdm.tu*10), thresh_cquantile*1.1)
                             end
-                            xlims!(axratio, 1/10, 10)
                             xlims!(axfdiv, 0.5, Nmcs2mix+1.5)
 
-                            axancgen.ylabelvisible = axancgen.yticklabelsvisible = true
+                            axs_mcseps[1].ylabelvisible = axs_mcseps[1].yticklabelsvisible = true
                             for i_col = 1:Nmcs2mix
                                 colgap!(lout, i_col, 0)
                             end

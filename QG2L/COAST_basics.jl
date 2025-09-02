@@ -871,7 +871,7 @@ function expt_config_COAST_analysis(cfg::ConfigCOAST, pertop::QG2L.PerturbationO
                         "g" => Rmin .+ (Rmax-Rmin).*[0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0],
                        )
     fdivnames = ("qrmse","kl","chi2","tv")
-    Nboot = 50 #1000 TODO actually do bootstrapping and put error bars on the CCDFs in results panels 
+    Nboot = 64 #1000 TODO actually do bootstrapping and put error bars on the CCDFs in results panels 
     ccdf_levels = 1 ./ (2 .^ collect(1:15))
     i_thresh_cquantile = 5
     time_ancgen_dns_ph = 4000

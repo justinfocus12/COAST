@@ -68,14 +68,14 @@ end
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
-                             "plot_mixcrits_ydep" =>             0,
+                             "plot_mixcrits_ydep" =>             1,
                              "compile_fdivs" =>                  0,
                              "plot_fdivs" =>                     0,
                              "plot_ccdfs_latdep" =>              0,
                              # danger zone
                              "remove_pngs" =>                    0,
                              # defunct/hibernating
-                             "print_simtimes" =>                 1,
+                             "print_simtimes" =>                 0,
                              "plot_pot_ccdfs_latdep" =>          0,
                             )
     php,sdm = QG2L.expt_config()
@@ -515,6 +515,23 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
 
 
     if todo["plot_mixcrits_ydep"]
+        Nancsubss = Vector{Vector{Int64}}([])
+        for (i_ytgt,ytgt) in enumerate(ytgts)
+            resultdir_y = joinpath(exptdirs_COAST[i_ytgt],"results")
+            dns_objective_filename = joinpath(resultdir_y,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2")
+            Nancsubs = JLD2.jldopen(joinpath(resultdir_y,dns_objective_filename),"r") do f
+                return f["Nancsubs"]
+            end
+            push!(Nancsubss,Nancsubs)
+        end
+        idx_Nancsub_mid = zeros(Int64, Nytgt)
+        Nancsubs_mid = zeros(Int64, Nytgt)
+        for i_ytgt = 1:Nytgt
+            i_Nancsub = argmin(abs.(Nancsubss[i_ytgt] .- Nancmax/3))
+            idx_Nancsub_mid[i_ytgt] = i_Nancsub
+            Nancsubs_mid[i_ytgt] = Nancsubss[i_ytgt][i_Nancsub]
+        end
+
         println("\n$("-"^30)\nBEGINNING plot_mixcrits_ydep\n\n")
         dst = "b"
         rsps2plot = ["z","2","e"][2:2]
@@ -539,21 +556,23 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 ) = (
                      zeros(Float64, (Nmcs["contcorr"],Nytgt,Nscales[dst])) for _=1:4
                     )
-                ilt_best_of_ast = zeros(Int64, (Nytgt,Nscales[dst]))
-                icc_best_of_contcorr = zeros(Int64, (Nytgt,Nscales[dst]))
+                ilt_best_of_ast = zeros(Int64, (Nytgt,Nscales[dst])) # index of best lead time 
+                icc_best_of_contcorr = zeros(Int64, (Nytgt,Nscales[dst])) # index of best contour correlation 
                 mean_over_boots = false
                 for i_scl = scales2plot
                     for (i_ytgt,ytgt) in enumerate(ytgts)
+                        N_Nancsub = length(Nancsubss[i_ytgt])
                         JLD2.jldopen(joinpath(exptdirs_COAST[i_ytgt],"results","ccdfs_combined.jld2"),"r") do f
-                            Nancy = size(f["mixcrits"][dst][rsp]["lt"],2)
+                            Nancy = size(f["mixcrits"][dst][rsp]["lt"],2) # number of ancestors used at latitude y 
+                            #@infiltrate !(Nancsubss[i_ytgt][end] == Nancy)
                             # AST as independent variable
                             contcorr_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["mixcrits"][dst][rsp]["contcorr"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
                             globcorr_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["mixcrits"][dst][rsp]["globcorr"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
                             mc_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["mixcrits"][dst][rsp][mc][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
                             if mean_over_boots
-                                fdiv_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["fdivs"][dst][rsp]["lt"][est][fdivname][2:Nboot+1,1:Nleadtime,i_scl]; dims=1)[1,:]
+                                fdiv_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["fdivs"][dst][rsp]["lt"][est][fdivname][2:Nboot+1,end,1:Nleadtime,i_scl]; dims=1)[1,:]
                             else
-                                fdiv_of_ast[:,i_ytgt,i_scl] .= (f["fdivs"][dst][rsp]["lt"][est][fdivname][i_boot,1:Nleadtime,i_scl])
+                                fdiv_of_ast[:,i_ytgt,i_scl] .= (f["fdivs"][dst][rsp]["lt"][est][fdivname][i_boot,N_Nancsub,1:Nleadtime,i_scl])
                             end
                             ilt_best_of_ast[i_ytgt,i_scl] = argmin(fdiv_of_ast[:,i_ytgt,i_scl])
 
@@ -562,7 +581,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                             # contcorr as independent variable
                             ilts_contcorr = f["iltmixs"][dst][rsp]["contcorr"][1:Nmcs["contcorr"],1:Nancy,i_scl] # the lead time index at which each ancestor achieves the chosen contour correlation value 
                             ilts_globcorr = f["iltmixs"][dst][rsp]["globcorr"][1:Nmcs["globcorr"],1:Nancy,i_scl] # the lead time index at which each ancestor achieves the chosen globour correlation value 
-                            fdiv_of_contcorr[:,i_ytgt,i_scl] .= (f["fdivs"][dst][rsp]["contcorr"][est][fdivname][i_boot,1:Nmcs["contcorr"],i_scl])
+                            fdiv_of_contcorr[:,i_ytgt,i_scl] .= (f["fdivs"][dst][rsp]["contcorr"][est][fdivname][i_boot,N_Nancsub,1:Nmcs["contcorr"],i_scl])
                             ast_of_contcorr[:,i_ytgt,i_scl] .= sdm.tu.*SB.mean(leadtimes[ilts_contcorr]; dims=2)[:,1]
                             for i_contcorr = 1:Nmcs["contcorr"]
                                 mc_of_contcorr[i_contcorr,i_ytgt,i_scl] = SB.mean([f["mixcrits"][dst][rsp][mc][ilts_contcorr[i_contcorr,i_anc],i_anc,i_scl] for i_anc=1:Nancy])
