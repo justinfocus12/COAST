@@ -256,6 +256,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
      ccdf_pot_valid_seplon_eqnanc,
      mean_return_period,
      Nancsubs,
+     Nancsub_comparable_max,
     ) = (
          JLD2.jldopen(joinpath(resultdir,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2"), "r") do f
              return (
@@ -275,6 +276,7 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                      f["ccdf_pot_valid_seplon_eqnanc"],
                      f["mean_return_period"],
                      f["Nancsubs"],
+                     f["Nanc_comparable_max"],
                     )
          end
         )
@@ -421,13 +423,16 @@ function mix_COAST_distributions(cfg, cop, pertop, coast, ens, resultdir,)
                                                         fdivname
                                                         )
                                     )
+        N_Nancsub_comp = sum(Nancsubs .<= Nancsub_comparable_max)
         fdivs_ancgen_valid[fdivname] = mapslices(fdiv_from_valid, ccdf_pot_ancgen_seplon; dims=1)[1,:]
-        fdivs_eqcostvalid_valid[fdivname] = zeros(Float64, (N_Nancsub,size(ccdf_pot_valid_seplon,2)))
+        fdivs_eqcostvalid_valid[fdivname] = zeros(Float64, (N_Nancsub_comp,size(ccdf_pot_valid_seplon,2)))
         fdivs_eqnancvalid_valid[fdivname] = zeros(Float64, (N_Nancsub,size(ccdf_pot_valid_seplon,2)))
         @show size(ccdf_pot_valid_seplon)
         @show size(fdivs_eqcostvalid_valid[fdivname])
         for (i_Nancsub,Nancsub) in enumerate(Nancsubs[1:N_Nancsub])
-            fdivs_eqcostvalid_valid[fdivname][i_Nancsub,:] .= mapslices(fdiv_from_valid, ccdf_pot_valid_seplon_eqcost[:,:,i_Nancsub]; dims=1)[1,:]
+            if Nancsub <= Nancsub_comparable_max
+                fdivs_eqcostvalid_valid[fdivname][i_Nancsub,:] .= mapslices(fdiv_from_valid, ccdf_pot_valid_seplon_eqcost[:,:,i_Nancsub]; dims=1)[1,:]
+            end
             fdivs_eqnancvalid_valid[fdivname][i_Nancsub,:] .= mapslices(fdiv_from_valid, ccdf_pot_valid_seplon_eqnanc[:,:,i_Nancsub]; dims=1)[1,:]
         end
         #@infiltrate any(isnan.(fdivs_ancgen_valid[fdivname]))

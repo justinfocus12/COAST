@@ -40,7 +40,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_pertop" =>                                    0,
                              "plot_bumps" =>                                     0,
                              "compute_dns_objective" =>                          1,
-                             "plot_dns_objective_stats" =>                       1,
+                             "plot_dns_objective_stats" =>                       0,
                              "use_backups" =>                                    0,
                              "anchor" =>                                         0,
                              "sail" =>                                           0, 
@@ -48,9 +48,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_contour_dispersion_distribution" =>           0,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "evaluate_mixing_criteria" =>                       0,
-                             "plot_objective" =>                                 1, 
-                             "plot_conditional_pdfs" =>                          1,
-                             "plot_mixcrits_overlay" =>                          1,
+                             "plot_objective" =>                                 0, 
+                             "plot_conditional_pdfs" =>                          0,
+                             "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        1, 
                              "plot_COAST_mixture" =>                             1,
                              "mixture_COAST_phase_diagram" =>                    0,
@@ -250,11 +250,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
         num_lead_times = length(range(cfg.lead_time_min,cfg.lead_time_max; step=cfg.lead_time_inc))
         boost_cost_per_ancestor = round(Int, (cfg.lead_time_max/2+cfg.dtRmax_max) * cfg.num_perts_max/num_lead_times)
         #boost_cost_per_ancestor = round(Int, (cfg.lead_time_max+cfg.follow_time) * cfg.num_perts_max/num_lead_times)
-        ccdf_pot_valid_seplon,ccdf_pot_valid_agglon,gpdpar_valid_agglon,std_valid_agglon,ccdf_pot_valid_seplon_eqcost,ccdf_pot_valid_seplon_eqnanc,mean_return_period,Nancsubs = QG2L.compute_local_pot_zonsym(Roft_valid_seplon, levels[i_thresh_cquantile:end], buffers..., boost_cost_per_ancestor)
+        ccdf_pot_valid_seplon,ccdf_pot_valid_agglon,gpdpar_valid_agglon,std_valid_agglon,ccdf_pot_valid_seplon_eqcost,ccdf_pot_valid_seplon_eqnanc,mean_return_period,Nancsubs,Nancsub_comparable_max = QG2L.compute_local_pot_zonsym(Roft_valid_seplon, levels[i_thresh_cquantile:end], buffers..., boost_cost_per_ancestor, length(coast.ancestors))
 
-        Nancsubs = cat(Nancsubs[Nancsubs .< length(coast.ancestors)], [length(coast.ancestors)])
+        #Nancsubs = vcat(Nancsubs[Nancsubs .< length(coast.ancestors)], [length(coast.ancestors)])
 
-        ccdf_pot_ancgen_seplon,ccdf_pot_ancgen_agglon,gpdpar_ancgen_agglon,std_ancgen_agglon,_,_,_ = QG2L.compute_local_pot_zonsym(Roft_ancgen_seplon, levels[i_thresh_cquantile:end], buffers..., boost_cost_per_ancestor)
+        ccdf_pot_ancgen_seplon,ccdf_pot_ancgen_agglon,gpdpar_ancgen_agglon,std_ancgen_agglon,_,_,_,_ = QG2L.compute_local_pot_zonsym(Roft_ancgen_seplon, levels[i_thresh_cquantile:end], buffers..., boost_cost_per_ancestor, length(coast.ancestors))
         # Now we can see how long is between each ancestor, we can prescribe equal-cost timespans
 
         # Generalized Pareto. TODO compare across a range of thresholds
@@ -282,6 +282,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
             f["ccdf_pot_valid_seplon_eqnanc"] = ccdf_pot_valid_seplon_eqnanc
             f["mean_return_period"] = mean_return_period
             f["Nancsubs"] = Nancsubs
+            f["Nanc_comparable_max"] = Nancsub_comparable_max
         end
     else
         (
@@ -303,6 +304,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
          ccdf_pot_valid_seplon_eqnanc,
          mean_return_period,
          Nancsubs,
+         Nancsub_comparable_max
         ) = (
              JLD2.jldopen(dns_objective_filename, "r") do f
                  return (
@@ -324,6 +326,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                          f["ccdf_pot_valid_seplon_eqnanc"],
                          f["mean_return_period"],
                          f["Nancsubs"],
+                         f["Nanc_comparable_max"],
                         )
              end
             )
@@ -1096,8 +1099,8 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                             # Short DNS 
                             band!(ax, Point2f.(Nancsubs, fdivs_eqnanc_lo), Point2f.(Nancsubs, fdivs_eqnanc_hi); color=:orange4, alpha=0.25)
                             scatterlines!(ax, Nancsubs, fdivs_eqnanc_mid; color=:orange4, linestyle=:solid, marker=:circle)
-                            band!(ax, Point2f.(Nancsubs, fdivs_eqcost_lo), Point2f.(Nancsubs, fdivs_eqcost_hi); color=:gray, alpha=0.25)
-                            scatterlines!(ax, Nancsubs, fdivs_eqcost_mid; color=:black, linestyle=:solid, marker=:star5)
+                            band!(ax, Point2f.(Nancsubs[Nancsubs .<= Nancsub_comparable_max], fdivs_eqcost_lo), Point2f.(Nancsubs[Nancsubs .<= Nancsub_comparable_max], fdivs_eqcost_hi); color=:gray, alpha=0.25)
+                            scatterlines!(ax, Nancsubs[Nancsubs .<= Nancsub_comparable_max], fdivs_eqcost_mid; color=:black, linestyle=:solid, marker=:star5)
                             # include the values of the the thresholded mixing criteria 
                             for (est,linestyle,marker) in (("mix",:solid,:xcross),("pool",(:dot,:dense),'O'))[1:2]
                                 fdivlo,fdivmid,fdivhi = [QG2L.quantile_sliced(fdivs_opt[mc][est][:,2:Nboot+1], q, 2)[:,1] for q=[cilo,cimid,cihi]]
@@ -1122,7 +1125,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         # -----------------------------------------------
                         # TODO add to the short DNS plot all the intermediate-length DNSs so we can examine visually and diagnose how each of the others might be better or worse 
                         xlimits = [1/(time_valid_dns_ph*sdm.tu*10), thresh_cquantile*1.1]
-                        for (i_Nancsub,Nancsub) in enumerate(Nancsubs[1:N_Nancsub])
+                        for (i_Nancsub,Nancsub) in enumerate(Nancsubs[Nancsubs .<= Nancsub_comparable_max])
                             fig = Figure(size=(100*(Nmcs2mix+1),450))
                             lout = fig[1,1] = GridLayout()
                             axargs = Dict(:xscale=>log10, :ylabel=>"Severity 𝑅*", :titlefont=>:regular, :xgridvisible=>false, :ygridvisible=>false, :ylabelvisible=>false, :yticklabelsvisible=>false, :ylabelsize=>12, :yticklabelsize=>10, :titlesize=>10, :xlabelsize=>10, :xticklabelsize=>9, :xticklabelrotation=>-pi/2, )
