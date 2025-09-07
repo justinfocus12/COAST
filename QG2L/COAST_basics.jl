@@ -706,7 +706,7 @@ function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, scale::Float64)
     return label
 end
 
-function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain, specify_y0::Bool=true, specify_scale::Bool=false)
+function label_target(cfg::ConfigCOAST, sdm::QG2L.SpaceDomain; specify_y0::Bool=true, specify_scale::Bool=false)
     N = sdm.Ny
     yN = round(Int, cfg.target_yPerL*N)
     xN = round(Int, cfg.target_xPerL*N)

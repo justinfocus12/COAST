@@ -303,13 +303,15 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
         rsps = ["z","2","e",][2:2]
 
         Nancsubss = Vector{Vector{Int64}}([])
+        Nancsubs_comparable_max = Vector{Int64}([])
         for (i_ytgt,ytgt) in enumerate(ytgts)
             resultdir_y = joinpath(exptdirs_COAST[i_ytgt],"results")
             dns_objective_filename = joinpath(resultdir_y,"objective_dns_tancgen$(round(Int,time_ancgen_dns_ph))_tvalid$(round(Int,time_valid_dns_ph)).jld2")
-            Nancsubs = JLD2.jldopen(joinpath(resultdir_y,dns_objective_filename),"r") do f
-                return f["Nancsubs"]
+            Nancsubs,Nancsub_comparable_max = JLD2.jldopen(joinpath(resultdir_y,dns_objective_filename),"r") do f
+                return f["Nancsubs"],f["Nanc_comparable_max"]
             end
             push!(Nancsubss,Nancsubs)
+            push!(Nancsubs_comparable_max, Nancsub_comparable_max)
         end
 
 
@@ -347,6 +349,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         for mc = mcs2mix
                             for est = ["mix","pool"]
                                 for fdivname = fdivnames
+                                    @infiltrate size(fdivs[dst][rsp][mc][est][fdivname][i_ytgt,Nancsubss[i_ytgt],:,:,:]) != size(f["fdivs"][dst][rsp][mc][est][fdivname][:,:,:,:])
                                     fdivs[dst][rsp][mc][est][fdivname][i_ytgt,Nancsubss[i_ytgt],:,:,:] .= f["fdivs"][dst][rsp][mc][est][fdivname][:,:,:,:]
                                 end
                             end
@@ -355,7 +358,8 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                 end
                 for fdivname = fdivnames
                     fdivs_ancgen_valid[fdivname][i_ytgt,:] .= f["fdivs_ancgen_valid"][fdivname]
-                    fdivs_eqcostvalid_valid[fdivname][i_ytgt,Nancsubss[i_ytgt],:] .= f["fdivs_eqcostvalid_valid"][fdivname]
+                    i_Nancsub_max = findlast(Nancsubss[i_ytgt] .<= Nancsubs_comparable_max[i_ytgt])
+                    fdivs_eqcostvalid_valid[fdivname][i_ytgt,Nancsubss[i_ytgt][1:i_Nancsub_max],:] .= f["fdivs_eqcostvalid_valid"][fdivname]
                     fdivs_eqnancvalid_valid[fdivname][i_ytgt,Nancsubss[i_ytgt],:] .= f["fdivs_eqnancvalid_valid"][fdivname]
                 end
             end
@@ -367,6 +371,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
             f["fdivs_eqcostvalid_valid"] = fdivs_eqcostvalid_valid
             f["fdivs_eqnancvalid_valid"] = fdivs_eqnancvalid_valid
             f["Nancsubss"] = Nancsubss # per-latitude , what are the chosen intermediate ancestor subset sizes? 
+            f["Nancsubs_comparable_max"] = Nancsubs_comparable_max
         end
     end
 
@@ -380,6 +385,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
          fdivs_eqcostvalid_valid,
          fdivs_eqnancvalid_valid,
          Nancsubss,
+         Nancsubs_comparable_max,
         ) = JLD2.jldopen(joinpath(resultdir,"fdivs.jld2"),"r") do f
             return (
                     f["fdivs"],
@@ -387,6 +393,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     f["fdivs_eqcostvalid_valid"],
                     f["fdivs_eqnancvalid_valid"],
                     f["Nancsubss"],
+                    f["Nancsubs_comparable_max"],
                    )
 
         end
@@ -441,13 +448,12 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     for i_scl = scales2plot
 
                         scalestr = @sprintf("𝑠 = %.2f", distn_scales[dst][i_scl])
-                        boxradstr = label_target(cfgs[1], sdm, false)
                         syncmcs = ["lt","contcorr","globcorr","ei","ent"]
                         Nmcs2plot = length(syncmcs)
                         # ---------------- Put each mixing criterion into its own panel -------
                         fig = Figure(size=(100*Nmcs2plot+60,360))
                         lout = fig[1,1] = GridLayout()
-                        toplabel = Label(lout[1,1:Nmcs2plot], @sprintf("%s, %s, %d≤𝑁≤%d", boxradstr, scalestr, minimum(Nancsubs_mid), maximum(Nancsubs_mid)), fontsize=14,font=:regular,valign=:bottom,padding=(0,0,0,0))
+                        toplabel = Label(lout[1,1:Nmcs2plot], @sprintf("%s, %d≤𝑁≤%d", scalestr, minimum(Nancsubs_mid), maximum(Nancsubs_mid)), fontsize=14,font=:regular,valign=:bottom,padding=(0,0,0,0))
                         titlefun = (mc -> @sprintf("%s\n%s", (mc in ["lt","contcorr","globcorr"] ? "best" : "max"),mixcrit_labels[mc]))
                         axs_mc = [
                                   Axis(
@@ -570,9 +576,9 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                             globcorr_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["mixcrits"][dst][rsp]["globcorr"][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
                             mc_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["mixcrits"][dst][rsp][mc][1:Nleadtime,1:Nancy,i_scl]; dims=2)[:,1]
                             if mean_over_boots
-                                fdiv_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["fdivs"][dst][rsp]["lt"][est][fdivname][2:Nboot+1,end,1:Nleadtime,i_scl]; dims=1)[1,:]
+                                fdiv_of_ast[:,i_ytgt,i_scl] .= SB.mean(f["fdivs"][dst][rsp]["lt"][est][fdivname][end,2:Nboot+1,1:Nleadtime,i_scl]; dims=1)[1,:]
                             else
-                                fdiv_of_ast[:,i_ytgt,i_scl] .= (f["fdivs"][dst][rsp]["lt"][est][fdivname][i_boot,N_Nancsub,1:Nleadtime,i_scl])
+                                fdiv_of_ast[:,i_ytgt,i_scl] .= (f["fdivs"][dst][rsp]["lt"][est][fdivname][N_Nancsub,i_boot,1:Nleadtime,i_scl])
                             end
                             ilt_best_of_ast[i_ytgt,i_scl] = argmin(fdiv_of_ast[:,i_ytgt,i_scl])
 
@@ -679,7 +685,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                     delete!(axargs, :xlabel)
                     axmaxmc,axmaxfdiv = [Axis(lout[2,i]; axargs...) for i=[3,5]]
                     threshcquantstr = @sprintf("%.2E",thresh_cquantile)
-                    suptitle = Label(lout[1,:], @sprintf("%s, 𝑠=%.2f", label_target(target_r, sdm), distn_scales[dst][i_scl]); fontsize=12)
+                    suptitle = Label(lout[1,:], @sprintf("𝑠=%.2f", distn_scales[dst][i_scl]); fontsize=12)
                     axfdiv.title = @sprintf("%s\nmean",fdivlabel)
                     axmaxfdiv.title = @sprintf("%s\nbounds", fdivlabel)
                     axmc.title = @sprintf("%s\nmean",mclabel)

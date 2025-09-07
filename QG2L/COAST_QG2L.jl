@@ -39,7 +39,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_transcorr" =>                                 0,
                              "plot_pertop" =>                                    0,
                              "plot_bumps" =>                                     0,
-                             "compute_dns_objective" =>                          1,
+                             "compute_dns_objective" =>                          0,
                              "plot_dns_objective_stats" =>                       0,
                              "use_backups" =>                                    0,
                              "anchor" =>                                         0,
@@ -51,9 +51,9 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_objective" =>                                 0, 
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
-                             "mix_COAST_distributions" =>                        1, 
-                             "plot_COAST_mixture" =>                             1,
-                             "mixture_COAST_phase_diagram" =>                    0,
+                             "mix_COAST_distributions" =>                        0, 
+                             "plot_COAST_mixture" =>                             0,
+                             "mixture_COAST_phase_diagram" =>                    1,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
                              "remove_pngs" =>                                    0,
@@ -1450,37 +1450,39 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                     for (i_fdivname,fdivname) in enumerate(fdivs2plot)
 
                         # globcorr and contcorr as the independent variable
-                        for corrkey = ["globcorr","contcorr"]
+                        for (i_Nancsub,Nancsub) in enumerate(Nancsubs)
+                            for corrkey = ["globcorr","contcorr"]
+                                fig = Figure(size=(500,400))
+                                lout = fig[1,1] = GridLayout()
+                                ax = Axis(lout[1,1], xlabel=@sprintf("σ⁻¹(%s)",mixcrit_labels[corrkey]), ylabel="Scale", title="$(fdivlabels[i_fdivname]), $(label_target(cfg,sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular) 
+                                Ncorr = length(mixobjs[corrkey])
+                                Nscale = length(distn_scales[dst])
+                                ltmean = zeros(Float64, (Ncorr, Nscale))
+                                for i_corr = 1:Ncorr
+                                    for i_scl = 1:Nscale
+                                        ltmean[i_corr,i_scl] = SB.mean(leadtimes[iltmixs[dst][rsp][corrkey][i_corr,:,i_scl]])
+                                    end
+                                end
+                                hm = heatmap!(ax, transcorr.(mixobjs[corrkey]), distn_scales[dst], fdivs[dst][rsp][corrkey][est][fdivname][i_Nancsub,i_boot,:,:]; colormap=Reverse(:grays), colorscale=log10)
+                                cbar = Colorbar(lout[1,2], hm, vertical=true)
+                                co = contour!(ax, mixobjs[corrkey], distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*round.(Int, leadtimes[1:round(Int,Nleadtime/7):Nleadtime]), color=:red, labels=true)
+                                save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_syn$(corrkey)_$(est)_Nanc$(Nancsub).png"), fig)
+                            end
+                            # --------------- AST as the independent variable ------------
                             fig = Figure(size=(500,400))
                             lout = fig[1,1] = GridLayout()
-                            ax = Axis(lout[1,1], xlabel=@sprintf("σ⁻¹(%s)",mixcrit_labels[corrkey]), ylabel="Scale", title="$(fdivlabels[i_fdivname]), $(label_target(cfg,sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular) 
-                            Ncorr = length(mixobjs[corrkey])
-                            Nscale = length(distn_scales[dst])
-                            ltmean = zeros(Float64, (Ncorr, Nscale))
-                            for i_corr = 1:Ncorr
-                                for i_scl = 1:Nscale
-                                    ltmean[i_corr,i_scl] = SB.mean(leadtimes[iltmixs[dst][rsp][corrkey][i_corr,:,i_scl]])
-                                end
-                            end
-                            hm = heatmap!(ax, transcorr.(mixobjs[corrkey]), distn_scales[dst], fdivs[dst][rsp][corrkey][est][fdivname][i_boot,:,:]; colormap=Reverse(:grays), colorscale=log10)
+                            ax = Axis(lout[1,1], xlabel="−AST", ylabel="Scale", title="$(fdivlabels[i_fdivname]), $(label_target(cfg,sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular) 
+                            hm = heatmap!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["lt"][est][fdivname][i_Nancsub,i_boot,:,:]; dims=1); colormap=Reverse(:grays), colorscale=log10)
+                            levels_contcorr = mixobjs["contcorr"][1:round(Int,Nmcs["contcorr"]/7):Nmcs["contcorr"]]
+                            co = contour!(ax, -sdm.tu.*reverse(leadtimes), distn_scales[dst], reverse(invtranscorr.(SB.mean(transcorr.(mixcrits[dst][rsp]["contcorr"]); dims=2)[1:Nleadtime,1,1:Nscales]); dims=1); levels=levels_contcorr, color=:red, labels=true)
                             cbar = Colorbar(lout[1,2], hm, vertical=true)
-                            co = contour!(ax, mixobjs[corrkey], distn_scales[dst], sdm.tu.*ltmean; levels=sdm.tu.*round.(Int, leadtimes[1:round(Int,Nleadtime/7):Nleadtime]), color=:red, labels=true)
-                            save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_syn$(corrkey)_$(est).png"), fig)
+                            levels_pth = collect(range(mixobjs["pth"][[1,end]]..., length=12))
+                            levels_pim = collect(range(mixobjs["pim"][[1,end]]..., length=12))
+                            #co = contour!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(SB.mean(mixcrits[dst][rsp]["pth"]; dims=2)[:,1,:]; dims=1); levels=levels_pth, color=:gray, linewidth=2, alpha=0.25, labels=true)
+                            #co = contour!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(SB.mean(mixcrits[dst][rsp]["pim"]; dims=2)[:,1,:]; dims=1); levels=levels_pim, color=:black, linestyle=(:dash,:dense), labels=true)
+                            # Plot the optimal split time (according to fdiv) as a function of scale 
+                            save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_synchron_$(est)_Nanc$(Nancsub).png"), fig)
                         end
-                        # --------------- AST as the independent variable ------------
-                        fig = Figure(size=(500,400))
-                        lout = fig[1,1] = GridLayout()
-                        ax = Axis(lout[1,1], xlabel="−AST", ylabel="Scale", title="$(fdivlabels[i_fdivname]), $(label_target(cfg,sdm))", xlabelsize=16, ylabelsize=16, titlesize=16, titlefont=:regular) 
-                        hm = heatmap!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(fdivs[dst][rsp]["lt"][est][fdivname][i_boot,:,:]; dims=1); colormap=Reverse(:grays), colorscale=log10)
-                        levels_contcorr = mixobjs["contcorr"][1:round(Int,Nmcs["contcorr"]/7):Nmcs["contcorr"]]
-                        co = contour!(ax, -sdm.tu.*reverse(leadtimes), distn_scales[dst], reverse(invtranscorr.(SB.mean(transcorr.(mixcrits[dst][rsp]["contcorr"]); dims=2)[1:Nleadtime,1,1:Nscales]); dims=1); levels=levels_contcorr, color=:red, labels=true)
-                        cbar = Colorbar(lout[1,2], hm, vertical=true)
-                        levels_pth = collect(range(mixobjs["pth"][[1,end]]..., length=12))
-                        levels_pim = collect(range(mixobjs["pim"][[1,end]]..., length=12))
-                        #co = contour!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(SB.mean(mixcrits[dst][rsp]["pth"]; dims=2)[:,1,:]; dims=1); levels=levels_pth, color=:gray, linewidth=2, alpha=0.25, labels=true)
-                        #co = contour!(ax, reverse(-sdm.tu.*leadtimes; dims=1), distn_scales[dst], reverse(SB.mean(mixcrits[dst][rsp]["pim"]; dims=2)[:,1,:]; dims=1); levels=levels_pim, color=:black, linestyle=(:dash,:dense), labels=true)
-                        # Plot the optimal split time (according to fdiv) as a function of scale 
-                        save(joinpath(figdir,"phdgm_$(dst)_$(rsp)_$(fdivname)_synchron_$(est).png"), fig)
                     end
                 end
             end
@@ -1494,7 +1496,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 1
+i_proc = 2
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])
