@@ -41,7 +41,7 @@ function BoostParams()
             ast_min = 1,
             ast_max = 12,
             bst = 2,
-            num_descendants = 7
+            num_descendants = 15
            )
 end
 
@@ -277,7 +277,7 @@ function plot_dns(duration_spinup, duration_spinon, datadir, figdir, outfile_suf
 
 end
 
-function boost_peaks(threshold::Float64, perturbation_width::Float64, ast_min::Int64, ast_max::Int64, bit_precision::Int64, Ndsc_per_leadtime::Int64, seed::Int64, datadir::String, file_suffix::String) 
+function boost_peaks(threshold::Float64, perturbation_width::Float64, ast_min::Int64, ast_max::Int64, bst::Int64, bit_precision::Int64, Ndsc_per_leadtime::Int64, seed::Int64, datadir::String, file_suffix::String) 
     ts, xs = jldopen(joinpath(datadir, "dns_$(file_suffix).jld2"), "r") do f
         return f["ts"], f["xs"]
     end
@@ -294,21 +294,25 @@ function boost_peaks(threshold::Float64, perturbation_width::Float64, ast_min::I
     pert_seq = van_der_corput(Ndsc_per_leadtime) .* perturbation_width
     datafile = joinpath(datadir,"xs_dscs.jld2")
     for i_peak = 1:Npeaks
+        anckey = "anc$(i_peak)"
         for ast = ast_min:ast_max
-            whorlkey = "tpeak$(ts_peak[i_peak])/ast$(ast)" 
+            astkey = "ast$(ast)"
             t_split = ts_peak[i_peak] - ast
             x_init_anc = xs[:,t_split-ts[1]+1]
-            xs_dsc = zeros(Float64, (1, ast+bpar.bst))
+            xs_dsc = zeros(Float64, (1, ast+bst))
             # Depending on time and cost of simulation, maybe open the file inside the loop 
             jldopen(joinpath(datadir,"xs_dscs.jld2"), "a+") do f
-                Ndsc_already_simulated = whorlkey in keys(f) ? length(f[whorlkey]) : 0
-                if !("t_split" in keys(f[whorlkey])); f[joinpath(whorlkey,"t_split")] = t_split; end
+                Ndsc_already_simulated = anckey in keys(f) && astkey in keys(f[joinpath(anckey)]) ? length(f[joinpath(anckey,astkey)]) : 0
+                @show keys(f)
+                @show Ndsc_already_simulated
                 for i_dsc = Ndsc_already_simulated+1:Ndsc_per_leadtime
                     rng = Random.MersenneTwister(seed)
                     x_init_dsc = [perturbation_width*div(x_init_anc[1], perturbation_width) + pert_seq[i_dsc]]
-                    xs_dsc,ts_dsc = simulate(x_init_dsc, ast+bpar.bst, bit_precision, rng)
-                    f["$(whorlkey)/dsc$(i_dsc)/xs"] = xs_dsc
-                    f["$(whorlkey)/dsc$(i_dsc)/x_init"] = x_init_dsc
+                    xs_dsc,ts_dsc = simulate(x_init_dsc, ast+bst, bit_precision, rng)
+                    @show keys(f)
+                    f[joinpath(anckey,astkey,"dsc$(i_dsc)","t_split")] = t_split
+                    f[joinpath(anckey,astkey,"dsc$(i_dsc)","xs")] = xs_dsc
+                    f[joinpath(anckey,astkey,"dsc$(i_dsc)","x_init")] = x_init_dsc
                 end
             end
         end
@@ -316,8 +320,7 @@ function boost_peaks(threshold::Float64, perturbation_width::Float64, ast_min::I
     return
 end
 
-function collect_boost_data(datadir::String, N_dsc::Int64, asts::Vector{Int64}, bst::Int64, threshold::Float64, entropy_bin_width_neglog::Float64)
-    # aggregate results across all the boosts, AND compare with climatology
+function analyze_boosts(datadir::String, figdir::String, N_dsc::Int64, asts::Vector{Int64}, bst::Int64, threshold::Float64)
     ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_ancgen.jld2"), "r") do f
         return f["ts"], f["xs"]
     end
@@ -335,9 +338,69 @@ function collect_boost_data(datadir::String, N_dsc::Int64, asts::Vector{Int64}, 
     # - then calculate entropy curves for each one 
 
     # Put results into a big array: (i_dsc, i_ast, i_anc) ∈ [N_dsc] x [N_ast] x [N_anc]...or rather a vector of vector of vectors etc. to enable active sampling 
+    N_ast = length(asts)
     N_anc = length(ts_peak)
 
+    peaks = zeros(Float64, (N_dsc, N_ast, N_anc))
+    jldopen(joinpath(datadir,"xs_dscs.jld2"), "r") do f
+        @show keys(f)
+        for i_anc = 1:N_anc
+            for i_ast = 1:N_ast
+                for i_dsc = 1:N_dsc
+                    peaks[i_dsc,i_ast,i_anc] = maximum(f[joinpath("anc$(i_anc)", "ast$(asts[i_ast])", "dsc$(i_dsc)","xs")])
+                end
+            end
+        end
+    end
+
+    # Calculate thresholded entropy 
+    thresholded_entropy = zeros(Float64, (N_ast, N_anc))
+    max_peak = maximum(peaks)
+    bin_lower_edges = 1 .- 1 ./ (2 .^ (collect(range(round(Int,-lg1p(-threshold)), round(Int,-lg1p(-max_peak))+1; step=1))))
+    idx_ast_argmax = zeros(Int64, N_anc)
+    for i_anc = 1:N_anc
+        for i_ast = 1:N_ast
+            thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(peaks[:,i_ast,i_anc], bin_lower_edges)
+        end
+        idx_ast_argmax[i_anc] = argmax(thresholded_entropy[:,i_anc])
+    end
+
+    # Plot it 
+    theme_ax,theme_leg = get_themes()
+    fig = Figure(size=(300,150))
+    lout = fig[1,1] = GridLayout()
+    ax = Axis(lout[1,1]; theme_ax..., xlabel="−AST", ylabel="Thresh. Ent.")
+    for i_anc = 1:N_anc
+        scatterlines!(ax, reverse(-asts), reverse(thresholded_entropy[:,i_anc]), color=:gray79, alpha=0.5, marker=:circle)
+        i_ast_argmax = idx_ast_argmax[i_anc]
+        scatter!(ax, -asts[i_ast_argmax], thresholded_entropy[i_ast_argmax,i_anc]; color=:gray, marker=:star6)
+    end
+    scatterlines!(ax, reverse(-asts), reverse(SB.mean(thresholded_entropy; dims=2))[:,1]; color=:black, label="Mean", marker=:circle)
+    vlines!(ax, -SB.mean(asts[idx_ast_argmax]); color=:black, linestyle=(:dash,:dense))
+    save(joinpath(figdir, "coasts_overlay.png"), fig)
+    return thresholded_entropy 
 end
+
+function lg1p(x) # log_2(1+x)
+    return log1p(x)/log(2)
+end
+
+function compute_thresholded_entropy(xs::Vector{Float64}, bin_lower_edges::Vector{Float64})
+    pmf = sum(Float64, xs .> bin_lower_edges'; dims=1)[1,:]
+    pmf[1:end-1] .-= pmf[2:end]
+    if all(pmf .== 0)
+        return 0.0
+    end
+    pmf ./= length(xs)
+    entropy = 0.0
+    for (i_bin,bin_lo) in enumerate(bin_lower_edges)
+        if pmf[i_bin] > 0
+            entropy -= pmf[i_bin]*log2(pmf[i_bin])
+        end
+    end
+    return entropy
+end
+
 
 
 function plot_boosts(datadir::String, figdir::String, ast_min::Int64, ast_max::Int64, bst::Int64, threshold::Float64, entropy_bin_width_neglog::Float64) # could also have decreasing intervals, as in COAST paper.
@@ -356,11 +419,11 @@ function plot_boosts(datadir::String, figdir::String, ast_min::Int64, ast_max::I
     theme_ax,theme_leg = get_themes()
 
     jldopen(joinpath(datadir,"xs_dscs.jld2"), "r") do f
-        anckeys = filter(k->startswith(k,"tpeak"), keys(f))
+        anckeys = filter(k->startswith(k,"anc"), keys(f))
         for (i_anc,anckey) in enumerate(anckeys)
-            if i_anc > 1
-                continue
-            end
+            #if i_anc > 1
+            #    continue
+            #end
             whorlkeys = keys(f[anckey])
             # Track the entropy for each AST 
             entropy_of_ast = zeros(Float64, length(whorlkeys))
@@ -378,20 +441,22 @@ function plot_boosts(datadir::String, figdir::String, ast_min::Int64, ast_max::I
                     xlims!(ax, ts_anc[tidx_anc[1]], ts_anc[tidx_anc[end]])
                     ax.xlabelvisible = ax.xticklabelsvisible = (i_whorl == length(whorlkeys))
                 end
-                t_split = f[joinpath(anckey,whorlkey,"t_split")]
                 @show keys(f[joinpath(anckey,whorlkey)])
                 dsckeys = filter(k->startswith(k,"dsc"), keys(f[joinpath(anckey,whorlkey)]))
                 peaks_dsc = zeros(Float64, length(dsckeys))
                 for (i_dsc,dsckey) in enumerate(dsckeys)
+                    @show keys(f[joinpath(anckey,whorlkey,dsckey)])
                     x_init = f[joinpath(anckey,whorlkey,dsckey,"x_init")]
                     xs_dsc = f[joinpath(anckey,whorlkey,dsckey,"xs")]
+                    t_init = f[joinpath(anckey,whorlkey,dsckey,"t_split")]
                     @show xs_dsc[1,:]
+                    @show t_init
                     Nt = size(xs_dsc,2)
-                    ts_dsc = t_split .+ collect(1:Nt)
+                    ts_dsc = t_init .+ collect(1:Nt)
                     lines!(ax1, ts_dsc, xs_dsc[1,:]; color=:red)
                     for ax = (ax1,ax2)
-                        vlines!(ax, t_split; color=:red)
-                        scatter!(ax, t_split, x_init[1]; color=:red, marker=:star6)
+                        vlines!(ax, t_init; color=:red)
+                        scatter!(ax, t_init, x_init[1]; color=:red, marker=:star6)
                         scatter!(ax, ts_dsc, xs_dsc[1,:]; color=:red)
                     end
                     scatter!(ax3, x_init[1]-xs_anc[1,tidx_anc[1]], maximum(xs_dsc[1,:]); color=:red, marker=:star5)
@@ -449,6 +514,7 @@ function main()
                              "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
                              "plot_boosts" =>              1,
+                             "analyze_boosts" =>           0,
                              "evaluate_mixing_criteria" => 0,
                              "mix_conditional_tails" =>    0,
                             )
@@ -457,7 +523,7 @@ function main()
     bpar = BoostParams()
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-09-24",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
@@ -496,10 +562,14 @@ function main()
     end
     if todo["boost_peaks"]
         seed_boost = 8086
-        boost_peaks(threshold, perturbation_width, bpar.ast_min, bpar.ast_max, bpar.bit_precision, bpar.num_descendants, seed_boost, datadir, "ancgen")
+        boost_peaks(threshold, perturbation_width, bpar.ast_min, bpar.ast_max, bpar.bst, bpar.bit_precision, bpar.num_descendants, seed_boost, datadir, "ancgen")
     end
     if todo["plot_boosts"]
         plot_boosts(datadir, figdir, bpar.ast_min, bpar.ast_max, bpar.bst, threshold, perturbation_width)
+    end
+    if todo["analyze_boosts"]
+        asts = collect(range(bpar.ast_min, bpar.ast_max; step=1))
+        analyze_boosts(datadir, figdir, bpar.num_descendants, asts, bpar.bst, threshold)
     end
 end
 
