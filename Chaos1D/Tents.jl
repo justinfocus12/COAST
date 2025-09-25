@@ -34,7 +34,7 @@ function BoostParams()
             duration_valid = 2^16,
             duration_ancgen = 2^12, 
             duration_spinup = 2^4,
-            threshold_neglog = 8, # 2^(-threshold_neglog) is the threshold
+            threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
             perturbation_neglog = 12,  # how many bits to keep when doing the perturbation 
             min_cluster_gap = 2^6,
             bit_precision = 32,
@@ -367,9 +367,9 @@ function analyze_boosts(datadir::String, figdir::String, N_dsc::Int64, asts::Vec
 
     # Plot it 
     theme_ax,theme_leg = get_themes()
-    fig = Figure(size=(300,150))
+    fig = Figure(size=(300,300))
     lout = fig[1,1] = GridLayout()
-    ax = Axis(lout[1,1]; theme_ax..., xlabel="−AST", ylabel="Thresh. Ent.")
+    ax = Axis(lout[2,1]; theme_ax..., xlabel="−AST", ylabel="Thresh. Ent.")
     for i_anc = 1:N_anc
         scatterlines!(ax, reverse(-asts), reverse(thresholded_entropy[:,i_anc]), color=:gray79, alpha=0.5, marker=:circle)
         i_ast_argmax = idx_ast_argmax[i_anc]
@@ -377,7 +377,32 @@ function analyze_boosts(datadir::String, figdir::String, N_dsc::Int64, asts::Vec
     end
     scatterlines!(ax, reverse(-asts), reverse(SB.mean(thresholded_entropy; dims=2))[:,1]; color=:black, label="Mean", marker=:circle)
     vlines!(ax, -SB.mean(asts[idx_ast_argmax]); color=:black, linestyle=(:dash,:dense))
-    save(joinpath(figdir, "coasts_overlay.png"), fig)
+    ax.xticks = reverse(-asts)
+    #ax.xticklabels = string.(reverse(-asts))
+    save(joinpath(figdir, "thrent_overlay.png"), fig)
+
+    # Plot the max-scores as a function of -AST; one row for each ancestor
+    fig = Figure(size=(200,60*N_anc))
+    lout = fig[1,1] = GridLayout()
+    for i_anc = 1:N_anc
+        ax = Axis(lout[i_anc,1]; theme_ax..., xticks=(-reverse(asts), string.(-reverse(asts))))
+        for i_ast = 1:N_ast
+            scatter!(ax, -asts[i_ast]*ones(N_dsc), peaks[:,i_ast,i_anc]; color=:red, marker=:circle, markersize=3)
+        end
+        hlines!(ax, threshold; color=:gray79)
+        hlines!(ax, xs_peak[i_anc]; color=:black, linestyle=(:dash,:dense))
+    end
+    for i_row = 1:N_anc-1
+        content(lout[i_row,1]).xticklabelsvisible = content(lout[i_row,1]).xlabelvisible = false
+        rowgap!(lout, i_row, 0)
+    end
+    content(lout[end,1]).xlabel = "−AST"
+    save(joinpath(figdir, "peaks_dsc_stacked.png"), fig)
+    
+
+
+
+
     return thresholded_entropy 
 end
 
@@ -513,8 +538,8 @@ function main()
                              "analyze_peaks_valid" =>      0,
                              "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
-                             "plot_boosts" =>              1,
-                             "analyze_boosts" =>           0,
+                             "plot_boosts" =>              0,
+                             "analyze_boosts" =>           1,
                              "evaluate_mixing_criteria" => 0,
                              "mix_conditional_tails" =>    0,
                             )
