@@ -31,17 +31,17 @@ end
 
 function BoostParams()
     return (
-            duration_valid = 2^16,
+            duration_valid = 2^18,
             duration_ancgen = 2^12, 
             duration_spinup = 2^4,
             threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
-            perturbation_neglog = 12,  # how many bits to keep when doing the perturbation 
+            perturbation_neglog = 15,  # how many bits to keep when doing the perturbation 
             min_cluster_gap = 2^6,
             bit_precision = 32,
             ast_min = 1,
             ast_max = 12,
             bst = 2,
-            num_descendants = 15
+            num_descendants = 31
            )
 end
 
@@ -72,14 +72,21 @@ function empirical_ccdf(x::Vector{<:Number})
     return x[order], ccdf
 end
 
+function chi2div(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
+    pmf_truth = vcat(-diff(ccdf_truth[1:end-1]), ccdf_truth[end])
+    pmf_approx = vcat(-diff(ccdf_approx[1:end-1]), ccdf_approx[end])
+    return sum((pmf_truth .- pmf_approx).^2 ./ pmf_truth)
+end
+
 function simulate!(xs::Matrix{Float64}, bit_precision::Int64, x_init::Vector{Float64}, rng::Random.AbstractRNG)
     duration = size(xs, 2)
     x = x_init[1] # Within this function it is just the one
     for t = 1:duration
         x = mod(2*(x < 0.5 ? x : 1-x), 1)
         x = mod(
-                (div(x, 1/(2^bit_precision)) + Random.rand(rng, [0,1]))
-                / (2^bit_precision), 
+                floor(Int, x*2^(bit_precision+1)) + Random.rand(rng, [0, 1])
+                #(div(x, 1/(2^bit_precision)) + Random.rand(rng, [0,1]))
+                / (2^(bit_precision+1)), 
                 1
                )
         xs[1,t] = x
@@ -303,14 +310,14 @@ function boost_peaks(threshold::Float64, perturbation_width::Float64, asts::Vect
     pert_seq = van_der_corput(Ndsc_per_leadtime) .* perturbation_width
     datafile = joinpath(datadir,"xs_dscs.jld2")
     boostfile = joinpath(datadir,"xs_dscs.jld2")
-    if overwrite_boosts
+    if isfile(boostfile) && overwrite_boosts
         rm(boostfile)
     end
 
     iomode = (overwrite_boosts ? "w" : "a+")
     for i_peak = 1:Npeaks
         anckey = "ianc$(i_peak)"
-        for (i_ast,ast) in enumerate(ast_min:ast_max)
+        for (i_ast,ast) in enumerate(asts)
             astkey = "iast$(i_ast)"
             t_split = ts_peak[i_peak] - ast
             x_init_anc = xs_anc[:,t_split-ts_anc[1]+1]
@@ -336,7 +343,7 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
     ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_ancgen.jld2"), "r") do f
         return f["ts"], f["xs"]
     end
-    ts_peak_valid, Rs_peak_valid, cluster_starts_valid, cluster_stops_valid = jldopen(joinpath(datadir, "dns_peaks_ancgen.jld2"), "r") do f
+    ts_peak_valid, Rs_peak_valid, cluster_starts_valid, cluster_stops_valid = jldopen(joinpath(datadir, "dns_peaks_valid.jld2"), "r") do f
         return (
                 f["ts_peak"],
                 f["Rs_peak"], 
@@ -356,8 +363,8 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
     Rmax = maximum(Rs_peak_valid)
     N_bin = length(bin_lower_edges)
 
-    ccdf_anc = compute_empirical_ccdf(Rs_peak_anc, bin_lower_edges)
-    ccdf_valid = compute_empirical_ccdf(Rs_peak_valid , bin_lower_edges)
+    ccdf_peak_anc = compute_empirical_ccdf(Rs_peak_anc, bin_lower_edges[i_bin_thresh:N_bin])
+    ccdf_peak_valid = compute_empirical_ccdf(Rs_peak_valid, bin_lower_edges[i_bin_thresh:N_bin])
     # Store the following data:
     # - peak (timing,value) of ancestor
     # - peak (timing,value) of descendants at every (ancestor, AST)
@@ -390,7 +397,7 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
     # Initialize conditional and mixed CCDFs, both full (including under threshold) and rectified (with accept reject)
     ccdfs_dsc,ccdfs_dsc_rect = (zeros(Float64, (N_b,N_ast,N_anc)) for N_b=(N_bin,N_bin-i_bin_thresh+1))
     ccdfs_moctail_astunif,ccdfs_moctail_astunif_rect = (zeros(Float64, (N_b,N_ast)) for N_b=(N_bin,N_bin-i_bin_thresh+1))
-    ccdfs_moctail_astmaxthrent,ccdfs_moctail_astmaxthrent_rect = (zeros(Float64, (N_b,)) for N_b=(N_bin,N_bin-i_bin_thresh+1))
+    ccdf_moctail_astmaxthrent,ccdf_moctail_astmaxthrent_rect = (zeros(Float64, (N_b,)) for N_b=(N_bin,N_bin-i_bin_thresh+1))
     thresholded_entropy = zeros(Float64, (N_ast, N_anc))
     for i_anc = 1:N_anc
         for i_ast = 1:N_ast
@@ -400,36 +407,71 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
             ccdfs_moctail_astunif[:,i_ast] .+= ccdfs_dsc[:,i_ast,i_anc]./N_anc
             ccdfs_moctail_astunif_rect[:,i_ast] .+= ccdfs_dsc_rect[:,i_ast,i_anc]./N_anc
         end
-        idx_astmaxthrent[i_anc] = argmax(thresholded_entropy[:,i_anc])
+        # Max-thresholded-entropy: take LAST instance of maximum
+        idx_astmaxthrent[i_anc] = N_ast - argmax(reverse(thresholded_entropy[:,i_anc])) + 1
+        @show thresholded_entropy[i_anc]
         # Oh wait but need to apply adjustment...
-        ccdfs_moctail_astmaxthrent .+= ccdfs_dsc[:,idx_astmaxthrent[i_anc],i_anc]./N_anc
-        ccdfs_moctail_astmaxthrent_rect .+= ccdfs_dsc_rect[:,idx_astmaxthrent[i_anc],i_anc]./N_anc
+        ccdf_moctail_astmaxthrent .+= ccdfs_dsc[:,idx_astmaxthrent[i_anc],i_anc]./N_anc
+        ccdf_moctail_astmaxthrent_rect .+= ccdfs_dsc_rect[:,idx_astmaxthrent[i_anc],i_anc]./N_anc
     end
+    @show idx_astmaxthrent
 
-    theme_ax,theme_leg = get_themes()
+    # compute some kind of loss...let's do chi-squared
+    losses_chi2_astunif = zeros(Float64, N_ast)
+    loss_chi2_astmaxthrent = chi2div(ccdf_peak_valid, ccdf_moctail_astmaxthrent_rect)
+    for i_ast = 1:N_ast
+        losses_chi2_astunif[i_ast] = chi2div(ccdf_peak_valid, ccdfs_moctail_astunif_rect[:,i_ast])
+    end
+    println("asts, losses_chi2_astunif")
+    display(hcat(asts, losses_chi2_astunif))
+
     # MoCTail estimator at (1) fixed lead times, (2) COASTs (which should all be the same...)
     # Row 1: uniform-AST mixed CCDFs
     # Row 2: Just one panel (maxthrent-AST mixed CCDF), positioned at average timing of max-AST
-    fig = Figure(size=(100*N_ast, 400))
+    fig = Figure(size=(80*N_ast, 600))
+    theme_ax = (xticklabelsize=12, yticklabelsize=12, xlabelsize=16, ylabelsize=16, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=16)
     lout = fig[1,1] = GridLayout()
     for i_ast = 1:N_ast
-        ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., title=@sprintf("−%d",asts[i_ast]), xscale=log2, yscale=nlg1m)
+        ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., title=@sprintf("−%d",asts[i_ast]), xscale=log2, yscale=nlg1m, ylabel="Uniform AST", ylabelrotation=0)
+        scatterlines!(ax, ccdf_peak_valid, bin_lower_edges[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Long DNS")
+        scatterlines!(ax, ccdf_peak_anc, bin_lower_edges[i_bin_thresh:N_bin]; color=:steelblue, linestyle=:solid, label="Ancestors only")
         scatterlines!(ax, ccdfs_moctail_astunif_rect[:,i_ast], bin_lower_edges[i_bin_thresh:N_bin]; color=:red)
     end
-    ax = Axis(lout[2,1]; theme_ax..., xscale=log2, yscale=nlg1m, title="Max-TE AST")
-    scatterlines!(ax, ccdfs_moctail_astmaxthrent_rect, bin_lower_edges[i_bin_thresh:N_bin]; color=:red)
+    # Position the maxthrent mixture horizontally at the most-popular max-thrent AST 
+    i_astmaxthrent_mean = round(Int, SB.mean(idx_astmaxthrent))
+    @show i_astmaxthrent_mean
+    ax = Axis(lout[4,N_ast-i_astmaxthrent_mean+1]; theme_ax..., xscale=log2, yscale=nlg1m, title="Max-thresh. ent. AST", ylabelrotation=0)
+    scatterlines!(ax, ccdf_peak_valid, bin_lower_edges[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Long DNS")
+    scatterlines!(ax, ccdf_peak_anc, bin_lower_edges[i_bin_thresh:N_bin]; color=:steelblue, linestyle=:solid, label="Ancestors only")
+    scatterlines!(ax, ccdf_moctail_astmaxthrent_rect, bin_lower_edges[i_bin_thresh:N_bin]; color=:red)
+    if i_astmaxthrent_mean > 1; ax.ylabelvisible = ax.yticklabelsvisible = false; end
+    xlims!(ax, minimum(filter(c->c>0, ccdf_peak_valid))/16, 1.0)
 
     for i_col = 1:N_ast
         ax = content(lout[1,i_col])
         if i_col < N_ast; colgap!(lout, i_col, 0); end
         if i_col > 1; ax.ylabelvisible = ax.yticklabelsvisible = false; end
-        xlims!(ax, minimum(filter(c->c>0, ccdf_valid))/8, 1.0)
+        xlims!(ax, minimum(filter(c->c>0, ccdf_peak_valid))/16, 1.0)
         #ylims!(ax, 1.1*threshold-0.1*1, 1)
     end
-    ax = content(lout[2,1])
-    xlims!(ax, minimum(filter(c->c>0, ccdf_valid))/8, 1.0)
-    #ylims!(ax, 1.1*threshold-0.1*1, 1)
+    # Plot the TE in the third row 
+    ax = Axis(lout[2,1:N_ast]; xlabel="−AST", ylabel="Thresh. Ent.", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=false, xticklabelsvisible=false)
+    xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
+    for i_anc = 1:N_anc
+        scatterlines!(ax, -asts, thresholded_entropy[:,i_anc]; color=:gray79, alpha=0.5)
+    end
+    scatterlines!(ax, -asts, SB.mean(thresholded_entropy; dims=2)[:,1]; color=:red)
+    # Plot the chi2 divergence in 3rd row 
+    ax = Axis(lout[3,1:N_ast]; xlabel="−AST", ylabel="χ²", yscale=log10, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)))
+    xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
+    scatterlines!(ax, -asts, losses_chi2_astunif; color=:purple)
+    hlines!(ax, loss_chi2_astmaxthrent; color=:red)
 
+    rowsize!(lout, 2, Relative(1/8))
+    rowsize!(lout, 3, Relative(1/8))
+
+    rowgap!(lout, 2, 0)
+    
     save(joinpath(figdir, "ccdfs_moctail.png"), fig)
 
 
@@ -456,7 +498,7 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
     lout = fig[1,1] = GridLayout()
     for i_anc = 1:N_anc
         # Left column: maxima due to each AST 
-        ax = Axis(lout[i_anc,1]; theme_ax..., xticks=(-reverse(asts), string.(-reverse(asts))))
+        ax = Axis(lout[i_anc,1]; theme_ax..., xticks=(-reverse(asts), string.(-reverse(asts))), yscale=nlg1m)
         for i_ast = 1:N_ast
             scatter!(ax, -asts[i_ast]*ones(N_dsc), Rs_peak_dsc[:,i_ast,i_anc]; color=:red, marker=:circle, markersize=3)
         end
@@ -469,14 +511,20 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
     end
     for i_anc = 1:N_anc
         ax1,ax2 = [content(lout[i_anc,j]) for j=1:2]
+
         ax1.xticklabelsvisible = ax1.xlabelvisible = (i_anc==N_anc)
         ax2.xticklabelsvisible = ax1.xlabelvisible = (i_anc==N_anc)
+
         ax1.ylabel = "Anc. $(i_anc)"
         ax1.yticklabelsvisible = false
         ax1.ylabelrotation = 0
+
         ax2.ylabel = ""
+
         if i_anc == 1; ax1.title = "𝑅*"; ax2.title = "Thresh. Ent."; end
         if i_anc < N_anc; rowgap!(lout, i_anc, 0); end
+
+        ylims!(ax1, bin_lower_edges[i_bin_thresh-1], bin_lower_edges[N_bin])
     end
     linkyaxes!((content(lout[i_anc,2]) for i_anc=1:N_anc)...)
     colgap!(lout, 1, 15)
@@ -496,6 +544,14 @@ end
 Makie.inverse_transform(nlg1m) = nlg1m_inv
 Makie.defaultlimits(::typeof(nlg1m)) = (nlg1m_inv(2.0), nlg1m_inv(8.0))
 Makie.defined_interval(::typeof(nlg1m)) = Makie.OpenInterval(0.0,1.0) 
+function hatickvals(ylo,yhi)
+    nlg_first = ceil(Int, nlg1m(ylo))
+    nlg_last = floor(Int, nlg1m(yhi))
+    nlgs = unique(round.(Int, range(nlg_first, nlg_last; length=3)))
+    tickvals = nlg1m_inv.(nlgs)
+    ticklabs = ["1−2^(−$(tv))" for tv=tickvals] 
+    return (tickvals,ticklabs)
+end
 
 function compute_empirical_ccdf(xs::Vector{Float64}, bin_lower_edges::Vector{Float64})
     @assert all(diff(bin_lower_edges) .> 0)
@@ -542,8 +598,9 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
     N_ast = length(asts)
     threshold = bin_lower_edges[i_bin_thresh]
 
+
     jldopen(joinpath(datadir,"xs_dscs.jld2"), "r") do f
-        for i_anc = 1:N_anc
+        for i_anc = 1:min(5,N_anc)
             entropy_thresholded = zeros(Float64, N_ast)
             entropy_total = zeros(Float64, N_ast)
 
@@ -625,25 +682,25 @@ end
 
 function main()
     todo = Dict{String,Bool}(
-                             "run_dns_valid" =>            0,
-                             "plot_dns_valid" =>           0,
-                             "run_dns_ancgen" =>           0,
-                             "plot_dns_ancgen" =>          0,
-                             "analyze_peaks_valid" =>      0,
-                             "analyze_peaks_ancgen" =>     0,
-                             "boost_peaks" =>              0,
-                             "plot_boosts" =>              0,
+                             "run_dns_valid" =>            1,
+                             "plot_dns_valid" =>           1,
+                             "run_dns_ancgen" =>           1,
+                             "plot_dns_ancgen" =>          1,
+                             "analyze_peaks_valid" =>      1,
+                             "analyze_peaks_ancgen" =>     1,
+                             "boost_peaks" =>              1,
+                             "plot_boosts" =>              1,
                              "analyze_boosts" =>           1,
                              "evaluate_mixing_criteria" => 0,
                              "mix_conditional_tails" =>    0,
                             )
 
-    overwrite_boosts = false
+    overwrite_boosts = true
 
     bpar = BoostParams()
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-09-25",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-09-26",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
