@@ -39,7 +39,7 @@ function BoostParams()
             min_cluster_gap = 2^6,
             bit_precision = 32,
             ast_min = 1,
-            ast_max = 12,
+            ast_max = 15,
             bst = 2,
             num_descendants = 31
            )
@@ -78,22 +78,6 @@ function chi2div(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
     return sum((pmf_truth .- pmf_approx).^2 ./ pmf_truth)
 end
 
-function simulate!(xs::Matrix{Float64}, bit_precision::Int64, x_init::Vector{Float64}, rng::Random.AbstractRNG)
-    duration = size(xs, 2)
-    x = x_init[1] # Within this function it is just the one
-    for t = 1:duration
-        x = mod(2*(x < 0.5 ? x : 1-x), 1)
-        x = mod(
-                floor(Int, x*2^(bit_precision+1)) + Random.rand(rng, [0, 1])
-                #(div(x, 1/(2^bit_precision)) + Random.rand(rng, [0,1]))
-                / (2^(bit_precision+1)), 
-                1
-               )
-        xs[1,t] = x
-    end
-    return
-end
-
 function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG)
     xs = zeros(Float64, (1,duration))
     x = x_init[1]
@@ -101,7 +85,8 @@ function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64
     for t = 1:duration
         x = mod(2*(x < 0.5 ? x : 1-x), 1)
         x = mod(
-                (div(x, 1/(2^bit_precision)) + Random.rand(rng, [0,1]))
+                #(div(x, 1/(2^bit_precision)) + Random.rand(rng, [0,1]))
+                (floor(Int, x*2^bit_precision) + Random.rand(rng, Float64))
                 / (2^bit_precision), 
                 1
                )
@@ -403,7 +388,7 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
         for i_ast = 1:N_ast
             thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end])
             ccdfs_dsc[:,i_ast,i_anc] .= compute_empirical_ccdf(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
-            ccdfs_dsc_rect[:,i_ast,i_anc] .= ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] .+ (1-ccdfs_dsc[i_bin_thresh]).*(Rs_peak_anc[i_anc] .> bin_lower_edges[i_bin_thresh:N_bin])
+            ccdfs_dsc_rect[:,i_ast,i_anc] .= ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] .+ (1-ccdfs_dsc[i_bin_thresh,i_ast,i_anc]).*(Rs_peak_anc[i_anc] .> bin_lower_edges[i_bin_thresh:N_bin])
             ccdfs_moctail_astunif[:,i_ast] .+= ccdfs_dsc[:,i_ast,i_anc]./N_anc
             ccdfs_moctail_astunif_rect[:,i_ast] .+= ccdfs_dsc_rect[:,i_ast,i_anc]./N_anc
         end
@@ -682,14 +667,14 @@ end
 
 function main()
     todo = Dict{String,Bool}(
-                             "run_dns_valid" =>            1,
-                             "plot_dns_valid" =>           1,
-                             "run_dns_ancgen" =>           1,
-                             "plot_dns_ancgen" =>          1,
-                             "analyze_peaks_valid" =>      1,
-                             "analyze_peaks_ancgen" =>     1,
-                             "boost_peaks" =>              1,
-                             "plot_boosts" =>              1,
+                             "run_dns_valid" =>            0,
+                             "plot_dns_valid" =>           0,
+                             "run_dns_ancgen" =>           0,
+                             "plot_dns_ancgen" =>          0,
+                             "analyze_peaks_valid" =>      0,
+                             "analyze_peaks_ancgen" =>     0,
+                             "boost_peaks" =>              0,
+                             "plot_boosts" =>              0,
                              "analyze_boosts" =>           1,
                              "evaluate_mixing_criteria" => 0,
                              "mix_conditional_tails" =>    0,
@@ -700,7 +685,7 @@ function main()
     bpar = BoostParams()
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-09-26",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-09-27",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
