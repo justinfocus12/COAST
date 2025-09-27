@@ -347,7 +347,7 @@ function boost_peaks(threshold::Float64, perturbation_neglog::Int64, asts::Vecto
     return
 end
 
-function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64)
+function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64, threshold_neglog::Int64)
     ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_ancgen.jld2"), "r") do f
         return f["ts"], f["xs"]
     end
@@ -374,7 +374,7 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
 
     ccdf_peak_anc = compute_empirical_ccdf(Rs_peak_anc, bin_lower_edges[i_bin_thresh:N_bin])
     ccdf_peak_valid = compute_empirical_ccdf(Rs_peak_valid, bin_lower_edges[i_bin_thresh:N_bin])
-    ccdf_peak_gtr = 1 .- bin_lower_edges[i_bin_thresh:N_bin]
+    ccdf_peak_wholetruth = (1 .- bin_lower_edges[i_bin_thresh:N_bin])./(1 .- bin_lower_edges[i_bin_thresh]) # even better than ground truth 
     # Store the following data:
     # - peak (timing,value) of ancestor
     # - peak (timing,value) of descendants at every (ancestor, AST)
@@ -428,13 +428,13 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
 
     # compute losses
     losses_astunif_hell,losses_astunif_chi2,losses_astunif_wass = (zeros(Float64, N_ast) for _=1:3)
-    loss_astmaxthrent_hell = hellingerdist(ccdf_peak_gtr, ccdf_moctail_astmaxthrent_rect)
-    loss_astmaxthrent_chi2 = chi2div(ccdf_peak_gtr, ccdf_moctail_astmaxthrent_rect)
-    loss_astmaxthrent_wass = wassersteindist(ccdf_peak_gtr, ccdf_moctail_astmaxthrent_rect)
+    loss_astmaxthrent_hell = hellingerdist(ccdf_peak_wholetruth, ccdf_moctail_astmaxthrent_rect)
+    loss_astmaxthrent_chi2 = chi2div(ccdf_peak_wholetruth, ccdf_moctail_astmaxthrent_rect)
+    loss_astmaxthrent_wass = wassersteindist(ccdf_peak_wholetruth, ccdf_moctail_astmaxthrent_rect)
     for i_ast = 1:N_ast
-        losses_astunif_hell[i_ast] = hellingerdist(ccdf_peak_gtr, ccdfs_moctail_astunif_rect[:,i_ast])
-        losses_astunif_chi2[i_ast] = chi2div(ccdf_peak_gtr, ccdfs_moctail_astunif_rect[:,i_ast])
-        losses_astunif_wass[i_ast] = wassersteindist(ccdf_peak_gtr, ccdfs_moctail_astunif_rect[:,i_ast])
+        losses_astunif_hell[i_ast] = hellingerdist(ccdf_peak_wholetruth, ccdfs_moctail_astunif_rect[:,i_ast])
+        losses_astunif_chi2[i_ast] = chi2div(ccdf_peak_wholetruth, ccdfs_moctail_astunif_rect[:,i_ast])
+        losses_astunif_wass[i_ast] = wassersteindist(ccdf_peak_wholetruth, ccdfs_moctail_astunif_rect[:,i_ast])
     end
     println("asts, losses_astunif_hell")
     display(hcat(asts, losses_astunif_hell))
@@ -443,17 +443,24 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
     println("asts, losses_astunif_wass")
     display(hcat(asts, losses_astunif_wass))
 
+    # ----------------------------------------------------
+    # Plotting 
+    #
 
-    fig = Figure(size=(80*N_ast, 800))
+    fig = Figure(size=(80*N_ast, 850))
     theme_ax = (xticklabelsize=12, yticklabelsize=12, xlabelsize=16, ylabelsize=16, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=16)
     lout = fig[1,1] = GridLayout()
 
+
     # ---------- Row 1: CCDFs at each AST separately ----------
     for i_ast = 1:N_ast
+        xlimits = collect(extrema(ccdf2pmf(ccdf_peak_anc)))
         ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., xscale=identity, yscale=identity, ylabel="Tail PDFs,\nUniform AST", ylabelrotation=0)
         lines!(ax, ccdf2pmf(ccdf_peak_anc), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
         lines!(ax, ccdf2pmf(ccdf_peak_valid), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
+        lines!(ax, ccdf2pmf(ccdf_peak_wholetruth), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
         lines!(ax, ccdf2pmf(ccdfs_moctail_astunif_rect[:,i_ast]), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
+        xlims!(ax, xlimits...)
     end
 
     # ----------- Rows 2-3: thrent and COAST frequency ------------
@@ -468,6 +475,10 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
     for i_ast = 1:N_ast
         scatterlines!(ax, -asts[i_ast].*ones(2), [0, SB.mean(idx_astmaxthrent.==i_ast)]; color=:black, linewidth=8)
     end
+    scatter!(ax, -threshold_neglog, 0.5; marker=:star6, color=:cyan, markersize=18)
+    scatter!(ax, -perturbation_neglog, 0.5; marker=:star6, color=:orange, markersize=18)
+    scatter!(ax, -(perturbation_neglog-threshold_neglog), 0.5; marker=:star6, color=:red, markersize=18)
+    ylims!(ax, 0, 1)
 
     # --------- Row 4: the Thrent-based mixture --------------
     i_astmaxthrent_mean = round(Int, SB.mean(idx_astmaxthrent)) # Put it horizontally at the mean COAST position 
@@ -475,6 +486,7 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
     ax = Axis(lout[4,N_ast-i_astmaxthrent_mean+1]; theme_ax..., xscale=identity, yscale=identity, ylabel="AST = argmax(thresh. ent.)", ylabelrotation=0)
     lines!(ax, ccdf2pmf(ccdf_peak_anc), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
     lines!(ax, ccdf2pmf(ccdf_peak_valid), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
+    lines!(ax, ccdf2pmf(ccdf_peak_wholetruth), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
     lines!(ax, ccdf2pmf(ccdf_moctail_astmaxthrent_rect), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
     if i_astmaxthrent_mean < N_ast; ax.ylabelvisible = ax.yticklabelsvisible = false; end
 
@@ -619,7 +631,7 @@ end
 
 
 
-function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::Int64, N_dsc::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, ) # could also have decreasing intervals, as in COAST paper.
+function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::Int64, N_dsc::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64) # could also have decreasing intervals, as in COAST paper.
     ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_ancgen.jld2"), "r") do f
         return f["ts"], f["xs"]
     end
@@ -649,7 +661,7 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
             for i_ast = 1:N_ast
                 ax1 = Axis(lout[i_ast,1]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="𝑡", title="𝑅(𝑥(𝑡))", theme_ax...)
                 ax2 = Axis(lout[i_ast,2]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="𝑡", title="Peak 𝑅*", theme_ax...)
-                ax3 = Axis(lout[i_ast,3]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="δ𝑥(𝑡*-𝐴)", title="𝑅*(δ𝑥)", theme_ax...)
+                ax3 = Axis(lout[i_ast,3]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="δ𝑥(𝑡*-𝐴)×2^$(perturbation_neglog)", title="𝑅*(δ𝑥)", theme_ax..., xticks=([1/4,1/2,3/4]./(2^perturbation_neglog), ["¼","½","¾"]))
                 # Plot the ancestor
                 tidx_anc = ts_peak[i_anc]-ts_anc[1]+1 .+ (-asts[end]:bst)
                 lines!(ax1, ts_anc[tidx_anc], xs_anc[1,tidx_anc]; color=:black, linewidth=2, linestyle=(:dash,:dense))
@@ -722,13 +734,13 @@ end
 
 function main()
     todo = Dict{String,Bool}(
-                             "run_dns_valid" =>            1,
-                             "plot_dns_valid" =>           1,
-                             "run_dns_ancgen" =>           1,
-                             "plot_dns_ancgen" =>          1,
-                             "analyze_peaks_valid" =>      1,
-                             "analyze_peaks_ancgen" =>     1,
-                             "boost_peaks" =>              1,
+                             "run_dns_valid" =>            0,
+                             "plot_dns_valid" =>           0,
+                             "run_dns_ancgen" =>           0,
+                             "plot_dns_ancgen" =>          0,
+                             "analyze_peaks_valid" =>      0,
+                             "analyze_peaks_ancgen" =>     0,
+                             "boost_peaks" =>              0,
                              "plot_boosts" =>              1,
                              "analyze_boosts" =>           1,
                              "evaluate_mixing_criteria" => 0,
@@ -789,10 +801,10 @@ function main()
         boost_peaks(threshold, bpar.perturbation_neglog, asts, bpar.bst, bpar.bit_precision, bpar.num_descendants, seed_boost, datadir, "ancgen"; overwrite_boosts=overwrite_boosts)
     end
     if todo["plot_boosts"]
-        plot_boosts(datadir, figdir, asts, bpar.bst, bpar.num_descendants, bin_lower_edges, i_bin_thresh)
+        plot_boosts(datadir, figdir, asts, bpar.bst, bpar.num_descendants, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog)
     end
     if todo["analyze_boosts"]
-        analyze_boosts(datadir, figdir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh)
+        analyze_boosts(datadir, figdir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog, bpar.threshold_neglog)
     end
 end
 
