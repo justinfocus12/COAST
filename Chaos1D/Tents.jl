@@ -78,6 +78,12 @@ function chi2div(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
     return sum((pmf_truth .- pmf_approx).^2 ./ pmf_truth)
 end
 
+function hellingerdist(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
+    pmf_truth = vcat(-diff(ccdf_truth[1:end-1]), ccdf_truth[end])
+    pmf_approx = vcat(-diff(ccdf_approx[1:end-1]), ccdf_approx[end])
+    return SB.mean((sqrt.(pmf_truth) .- sqrt.(pmf_approx)).^2)
+end
+
 function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG)
     xs = zeros(Float64, (1,duration))
     x = x_init[1]
@@ -350,6 +356,7 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
 
     ccdf_peak_anc = compute_empirical_ccdf(Rs_peak_anc, bin_lower_edges[i_bin_thresh:N_bin])
     ccdf_peak_valid = compute_empirical_ccdf(Rs_peak_valid, bin_lower_edges[i_bin_thresh:N_bin])
+    ccdf_peak_gtr = 1 .- bin_lower_edges[i_bin_thresh:N_bin]
     # Store the following data:
     # - peak (timing,value) of ancestor
     # - peak (timing,value) of descendants at every (ancestor, AST)
@@ -402,13 +409,13 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
     @show idx_astmaxthrent
 
     # compute some kind of loss...let's do chi-squared
-    losses_chi2_astunif = zeros(Float64, N_ast)
-    loss_chi2_astmaxthrent = chi2div(ccdf_peak_valid, ccdf_moctail_astmaxthrent_rect)
+    losses_hell_astunif = zeros(Float64, N_ast)
+    loss_hell_astmaxthrent = hellingerdist(ccdf_peak_gtr, ccdf_moctail_astmaxthrent_rect)
     for i_ast = 1:N_ast
-        losses_chi2_astunif[i_ast] = chi2div(ccdf_peak_valid, ccdfs_moctail_astunif_rect[:,i_ast])
+        losses_hell_astunif[i_ast] = hellingerdist(ccdf_peak_gtr, ccdfs_moctail_astunif_rect[:,i_ast])
     end
-    println("asts, losses_chi2_astunif")
-    display(hcat(asts, losses_chi2_astunif))
+    println("asts, losses_hell_astunif")
+    display(hcat(asts, losses_hell_astunif))
 
     # MoCTail estimator at (1) fixed lead times, (2) COASTs (which should all be the same...)
     # Row 1: uniform-AST mixed CCDFs
@@ -417,7 +424,7 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
     theme_ax = (xticklabelsize=12, yticklabelsize=12, xlabelsize=16, ylabelsize=16, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=16)
     lout = fig[1,1] = GridLayout()
     for i_ast = 1:N_ast
-        ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., title=@sprintf("−%d",asts[i_ast]), xscale=log2, yscale=nlg1m, ylabel="Uniform AST", ylabelrotation=0)
+        ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., title=@sprintf("−%d",asts[i_ast]), xscale=identity, yscale=identity, ylabel="Uniform AST", ylabelrotation=0)
         scatterlines!(ax, ccdf_peak_valid, bin_lower_edges[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Long DNS")
         scatterlines!(ax, ccdf_peak_anc, bin_lower_edges[i_bin_thresh:N_bin]; color=:steelblue, linestyle=:solid, label="Ancestors only")
         scatterlines!(ax, ccdfs_moctail_astunif_rect[:,i_ast], bin_lower_edges[i_bin_thresh:N_bin]; color=:red)
@@ -425,7 +432,7 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
     # Position the maxthrent mixture horizontally at the most-popular max-thrent AST 
     i_astmaxthrent_mean = round(Int, SB.mean(idx_astmaxthrent))
     @show i_astmaxthrent_mean
-    ax = Axis(lout[4,N_ast-i_astmaxthrent_mean+1]; theme_ax..., xscale=log2, yscale=nlg1m, title="Max-thresh. ent. AST", ylabelrotation=0)
+    ax = Axis(lout[4,N_ast-i_astmaxthrent_mean+1]; theme_ax..., xscale=identity, yscale=identity, title="Max-thresh. ent. AST", ylabelrotation=0)
     scatterlines!(ax, ccdf_peak_valid, bin_lower_edges[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Long DNS")
     scatterlines!(ax, ccdf_peak_anc, bin_lower_edges[i_bin_thresh:N_bin]; color=:steelblue, linestyle=:solid, label="Ancestors only")
     scatterlines!(ax, ccdf_moctail_astmaxthrent_rect, bin_lower_edges[i_bin_thresh:N_bin]; color=:red)
@@ -447,10 +454,10 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
     end
     scatterlines!(ax, -asts, SB.mean(thresholded_entropy; dims=2)[:,1]; color=:red)
     # Plot the chi2 divergence in 3rd row 
-    ax = Axis(lout[3,1:N_ast]; xlabel="−AST", ylabel="χ²", yscale=log10, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)))
+    ax = Axis(lout[3,1:N_ast]; xlabel="−AST", ylabel="Hell", yscale=log10, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)))
     xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
-    scatterlines!(ax, -asts, losses_chi2_astunif; color=:purple)
-    hlines!(ax, loss_chi2_astmaxthrent; color=:red)
+    scatterlines!(ax, -asts, losses_hell_astunif; color=:purple)
+    hlines!(ax, loss_hell_astmaxthrent; color=:red)
 
     rowsize!(lout, 2, Relative(1/8))
     rowsize!(lout, 3, Relative(1/8))
@@ -692,11 +699,13 @@ function main()
     mkpath(datadir)
     mkpath(figdir)
 
-    threshold = nlg1m_inv(bpar.threshold_neglog)
-    bin_lower_edges_neglog = collect(1:1:(bpar.threshold_neglog+7)) 
-    i_bin_thresh = findfirst(bin_lower_edges_neglog .== bpar.threshold_neglog)
-    bin_lower_edges = nlg1m_inv.(bin_lower_edges_neglog)
-    threshold = bin_lower_edges[i_bin_thresh]
+    N_bin_over = 16
+    N_bin_total = N_bin_over * 2^bpar.threshold_neglog
+    bin_lower_edges = collect(range(0, 1; length=N_bin_total+1)[1:N_bin_total])
+    i_bin_thresh = N_bin_total - N_bin_over
+    threshold = bin_lower_edges[i_bin_thresh+1]
+    @show threshold,nlg1m_inv(bpar.threshold_neglog)
+    @assert round(Int, nlg1m(threshold)) == bpar.threshold_neglog
     asts = collect(range(bpar.ast_min, bpar.ast_max; step=1))
     duration_plot = 3*2^bpar.threshold_neglog # long enough to capture ~3 peaks 
     perturbation_width = 1/(2^bpar.perturbation_neglog)
