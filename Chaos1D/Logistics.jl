@@ -1,14 +1,14 @@
+# Verify the optimal Advance Split Time is what I think it is for the Bernoulli map
+#
 import Random
 import StatsBase as SB
 using Printf: @sprintf
 using JLD2: jldopen
 using CairoMakie
 
-include("./MapsOneDim.jl")
 
-struct TentMapParams
-    # For tent maps, the location of the peak; for bit shift, a little unclear
-    tentpeak::Float64
+struct LogisticMapParams
+    carrying_capacity::Float64
 end
 
 function BoostParams()
@@ -28,10 +28,11 @@ function BoostParams()
 end
 
 function strrep(bpar::NamedTuple)
-    # For naming file 
-    s = @sprintf("TentMap_Tv%d_Ta%d_thr%d_prt%d_bp%d", round(Int, log2(bpar.duration_valid)), round(Int, log2(bpar.duration_ancgen)), bpar.threshold_neglog, bpar.perturbation_neglog, bpar.bit_precision)
+    # For naming folder with experiments 
+    s = @sprintf("LogisticMap_Tv%d_Ta%d_thr%d_prt%d_bp%d", round(Int, log2(bpar.duration_valid)), round(Int, log2(bpar.duration_ancgen)), bpar.threshold_neglog, bpar.perturbation_neglog, bpar.bit_precision)
     return s
 end
+
 
 function get_themes()
     theme_ax = (xticklabelsize=8, yticklabelsize=8, xlabelsize=10, ylabelsize=10, xgridvisible=false, ygridvisible=false, titlefont=:bold, titlesize=10)
@@ -39,34 +40,22 @@ function get_themes()
     return theme_ax,theme_leg
 end
 
-function compute_ccdf_peak_wholetruth(x::Float64)
-    # Note, this is conditional on exceeding the lowest oe
-    @assert 0 <= x <= 1
-    return  1 - x
-end
-
-function compute_cquant_peak_wholetruth(q::Float64)
-    # find the x whose exceedance probability is q
-    @assert 0 <= q <= 1
-    return 1 - q
-end
-
 function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG)
     xs = zeros(Float64, (1,duration))
     x = x_init[1]
     ts = collect(1:duration)
     for t = 1:duration
-        x = mod(2*(x < 0.5 ? x : 1-x), 1)
-        x = mod(
-                #(div(x, 1/(2^bit_precision)) + Random.rand(rng, [0,1]))
-                (floor(Int, x*2^bit_precision) + Random.rand(rng, Float64))
-                / (2^bit_precision), 
-                1
-               )
+        x = mod(4*x*(1-x), 1)
         xs[1,t] = x
     end
     return xs, ts
 end
+
+
+
+
+
+
 
 function simulate(x0::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG, datadir::String, outfile_suffix::String)
     xs, ts = simulate(x0, duration, bit_precision, rng)
@@ -130,79 +119,10 @@ function boost_peaks(threshold::Float64, perturbation_neglog::Int64, asts::Vecto
     return
 end
 
-function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64, threshold_neglog::Int64; ccdf_peak_wholetruth::Union{Nothing,Vector{Float64}}=nothing)
-
+function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64, threshold_neglog::Int64)
     # ----------------------------------------------------
     # Plotting 
     #
-    (
-     ccdf_peak_anc,
-     ccdf_peak_valid,
-     Rs_peak_dsc,
-     idx_astmaxthrent,
-     ccdfs_dsc,
-     ccdfs_dsc_rect,
-     ccdfs_moctail_astunif,
-     ccdfs_moctail_astunif_rect,
-     ccdf_moctail_astmaxthrent,
-     ccdf_moctail_astmaxthrent_rect,
-     losses_astunif_hell,
-     losses_astunif_chi2,
-     losses_astunif_wass,
-     loss_astmaxthrent_hell,
-     loss_astmaxthrent_chi2,
-     loss_astmaxthrent_wass,
-     thresholded_entropy,
-    ) = (
-         jldopen(joinpath(datadir,"boost_stats.jld2"), "r") do f
-             return (
-                     f["ccdf_peak_anc"], 
-                     f["ccdf_peak_valid"], 
-                     f["Rs_peak_dsc"], 
-                     f["idx_astmaxthrent"], 
-                     f["ccdfs_dsc"], 
-                     f["ccdfs_dsc_rect"], 
-                     f["ccdfs_moctail_astunif"], 
-                     f["ccdfs_moctail_astunif_rect"], 
-                     f["ccdf_moctail_astmaxthrent"], 
-                     f["ccdf_moctail_astmaxthrent_rect"], 
-                     f["losses_astunif_hell"], 
-                     f["losses_astunif_chi2"], 
-                     f["losses_astunif_wass"], 
-                     f["loss_astmaxthrent_hell"], 
-                     f["loss_astmaxthrent_chi2"], 
-                     f["loss_astmaxthrent_wass"],
-                     f["thresholded_entropy"],
-                    )
-        end
-       )
-    ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_ancgen.jld2"), "r") do f
-        return f["ts"], f["xs"]
-    end
-    ts_peak_valid, Rs_peak_valid, cluster_starts_valid, cluster_stops_valid = jldopen(joinpath(datadir, "dns_peaks_valid.jld2"), "r") do f
-        return (
-                f["ts_peak"],
-                f["Rs_peak"], 
-                f["cluster_starts"], 
-                f["cluster_stops"],
-               )
-    end
-    ts_peak, Rs_peak_anc, cluster_starts, cluster_stops = jldopen(joinpath(datadir, "dns_peaks_ancgen.jld2"), "r") do f
-        return (
-                f["ts_peak"],
-                f["Rs_peak"], 
-                f["cluster_starts"], 
-                f["cluster_stops"],
-               )
-    end
-
-    Rmax = maximum(Rs_peak_valid)
-
-    N_ast = length(asts)
-    N_bin = length(bin_lower_edges)
-    N_anc = length(Rs_peak_anc)
-    bin_centers = vcat((bin_lower_edges[1:N_bin-1] .+ bin_lower_edges[2:N_bin])./2, (bin_lower_edges[N_bin]+1)/2)
-
 
     fig = Figure(size=(80*N_ast, 850))
     theme_ax = (xticklabelsize=12, yticklabelsize=12, xlabelsize=16, ylabelsize=16, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=16)
@@ -342,7 +262,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     # TODO make a column for entropy
     content(lout[end,1]).xlabel = "−AST"
     save(joinpath(figdir, "peaks_dsc_stacked.png"), fig)
-    return 
+    return thresholded_entropy 
 end
 
 function nlg1m(x::Number) 
@@ -362,6 +282,30 @@ function hatickvals(ylo,yhi)
     tickvals = nlg1m_inv.(nlgs)
     ticklabs = ["1−2^(−$(tv))" for tv=tickvals] 
     return (tickvals,ticklabs)
+end
+
+function compute_empirical_ccdf(xs::Vector{Float64}, bin_lower_edges::Vector{Float64})
+    @assert all(diff(bin_lower_edges) .> 0)
+    @assert length(xs) > 0
+    ccdf = sum(Float64, xs .> bin_lower_edges'; dims=1)[1,:] ./ length(xs)
+    return ccdf
+end
+
+
+function compute_thresholded_entropy(xs::Vector{Float64}, bin_lower_edges::Vector{Float64})
+    pmf = compute_empirical_ccdf(xs, bin_lower_edges) #sum(Float64, xs .> bin_lower_edges'; dims=1)[1,:]
+    pmf[1:end-1] .-= pmf[2:end]
+    if all(pmf .== 0)
+        return 0.0
+    end
+    pmf ./= length(xs)
+    entropy = 0.0
+    for (i_bin,bin_lo) in enumerate(bin_lower_edges)
+        if pmf[i_bin] > 0
+            entropy -= pmf[i_bin]*log2(pmf[i_bin])
+        end
+    end
+    return entropy
 end
 
 
@@ -480,8 +424,9 @@ function main()
                              "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
                              "plot_boosts" =>              0,
-                             "mix_conditional_tails" =>    1,
-                             "plot_moctails" =>            1,
+                             "analyze_boosts" =>           1,
+                             "evaluate_mixing_criteria" => 0,
+                             "mix_conditional_tails" =>    0,
                             )
 
     overwrite_boosts = true
@@ -489,7 +434,7 @@ function main()
     bpar = BoostParams()
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-09-28",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-09-27",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
@@ -497,13 +442,12 @@ function main()
     mkpath(figdir)
 
     N_bin_over = 16
-    threshold = compute_cquant_peak_wholetruth(exp2(-bpar.threshold_neglog))
     N_bin_total = N_bin_over * 2^bpar.threshold_neglog
-    i_bin_thresh = N_bin_total - N_bin_over + 1
-    bin_lower_edges = vcat(range(0, threshold; length=i_bin_thresh)[1:end-1], range(threshold, 1; length=N_bin_over+1)[1:end-1])
-    ccdf_peak_wholetruth = compute_ccdf_peak_wholetruth.(bin_lower_edges[i_bin_thresh:N_bin_total]) ./ compute_ccdf_peak_wholetruth(threshold)
-    threshold = bin_lower_edges[i_bin_thresh]
-    @assert i_bin_thresh == argmin(abs.(nlg1m.(bin_lower_edges) .- bpar.threshold_neglog))
+    bin_lower_edges = collect(range(0, 1; length=N_bin_total+1)[1:N_bin_total])
+    i_bin_thresh = N_bin_total - N_bin_over
+    threshold = bin_lower_edges[i_bin_thresh+1]
+    @show threshold,nlg1m_inv(bpar.threshold_neglog)
+    @assert round(Int, nlg1m(threshold)) == bpar.threshold_neglog
     asts = collect(range(bpar.ast_min, bpar.ast_max; step=1))
     duration_plot = 3*2^bpar.threshold_neglog # long enough to capture ~3 peaks 
     perturbation_width = 1/(2^bpar.perturbation_neglog)
@@ -523,7 +467,7 @@ function main()
         x0 = Random.rand(rng_dns_ancgen, Float64, (1,))
         simulate(x0, bpar.duration_spinup+bpar.duration_ancgen, bpar.bit_precision, rng_dns_ancgen, datadir, "ancgen")
     end
-    if todo["plot_dns_ancgen"]
+    if todo["plot_dns_valid"]
         plot_dns(bpar.duration_spinup, bpar.duration_ancgen, datadir, figdir, "ancgen")
     end
     if todo["analyze_peaks_valid"]
@@ -541,11 +485,8 @@ function main()
     if todo["plot_boosts"]
         plot_boosts(datadir, figdir, asts, bpar.bst, bpar.num_descendants, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog)
     end
-    if todo["mix_conditional_tails"]
-        mix_conditional_tails(datadir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, ; ccdf_peak_wholetruth=ccdf_peak_wholetruth)
-    end
-    if todo["plot_moctails"]
-        plot_moctails(datadir, figdir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog, bpar.threshold_neglog; ccdf_peak_wholetruth=ccdf_peak_wholetruth)
+    if todo["analyze_boosts"]
+        analyze_boosts(datadir, figdir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog, bpar.threshold_neglog)
     end
 end
 
