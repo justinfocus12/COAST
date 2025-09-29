@@ -26,7 +26,7 @@ function BoostParams()
             bst = 2,
             num_descendants = 31,
             # Do we transform to Z space? 
-            latentize = true,
+            latentize = false,
            )
 end
 
@@ -209,13 +209,13 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
 
     # ---------- Row 1: CCDFs at each AST separately ----------
     for i_ast = 1:N_ast
-        xlimits = collect(extrema(ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end])))
-        ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., xscale=identity, yscale=identity, ylabel="Tail PDFs,\nUniform AST", ylabelrotation=0)
+        ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., xscale=log10, yscale=identity, ylabel="Tail PDFs,\nUniform AST", ylabelrotation=0)
         lines!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
         lines!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
-        lines!(ax, ccdf2pdf(ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
-        lines!(ax, ccdf2pdf(ccdfs_moctail_astunif_rect[:,i_ast], bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
-        xlims!(ax, xlimits...)
+        if !isnothing(ccdf_peak_wholetruth)
+            lines!(ax, ccdf2pdf(ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2.5)
+        end
+        lines!(ax, ccdf2pdf(ccdfs_moctail_astunif_rect[:,i_ast], bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1.5)
     end
 
     # ----------- Rows 2-3: thrent and COAST frequency ------------
@@ -239,11 +239,13 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     i_astmaxthrent_mean = round(Int, SB.mode(idx_astmaxthrent)) # Put it horizontally at the mean COAST position 
     @show i_astmaxthrent_mean
     @show idx_astmaxthrent
-    ax = Axis(lout[4,N_ast-i_astmaxthrent_mean+1]; theme_ax..., xscale=identity, yscale=identity, ylabel="AST = argmax(thresh. ent.)", ylabelrotation=0)
+    ax = Axis(lout[4,N_ast-i_astmaxthrent_mean+1]; theme_ax..., xscale=log10, yscale=identity, ylabel="AST = argmax(thresh. ent.)", ylabelrotation=0)
     lines!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
     lines!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
-    lines!(ax, ccdf2pdf(ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
-    lines!(ax, ccdf2pmf(ccdf_moctail_astmaxthrent_rect), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
+    if !isnothing(ccdf_peak_wholetruth)
+        lines!(ax, ccdf2pdf(ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2.5)
+    end
+    lines!(ax, ccdf2pdf(ccdf_moctail_astmaxthrent_rect, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1.5)
     if i_astmaxthrent_mean < N_ast; ax.ylabelvisible = ax.yticklabelsvisible = false; end
 
     for i_col = 1:N_ast
@@ -650,7 +652,7 @@ function main()
                              "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
                              "plot_boosts" =>              0,
-                             "mix_conditional_tails" =>    0,
+                             "mix_conditional_tails" =>    1,
                              "plot_moctails" =>            1,
                             )
 

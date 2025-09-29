@@ -39,20 +39,11 @@ function get_themes()
     return theme_ax,theme_leg
 end
 
-function compute_ccdf_peak_wholetruth(x::Float64)
-    # Note, this is conditional on exceeding the lowest oe
-    @assert 0 <= x <= 1
-    return  1 - x
-end
+compute_cquant_peak_wholetruth(q::Float64) = 1-q #conjugate_bwd(1-q)
+compute_ccdf_peak_wholetruth(x::Float64) = 1-x #conjugate_fwd(x)
 
 function compute_pdf_wholetruth(x::Float64)
     return 1.0
-end
-
-function compute_cquant_peak_wholetruth(q::Float64)
-    # find the x whose exceedance probability is q
-    @assert 0 <= q <= 1
-    return 1 - q
 end
 
 function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG)
@@ -215,14 +206,20 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
 
 
     # ---------- Row 1: CCDFs at each AST separately ----------
+    @show ccdf_peak_anc
+    @show bin_edges[i_bin_thresh:end]
     for i_ast = 1:N_ast
-        xlimits = collect(extrema(ccdf2pdf(ccdf_peak_anc, bin_edges)))
         ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., xscale=identity, yscale=identity, ylabel="Tail PDFs,\nUniform AST", ylabelrotation=0)
-        lines!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
-        lines!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
-        lines!(ax, ccdf2pdf(ccdf_peak_wholetruth, bin_edges), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
-        lines!(ax, ccdf2pdf(ccdfs_moctail_astunif_rect[:,i_ast], bin_edges), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
-        xlims!(ax, xlimits...)
+        lines!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
+        lines!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
+        if !isnothing(ccdf_peak_wholetruth)
+            lines!(ax, ccdf2pdf(ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
+            #@show ccdf_peak_wholetruth
+            #@show -1 ./ diff(bin_edges[i_bin_thresh:end])
+            #@show ccdf2pdf(ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end])
+            #error()
+        end
+        lines!(ax, ccdf2pdf(ccdfs_moctail_astunif_rect[:,i_ast], bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
     end
 
     # ----------- Rows 2-3: thrent and COAST frequency ------------
@@ -248,7 +245,9 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     ax = Axis(lout[4,N_ast-i_astmaxthrent_mean+1]; theme_ax..., xscale=identity, yscale=identity, ylabel="AST = argmax(thresh. ent.)", ylabelrotation=0)
     lines!(ax, ccdf2pmf(ccdf_peak_anc), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
     lines!(ax, ccdf2pmf(ccdf_peak_valid), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
-    lines!(ax, ccdf2pmf(ccdf_peak_wholetruth), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
+    if !isnothing(ccdf_peak_wholetruth)
+        lines!(ax, ccdf2pmf(ccdf_peak_wholetruth), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
+    end
     lines!(ax, ccdf2pmf(ccdf_moctail_astmaxthrent_rect), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
     if i_astmaxthrent_mean < N_ast; ax.ylabelvisible = ax.yticklabelsvisible = false; end
 
@@ -504,11 +503,11 @@ function main()
     N_bin_over = 16
     threshold = compute_cquant_peak_wholetruth(exp2(-bpar.threshold_neglog))
     N_bin = N_bin_over * 2^bpar.threshold_neglog
-    i_bin_thresh = N_binl - N_bin_over + 1
+    i_bin_thresh = N_bin - N_bin_over + 1
     bin_lower_edges = vcat(range(0, threshold; length=i_bin_thresh)[1:end-1], range(threshold, 1; length=N_bin_over+1)[1:end-1])
     bin_edges = vcat(bin_lower_edges, 1.0)
     bin_centers = vcat((bin_lower_edges[1:N_bin-1] .+ bin_lower_edges[2:N_bin])./2, (bin_lower_edges[N_bin]+1)/2)
-    ccdf_peak_wholetruth = compute_ccdf_peak_wholetruth.(bin_lower_edges[i_bin_thresh:N_binl]) ./ compute_ccdf_peak_wholetruth(threshold)
+    ccdf_peak_wholetruth = compute_ccdf_peak_wholetruth.(bin_lower_edges[i_bin_thresh:N_bin]) ./ compute_ccdf_peak_wholetruth(threshold)
     threshold = bin_lower_edges[i_bin_thresh]
     @assert i_bin_thresh == argmin(abs.(nlg1m.(bin_lower_edges) .- bpar.threshold_neglog))
     asts = collect(range(bpar.ast_min, bpar.ast_max; step=1))
