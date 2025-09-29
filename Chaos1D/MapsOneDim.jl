@@ -14,6 +14,8 @@ function van_der_corput(N)
     return xs
 end
 
+ornot(dt::DataType) = Union{Nothing,dt}
+
 function intensity(xs::Vector{Float64})
     return xs[1]
 end
@@ -57,6 +59,10 @@ end
 function ccdf2pmf(ccdf::Vector{Float64})
     pmf = vcat(-diff(ccdf), ccdf[end])
     return pmf
+end
+
+function ccdf2pdf(ccdf::Vector{Float64}, bin_edges::Vector{Float64})
+    return ccdf2pmf(ccdf) ./ diff(bin_edges)
 end
 
 function chi2div(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
@@ -108,8 +114,8 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
     ax_Rs = Axis(lout[1,1]; theme_ax..., ylabel="𝑅(𝑋(𝑡))")
     ax_peaks = Axis(lout[2,1]; theme_ax..., ylabel="Peaks {𝑅(𝑋(𝑡ₙ*))}")
     ax_waits = Axis(lout[3,1]; theme_ax..., ylabel="𝑡*ₙ₊₁-𝑡*ₙ")
-    ax_hist_Rs = Axis(lout[1,2]; theme_ax..., xlabel="ℙ{𝑅(𝑋)>𝑟}", yticklabelsvisible=false)
-    ax_hist_peaks = Axis(lout[2,2]; theme_ax..., xlabel="ℙ{𝑅*>𝑟}")
+    ax_hist_Rs = Axis(lout[1,2]; theme_ax..., xlabel="𝑝(𝑟)", yticklabelsvisible=false)
+    ax_hist_peaks = Axis(lout[2,2]; theme_ax..., xlabel="ℙ{𝑅(𝑋)*>𝑟}")
     ax_hist_waits = Axis(lout[3,2]; theme_ax..., xlabel="ℙ{τ > 𝑡*ₙ₊₁-𝑡*ₙ}", xscale=log2)
 
     # Full timeseries
@@ -199,6 +205,7 @@ function find_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
     cluster_starts = valley_stops[1:Npeaks] .+ 1
     cluster_stops = valley_starts[2:Npeaks+1] .- 1
     @assert all(cluster_stops .>= cluster_starts)
+    @show Npeaks
     ts_peak = zeros(Int64, Npeaks)
     for i_peak = 1:Npeaks
         ts_peak[i_peak] = cluster_starts[i_peak] - 1 + argmax(cluster_starts[i_peak]:cluster_stops[i_peak])
@@ -213,13 +220,16 @@ function find_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
 end
 
 
-function plot_dns(duration_spinup, duration_spinon, datadir, figdir, outfile_suffix)
+function plot_dns(duration_spinup::Int64, duration_spinon::Int64, datadir::String, figdir::String, outfile_suffix::String; edges::ornot(Vector{Float64})=nothing, pdf_wholetruth::ornot(Vector{Float64})=nothing)
     xs,ts = jldopen(joinpath(datadir, "dns_$(outfile_suffix).jld2"), "r") do f
         return f["xs"],f["ts"]
     end
     t0 = duration_spinup
     t1 = t0 + duration_spinon
-    h = SB.normalize(SB.fit(SB.Histogram, xs[1,t0:t1]; nbins=16); mode=:pdf)
+    if isnothing(edges)
+        edges = collect(range(0,1;length=33))
+    end
+    h = SB.normalize(SB.fit(SB.Histogram, xs[1,t0:t1], edges); mode=:pdf)
     bincenters = (h.edges[1][1:end-1] .+ h.edges[1][2:end])./2
 
     Nt2plot = 128
@@ -233,8 +243,11 @@ function plot_dns(duration_spinup, duration_spinon, datadir, figdir, outfile_suf
     xlims!(ax_hist, 0, 2)
     ylims!(ax_hist, 0, 1)
     ylims!(ax_ts, 0, 1)
-    vlines!(ax_hist, 1.0; color=:black, linestyle=(:dash,:dense))
-    scatterlines!(ax_hist, h.weights, bincenters; color=:steelblue2)
+    @show pdf_wholetruth
+    if !isnothing(pdf_wholetruth)
+        lines!(ax_hist, pdf_wholetruth, bincenters; color=:black, linestyle=(:dash,:dense), linewidth=3)
+    end
+    scatterlines!(ax_hist, h.weights, bincenters; color=:steelblue2, markersize=2)
 
     colsize!(lout, 2, Relative(1/6))
     colgap!(lout, 1, 0)

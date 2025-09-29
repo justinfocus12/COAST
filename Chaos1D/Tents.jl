@@ -45,6 +45,10 @@ function compute_ccdf_peak_wholetruth(x::Float64)
     return  1 - x
 end
 
+function compute_pdf_wholetruth(x::Float64)
+    return 1.0
+end
+
 function compute_cquant_peak_wholetruth(q::Float64)
     # find the x whose exceedance probability is q
     @assert 0 <= q <= 1
@@ -130,7 +134,7 @@ function boost_peaks(threshold::Float64, perturbation_neglog::Int64, asts::Vecto
     return
 end
 
-function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64, threshold_neglog::Int64; ccdf_peak_wholetruth::Union{Nothing,Vector{Float64}}=nothing)
+function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64, threshold_neglog::Int64; ccdf_peak_wholetruth::ornot(Vector{Float64})=nothing)
 
     # ----------------------------------------------------
     # Plotting 
@@ -202,6 +206,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     N_bin = length(bin_lower_edges)
     N_anc = length(Rs_peak_anc)
     bin_centers = vcat((bin_lower_edges[1:N_bin-1] .+ bin_lower_edges[2:N_bin])./2, (bin_lower_edges[N_bin]+1)/2)
+    bin_edges = vcat(bin_lower_edges, 1.0)
 
 
     fig = Figure(size=(80*N_ast, 850))
@@ -211,12 +216,12 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
 
     # ---------- Row 1: CCDFs at each AST separately ----------
     for i_ast = 1:N_ast
-        xlimits = collect(extrema(ccdf2pmf(ccdf_peak_anc)))
+        xlimits = collect(extrema(ccdf2pdf(ccdf_peak_anc, bin_edges)))
         ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., xscale=identity, yscale=identity, ylabel="Tail PDFs,\nUniform AST", ylabelrotation=0)
-        lines!(ax, ccdf2pmf(ccdf_peak_anc), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
-        lines!(ax, ccdf2pmf(ccdf_peak_valid), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
-        lines!(ax, ccdf2pmf(ccdf_peak_wholetruth), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
-        lines!(ax, ccdf2pmf(ccdfs_moctail_astunif_rect[:,i_ast]), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
+        lines!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
+        lines!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
+        lines!(ax, ccdf2pdf(ccdf_peak_wholetruth, bin_edges), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
+        lines!(ax, ccdf2pdf(ccdfs_moctail_astunif_rect[:,i_ast], bin_edges), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
         xlims!(ax, xlimits...)
     end
 
@@ -498,10 +503,12 @@ function main()
 
     N_bin_over = 16
     threshold = compute_cquant_peak_wholetruth(exp2(-bpar.threshold_neglog))
-    N_bin_total = N_bin_over * 2^bpar.threshold_neglog
-    i_bin_thresh = N_bin_total - N_bin_over + 1
+    N_bin = N_bin_over * 2^bpar.threshold_neglog
+    i_bin_thresh = N_binl - N_bin_over + 1
     bin_lower_edges = vcat(range(0, threshold; length=i_bin_thresh)[1:end-1], range(threshold, 1; length=N_bin_over+1)[1:end-1])
-    ccdf_peak_wholetruth = compute_ccdf_peak_wholetruth.(bin_lower_edges[i_bin_thresh:N_bin_total]) ./ compute_ccdf_peak_wholetruth(threshold)
+    bin_edges = vcat(bin_lower_edges, 1.0)
+    bin_centers = vcat((bin_lower_edges[1:N_bin-1] .+ bin_lower_edges[2:N_bin])./2, (bin_lower_edges[N_bin]+1)/2)
+    ccdf_peak_wholetruth = compute_ccdf_peak_wholetruth.(bin_lower_edges[i_bin_thresh:N_binl]) ./ compute_ccdf_peak_wholetruth(threshold)
     threshold = bin_lower_edges[i_bin_thresh]
     @assert i_bin_thresh == argmin(abs.(nlg1m.(bin_lower_edges) .- bpar.threshold_neglog))
     asts = collect(range(bpar.ast_min, bpar.ast_max; step=1))
@@ -515,7 +522,7 @@ function main()
         simulate(x0, bpar.duration_spinup+bpar.duration_valid, bpar.bit_precision, rng_dns_valid, datadir, "valid")
     end
     if todo["plot_dns_valid"]
-        plot_dns(bpar.duration_spinup, bpar.duration_valid, datadir, figdir, "valid")
+        plot_dns(bpar.duration_spinup, bpar.duration_valid, datadir, figdir, "valid"; edges=vcat(bin_lower_edges,1.0), pdf_wholetruth=compute_pdf_wholetruth.(bin_centers) )
     end
     if todo["run_dns_ancgen"]
         seed_dns_ancgen = 3827
