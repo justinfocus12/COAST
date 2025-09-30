@@ -644,14 +644,14 @@ end
 
 function main()
     todo = Dict{String,Bool}(
-                             "run_dns_valid" =>            0,
-                             "plot_dns_valid" =>           0,
-                             "run_dns_ancgen" =>           0,
-                             "plot_dns_ancgen" =>          0,
-                             "analyze_peaks_valid" =>      0,
-                             "analyze_peaks_ancgen" =>     0,
-                             "boost_peaks" =>              0,
-                             "plot_boosts" =>              0,
+                             "run_dns_valid" =>            1,
+                             "plot_dns_valid" =>           1,
+                             "run_dns_ancgen" =>           1,
+                             "plot_dns_ancgen" =>          1,
+                             "analyze_peaks_valid" =>      1,
+                             "analyze_peaks_ancgen" =>     1,
+                             "boost_peaks" =>              1,
+                             "plot_boosts" =>              1,
                              "mix_conditional_tails" =>    1,
                              "plot_moctails" =>            1,
                             )
@@ -661,18 +661,19 @@ function main()
     bpar = BoostParams()
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-09-28",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-09-30",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
     mkpath(datadir)
     mkpath(figdir)
 
-    N_bin_over = 16
+    N_bin_over = 8
     threshold = compute_cquant_peak_wholetruth(1/2^bpar.threshold_neglog)
     N_bin = N_bin_over * 2^bpar.threshold_neglog
     i_bin_thresh = N_bin - N_bin_over + 1
-    if bpar.latentize
+    # - do NOT adjust bins dependig on latentizatio -
+    if false && bpar.latentize
         threshold_z = conjugate_fwd(threshold)
         bin_lower_edges_z = vcat(range(0, threshold_z; length=i_bin_thresh)[1:end-1], range(threshold_z, 1; length=N_bin_over+1)[1:end-1])
         bin_lower_edges = conjugate_bwd.(bin_lower_edges_z)
@@ -682,6 +683,8 @@ function main()
     bin_edges = vcat(bin_lower_edges, 1.0)
     bin_centers = vcat((bin_lower_edges[1:N_bin-1] .+ bin_lower_edges[2:N_bin])./2, (bin_lower_edges[N_bin]+1.0)/2)
     ccdf_peak_wholetruth = compute_ccdf_peak_wholetruth.(bin_lower_edges[i_bin_thresh:N_bin]) ./ compute_ccdf_peak_wholetruth(threshold)
+    pdf_wholetruth = compute_pdf_wholetruth.(bin_centers)
+
     asts = collect(range(bpar.ast_min, bpar.ast_max; step=1))
     duration_plot = 3*2^bpar.threshold_neglog # long enough to capture ~3 peaks 
     perturbation_width = 1/(2^bpar.perturbation_neglog)
@@ -694,7 +697,7 @@ function main()
         simulate(x0, bpar.duration_spinup+bpar.duration_valid, bpar.bit_precision, rng_dns_valid, datadir, "valid")
     end
     if todo["plot_dns_valid"]
-        plot_dns(bpar.duration_spinup, bpar.duration_valid, datadir, figdir, "valid"; edges=vcat(bin_lower_edges,1.0), pdf_wholetruth=compute_pdf_wholetruth.(bin_centers) )
+        plot_dns(bpar.duration_spinup, bpar.duration_valid, datadir, figdir, "valid"; edges=vcat(bin_lower_edges,1.0), pdf_wholetruth=pdf_wholetruth)
     end
     if todo["run_dns_ancgen"]
         seed_dns_ancgen = 3827
@@ -707,11 +710,11 @@ function main()
     end
     if todo["analyze_peaks_valid"]
         find_peaks_over_threshold(threshold, bpar.duration_spinup, bpar.duration_valid, bpar.min_cluster_gap, datadir, "valid")
-        plot_peaks_over_threshold(threshold, bpar.duration_spinup, duration_plot, datadir, figdir, "valid")
+        plot_peaks_over_threshold(threshold, bpar.duration_spinup, duration_plot, datadir, figdir, "valid"; bin_edges=bin_edges, i_bin_thresh=i_bin_thresh, ccdf_peak_wholetruth=ccdf_peak_wholetruth, pdf_wholetruth=pdf_wholetruth)
     end
     if todo["analyze_peaks_ancgen"]
         find_peaks_over_threshold(threshold, bpar.duration_spinup, bpar.duration_ancgen, bpar.min_cluster_gap, datadir, "ancgen")
-        plot_peaks_over_threshold(threshold, bpar.duration_spinup, duration_plot, datadir, figdir, "ancgen")
+        plot_peaks_over_threshold(threshold, bpar.duration_spinup, duration_plot, datadir, figdir, "ancgen"; bin_edges=bin_edges, i_bin_thresh=i_bin_thresh, ccdf_peak_wholetruth=ccdf_peak_wholetruth, pdf_wholetruth=pdf_wholetruth)
     end
     if todo["boost_peaks"]
         seed_boost = 8086

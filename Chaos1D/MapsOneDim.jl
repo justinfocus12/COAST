@@ -89,7 +89,7 @@ function powerofhalfstring(k::Int64)
     return "(½)^$(k)"
 end
 
-function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, duration_plot::Int64, datadir::String, figdir::String, file_suffix::String)
+function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, duration_plot::Int64, datadir::String, figdir::String, file_suffix::String; bin_edges::ornot(Vector{Float64})=nothing, i_bin_thresh::ornot(Int64)=nothing, ccdf_peak_wholetruth::ornot(Vector{Float64})=nothing, pdf_wholetruth::ornot(Vector{Float64})=nothing, return_time_wholetruth::ornot(Float64)=nothing)
 
     ts, xs = jldopen(joinpath(datadir, "dns_$(file_suffix).jld2"), "r") do f
         return f["ts"], f["xs"]
@@ -103,6 +103,7 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
                 f["cluster_stops"],
                )
     end
+
     
     ts2plot = duration_spinup .+ (1:duration_plot)
     peaks2plot = findall(ts2plot[1] .<= ts_peak .<= ts2plot[end])
@@ -114,7 +115,7 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
     ax_Rs = Axis(lout[1,1]; theme_ax..., ylabel="𝑅(𝑋(𝑡))")
     ax_peaks = Axis(lout[2,1]; theme_ax..., ylabel="Peaks {𝑅(𝑋(𝑡ₙ*))}")
     ax_waits = Axis(lout[3,1]; theme_ax..., ylabel="𝑡*ₙ₊₁-𝑡*ₙ")
-    ax_hist_Rs = Axis(lout[1,2]; theme_ax..., xlabel="𝑝(𝑟)", yticklabelsvisible=false)
+    ax_hist_Rs = Axis(lout[1,2]; theme_ax..., xlabel="𝑝(𝑟)", yticklabelsvisible=false,)
     ax_hist_peaks = Axis(lout[2,2]; theme_ax..., xlabel="ℙ{𝑅(𝑋)*>𝑟}")
     ax_hist_waits = Axis(lout[3,2]; theme_ax..., xlabel="ℙ{τ > 𝑡*ₙ₊₁-𝑡*ₙ}", xscale=log2)
 
@@ -122,18 +123,26 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
     lines!(ax_Rs, ts2plot, Rs[ts2plot]; color=:black)
     hlines!(ax_Rs, thresh; color=:gray, linewidth=1, alpha=0.5)
     scatter!(ax_Rs, ts_peak[peaks2plot], Rs_peak[peaks2plot]; color=:black, marker=:star5)
-    bin_edges_Rs = collect(range(0, 1; length=65))
+    bin_edges_Rs = (isnothing(bin_edges) ? collect(range(0, 1; length=65)) : bin_edges)
     bin_centers_Rs = (bin_edges_Rs[1:end-1] .+ bin_edges_Rs[2:end])./2
+    bins2plot = round.(Int, range(1, length(bin_centers_Rs); length=33))
     hist_Rs = SB.normalize(SB.fit(SB.Histogram, Rs[cluster_starts[1]:cluster_stops[end]], bin_edges_Rs); mode=:pdf)
-    scatterlines!(ax_hist_Rs, hist_Rs.weights, bin_centers_Rs; color=:black, markersize=4)
+    if !isnothing(pdf_wholetruth)
+        lines!(ax_hist_Rs, pdf_wholetruth[bins2plot], bin_centers_Rs[bins2plot]; color=:gray79, linewidth=4)
+    end
+    lines!(ax_hist_Rs, hist_Rs.weights[bins2plot], bin_centers_Rs[bins2plot]; color=:black)
     ylims!(ax_hist_Rs, 0, 1)
     ylims!(ax_Rs, 0, 1)
     xlims!(ax_hist_Rs, 0, 1.25)
+    ax_hist_Rs.xticks = ([0, 1, 1.25], ["0","1","1.25"])
     linkyaxes!(ax_Rs, ax_hist_Rs)
 
     # Peak timeseries 
     scatter!(ax_peaks, ts_peak, Rs_peak; color=:black, marker=:circle)
     peaks_sorted,ccdf_peaks = empirical_ccdf(Rs_peak)
+    if !isnothing(ccdf_peak_wholetruth)
+        lines!(ax_hist_peaks, ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end-1]; color=:gray79, linewidth=3)
+    end
     scatterlines!(ax_hist_peaks, ccdf_peaks, peaks_sorted; color=:black, marker=:circle, markersize=2)
     ylims!(ax_peaks, thresh, 1.0)
     ylims!(ax_hist_peaks, thresh, 1.0)
