@@ -488,7 +488,13 @@ function plot_bump_densities_2d(scales::Vector{Float64}, support_radius::Float64
     loglevels2plot = log.(collect(range(exp(-4), exp(-0.01); length=20))) #collect(range(-4.0, 0.0; length=20)[1:end-1])
     fig = Figure(size=(500,400))
     lout = fig[1,1] = GridLayout()
-    axcont = Axis(lout[1,1], xlabel="Re{ω}", ylabel="Im{ω}", xgridvisible=false, ygridvisible=false, title=@sprintf("𝑝(ω; 𝑠, 𝑊)\nfor scales 𝑠 ∈ {%.2f,%.2f,...,%.2f}, support 𝑊 = %.2f", scales[1], scales[2], scales[end], support_radius), titlefont=:regular)
+    title_after_superscript = @sprintf("(ω; 𝑠, 𝑊)\nfor scales 𝑠 ∈ {%.2f,%.2f,...,%.2f}, support 𝑊 = %.2f", scales[1], scales[2], scales[end], support_radius)
+    superscript = " "
+    title_before_superscript = "𝑝"
+    axcont = Axis(lout[1,1], xlabel="Re{ω}", ylabel="Im{ω}", xgridvisible=false, ygridvisible=false, 
+                  #title=L"%$(title_before_superscript)$^\Omega$%$(title_after_superscript)",
+                  title=title_before_superscript*superscript*title_after_superscript,
+                  titlefont=:regular)
     axslice = Axis(lout[1,2]; title="Transect\nRe{ω}=0", ylabel="Im{ω}", ylabelvisible=false, yticklabelsvisible=false, xscale=identity, xgridvisible=false, ygridvisible=false, titlefont=:regular, xticklabelrotation=-pi/2)
     pslice = zeros(Float64, Nx)
     imomegas = collect(range(-support_radius, support_radius; length=50))

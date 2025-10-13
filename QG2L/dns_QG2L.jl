@@ -77,8 +77,8 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
                 "compute_global_histograms" =>      0,
                 "compute_extrema" =>                0,
                 "plot_energy" =>                    0,
-                "plot_hovmoller" =>                 1, 
-                "animate" =>                        0,
+                "plot_hovmoller" =>                 0, 
+                "animate" =>                        1,
                 # ---------- defunct ---------
                 "compute_rough_quantiles" =>        0,
                 "compute_local_GPD_params" =>       0,
@@ -485,10 +485,10 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
     if todo["animate"] == 1
         todo_anim = Dict(
                          "conc" =>          1,
-                         "sf" =>            1,
-                         "eke" =>           1,
-                         "heatflux" =>      1,
-                         "temp" =>          1,
+                         "sf" =>            0,
+                         "eke" =>           0,
+                         "heatflux" =>      0,
+                         "temp" =>          0,
                          "u" =>             1,
                          "v" =>             1,
                          "pv" =>            1,

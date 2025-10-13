@@ -240,7 +240,7 @@ function animate_fields(tgrid::Vector{Int64}, fcont::Array{Float64,4}, fheat::Ar
     fig = Figure(size=figsize)
     lout = fig[1:2,1:2] = GridLayout()
     if isnothing(titles)
-        titles = collect("Layer $(iz) $(fcont_label) and $(fheat_label)" for iz=1:2)
+        titles = ["Layer $(iz) $(fcont_label) and $(fheat_label)" for iz=1:2]
     end
     ytgts = collect(range(0, 1; length=33)[6:28])
     Nytgt = length(ytgts)
@@ -287,7 +287,7 @@ function animate_fields(tgrid::Vector{Int64}, fcont::Array{Float64,4}, fheat::Ar
                 img = image!(ax, (0,1), (0,1), fheat[:,:,iz,i_t], colormap=colormap, colorrange=(-fheat_max[iz]*(!fheat_posdef),fheat_max[iz]*(!fheat_negdef)),)
                 push!(objs, (ax,img))
                 ## colorbar 
-                cbartickvalues,cbarticklabels = hatickvals([-fcont_max,fcont_max])
+                cbartickvalues,cbarticklabels = hatickvals([-fcont_max[iz],fcont_max[iz]])
                 cbar = Colorbar(lout[iz,2], img, vertical=true)
                 push!(objs, (cbar,))
                 ## contours
