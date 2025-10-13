@@ -74,11 +74,11 @@ end
 function hellingerdist(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
     pmf_truth = ccdf2pmf(ccdf_truth)
     pmf_approx = ccdf2pmf(ccdf_approx)
-    return SB.mean((sqrt.(pmf_truth) .- sqrt.(pmf_approx)).^2)
+    return sum((sqrt.(pmf_truth) .- sqrt.(pmf_approx)).^2)
 end
 
 function wassersteindist(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
-    return SB.mean(abs.(ccdf2pmf(ccdf_truth) .- ccdf2pmf(ccdf_approx)))
+    return sum(abs.(ccdf2pmf(ccdf_truth) .- ccdf2pmf(ccdf_approx)))
 end
 
 function powerofhalfstring(k::Int64)

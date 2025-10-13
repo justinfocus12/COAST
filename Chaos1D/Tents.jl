@@ -480,12 +480,12 @@ function main()
                              "plot_dns_valid" =>           0,
                              "run_dns_ancgen" =>           0,
                              "plot_dns_ancgen" =>          0,
-                             "analyze_peaks_valid" =>      1,
-                             "analyze_peaks_ancgen" =>     1,
+                             "analyze_peaks_valid" =>      0,
+                             "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
                              "plot_boosts" =>              0,
-                             "mix_conditional_tails" =>    0,
-                             "plot_moctails" =>            0,
+                             "mix_conditional_tails" =>    1,
+                             "plot_moctails" =>            1,
                             )
 
     overwrite_boosts = true
