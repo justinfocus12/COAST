@@ -6,6 +6,7 @@ using CairoMakie
 
 include("./MapsOneDim.jl")
 
+
 struct TentMapParams
     tentpeak::Float64
 end
@@ -16,14 +17,14 @@ function BoostParams()
             duration_ancgen = 2^12, 
             duration_spinup = 2^4,
             threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
-            perturbation_neglog = 12,  # how many bits to keep when doing the perturbation 
+            perturbation_neglog = 14,  # how many bits to keep when doing the perturbation 
             min_cluster_gap = 2^6,
             bit_precision = 32,
             ast_min = 1,
             ast_max = 15,
             bst = 2,
-            num_descendants = 31
-            latentize = true # but this is trivial
+            num_descendants = 31,
+            latentize = true, # but this is trivial
            )
 end
 
@@ -93,14 +94,14 @@ function main()
     bpar = BoostParams()
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-09-30",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-10-13",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
     mkpath(datadir)
     mkpath(figdir)
 
-    N_bin_over = 8
+    N_bin_over = 24
     threshold = compute_cquant_peak_wholetruth(exp2(-bpar.threshold_neglog))
     N_bin = N_bin_over * 2^bpar.threshold_neglog
     i_bin_thresh = N_bin - N_bin_over + 1
@@ -144,7 +145,7 @@ function main()
     end
     if todo["boost_peaks"]
         seed_boost = 8086
-        boost_peaks(simulate, latentize, conjugate_fwd, conjugate_bwd, threshold, bpar.perturbation_neglog, asts, bpar.bst, bpar.bit_precision, bpar.num_descendants, seed_boost, datadir, "ancgen"; overwrite_boosts=overwrite_boosts)
+        boost_peaks(simulate, bpar.latentize, conjugate_fwd, conjugate_bwd, threshold, bpar.perturbation_neglog, asts, bpar.bst, bpar.bit_precision, bpar.num_descendants, seed_boost, datadir, "ancgen"; overwrite_boosts=overwrite_boosts)
     end
     if todo["plot_boosts"]
         plot_boosts(datadir, figdir, asts, bpar.bst, bpar.num_descendants, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog)

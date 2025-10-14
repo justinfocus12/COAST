@@ -6,8 +6,8 @@ using CairoMakie
 
 include("./MapsOneDim.jl")
 
-struct LogisticMapParams
-    carrying_capacity::Float64
+struct LodgeMapParams
+    log2n_linear_segments::Float64 
 end
 
 function BoostParams()
@@ -24,13 +24,13 @@ function BoostParams()
             bst = 2,
             num_descendants = 31,
             latentize = false,# Do we transform to Z space? 
-            latentize_bins = true,
+            latentize_bins = false,
            )
 end
 
 function strrep(bpar::NamedTuple)
     # For naming folder with experiments 
-    s = @sprintf("LogisticMap_Lat%d_Latbins%d_Tv%d_Ta%d_thr%d_prt%d_bp%d", bpar.latentize, bpar.latentize_bins, round(Int, log2(bpar.duration_valid)), round(Int, log2(bpar.duration_ancgen)), bpar.threshold_neglog, bpar.perturbation_neglog, bpar.bit_precision)
+    s = @sprintf("LodgeMap_log2nlinseg%d_Lat%d_Latbins%d_Tv%d_Ta%d_thr%d_prt%d_bp%d", bpar.log2n_linear_segments, bpar.latentize, bpar.latentize_bins, round(Int, log2(bpar.duration_valid)), round(Int, log2(bpar.duration_ancgen)), bpar.threshold_neglog, bpar.perturbation_neglog, bpar.bit_precision)
     return s
 end
 
@@ -40,21 +40,26 @@ function get_themes()
     return theme_ax,theme_leg
 end
 
-conjugate_fwd(x::Float64) = (2/pi) * asin(sqrt(x))
-conjugate_bwd(z::Float64) = sin(pi/2*z)^2
-compute_cquant_peak_wholetruth(q::Float64) = conjugate_bwd(1-q)
-compute_ccdf_peak_wholetruth(x::Float64) = 1-conjugate_fwd(x)
+conjugate_fwd(x::Float64) = error("Not Implemented")
+conjugate_bwd(z::Float64) =  error("Not Implemented")
+compute_cquant_peak_wholetruth(q::Float64) = error("Not Implemented")
+compute_ccdf_peak_wholetruth(x::Float64) = error("Not Implemented")
 
 function compute_pdf_wholetruth(x::Float64)
-    return 1/(pi*sqrt(x*(1-x)))
+    error("Not implemented") 
 end
 
-function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG)
+function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG, log2n_linear_segments::Int64)
     xs = zeros(Float64, (1,duration))
     x = x_init[1]
     ts = collect(1:duration)
+    n_intervals = 2^log2n_linear_segments)
     for t = 1:duration
-        x = mod(4*x*(1-x), 1)
+        interval = div(x, n_intervals)
+        a0,a1 = [interval,interval+1]./n_intervals
+        b0,b1 = 4*a0*(1-a0), 4*a1*(1-a1)
+        frac0 = (a1-x)/n_intervals
+        x = frac0*b0 + frac1*b1
         xs[1,t] = x
     end
     return xs, ts

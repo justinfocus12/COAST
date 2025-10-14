@@ -1,3 +1,11 @@
+
+import Random
+import StatsBase as SB
+using Printf: @sprintf
+using JLD2: jldopen
+using CairoMakie
+
+
 function van_der_corput(N)
     # Generate the first N points of the van der corput sequence 
     max_bit_length = floor(Int, 1+log2(N))
@@ -126,7 +134,7 @@ function boost_peaks(simulate_fun::Function, latentize::Bool, conjugate_fwd_fun:
                     z_init_anc = (latentize ? conjugate_fwd_fun : identity)(x_init_anc[1])
                     z_init_dsc = mod(
                                      (
-                                      floor(Int, x_init_anc[1]*2^perturbation_neglog)
+                                      floor(Int, z_init_anc*2^perturbation_neglog)
                                       + pert_seq[i_dsc]
                                      ) / (2^perturbation_neglog), 
                                      1
@@ -797,7 +805,6 @@ function plot_dns(duration_spinup::Int64, duration_spinon::Int64, datadir::Strin
     xlims!(ax_hist, 0, 2)
     ylims!(ax_hist, 0, 1)
     ylims!(ax_ts, 0, 1)
-    @show pdf_wholetruth
     if !isnothing(pdf_wholetruth)
         lines!(ax_hist, pdf_wholetruth, bincenters; color=:black, linestyle=(:dash,:dense), linewidth=3)
     end
