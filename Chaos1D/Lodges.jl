@@ -25,6 +25,7 @@ function BoostParams()
             num_descendants = 31,
             latentize = false,# Do we transform to Z space? 
             latentize_bins = false,
+            log2n_linear_segments = 2,
            )
 end
 
@@ -49,30 +50,26 @@ function compute_pdf_wholetruth(x::Float64)
     error("Not implemented") 
 end
 
-function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG, log2n_linear_segments::Int64)
+function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, log2n_linear_segments::Int64, rng::Random.AbstractRNG)
     xs = zeros(Float64, (1,duration))
     x = x_init[1]
     ts = collect(1:duration)
-    n_intervals = 2^log2n_linear_segments)
+    n_segments = 2^log2n_linear_segments
+    segment_length = 1/n_segments 
+    logistic_map(x) = 4*x*(1-x)
     for t = 1:duration
-        interval = div(x, n_intervals)
-        a0,a1 = [interval,interval+1]./n_intervals
-        b0,b1 = 4*a0*(1-a0), 4*a1*(1-a1)
-        frac0 = (a1-x)/n_intervals
-        x = frac0*b0 + frac1*b1
+        segment_index = div(x, segment_length) # starts from 0 
+        segment_endpoints_x = [segment_index, segment_index+1].*segment_length
+        segment_endpoints_y = logistic_map.(segment_endpoints_x)
+        fraction_through_segment = (x - segment_endpoints_x[1])/segment_length
+        x = (1-fraction_through_segment)*segment_endpoints_y[1] + fraction_through_segment*segment_endpoints_y[2]
         xs[1,t] = x
     end
     return xs, ts
 end
 
-
-
-
-
-
-
-function simulate(x0::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG, datadir::String, outfile_suffix::String)
-    xs, ts = simulate(x0, duration, bit_precision, rng)
+function simulate(datadir::String, outfile_suffix::String, args..., )
+    xs, ts = simulate(args...)
     jldopen(joinpath(datadir, "dns_$(outfile_suffix).jld2"),"w") do f
         f["xs"] = xs
         f["ts"] = ts
@@ -88,10 +85,10 @@ function main()
                              "plot_dns_ancgen" =>          1,
                              "analyze_peaks_valid" =>      1,
                              "analyze_peaks_ancgen" =>     1,
-                             "boost_peaks" =>              1,
-                             "plot_boosts" =>              1,
-                             "mix_conditional_tails" =>    1,
-                             "plot_moctails" =>            1,
+                             "boost_peaks" =>              0,
+                             "plot_boosts" =>              0,
+                             "mix_conditional_tails" =>    0,
+                             "plot_moctails" =>            0,
                             )
 
     overwrite_boosts = true
@@ -107,7 +104,7 @@ function main()
     mkpath(figdir)
 
     N_bin_over = 24
-    threshold = compute_cquant_peak_wholetruth(1/2^bpar.threshold_neglog)
+    threshold = nlg1m_inv(bpar.threshold_neglog) #compute_cquant_peak_wholetruth(1/2^bpar.threshold_neglog)
     N_bin = N_bin_over * 2^bpar.threshold_neglog
     i_bin_thresh = N_bin - N_bin_over + 1
     if bpar.latentize_bins
@@ -117,8 +114,8 @@ function main()
     end
     bin_edges = vcat(bin_lower_edges, 1.0)
     bin_centers = vcat((bin_lower_edges[1:N_bin-1] .+ bin_lower_edges[2:N_bin])./2, (bin_lower_edges[N_bin]+1.0)/2)
-    ccdf_peak_wholetruth = compute_ccdf_peak_wholetruth.(bin_lower_edges[i_bin_thresh:N_bin]) ./ compute_ccdf_peak_wholetruth(threshold)
-    pdf_wholetruth = compute_pdf_wholetruth.(bin_centers)
+    ccdf_peak_wholetruth = nothing #compute_ccdf_peak_wholetruth.(bin_lower_edges[i_bin_thresh:N_bin]) ./ compute_ccdf_peak_wholetruth(threshold)
+    pdf_wholetruth = nothing #compute_pdf_wholetruth.(bin_centers)
     threshold = bin_lower_edges[i_bin_thresh]
     #@assert i_bin_thresh == argmin(abs.(nlg1m.(bin_lower_edges) .- bpar.threshold_neglog))
 
@@ -130,7 +127,7 @@ function main()
         seed_dns_valid = 9281
         rng_dns_valid = Random.MersenneTwister(seed_dns_valid)
         x0 = Random.rand(rng_dns_valid, Float64, (1,))
-        simulate(x0, bpar.duration_spinup+bpar.duration_valid, bpar.bit_precision, rng_dns_valid, datadir, "valid")
+        simulate(datadir, "valid", x0, bpar.duration_spinup+bpar.duration_valid, bpar.bit_precision, bpar.log2n_linear_segments, rng_dns_valid, )
     end
     if todo["plot_dns_valid"]
         plot_dns(bpar.duration_spinup, bpar.duration_valid, datadir, figdir, "valid"; edges=vcat(bin_lower_edges,1.0), pdf_wholetruth=pdf_wholetruth)
@@ -139,7 +136,7 @@ function main()
         seed_dns_ancgen = 3827
         rng_dns_ancgen = Random.MersenneTwister(seed_dns_ancgen)
         x0 = Random.rand(rng_dns_ancgen, Float64, (1,))
-        simulate(x0, bpar.duration_spinup+bpar.duration_ancgen, bpar.bit_precision, rng_dns_ancgen, datadir, "ancgen")
+        simulate(datadir, "ancgen", x0, bpar.duration_spinup+bpar.duration_ancgen, bpar.bit_precision, bpar.log2n_linear_segments,  rng_dns_ancgen)
     end
     if todo["plot_dns_valid"]
         plot_dns(bpar.duration_spinup, bpar.duration_ancgen, datadir, figdir, "ancgen")
@@ -154,6 +151,7 @@ function main()
     end
     if todo["boost_peaks"]
         seed_boost = 8086
+        simulate_fun(x_init, duration, bit_precision, rng) = simulate(x_init, duration, bit_precisio, bpar.log2n_linear_segments, rng)
         boost_peaks(simulate, bpar.latentize, conjugate_fwd, conjugate_bwd, threshold, bpar.perturbation_neglog, asts, bpar.bst, bpar.bit_precision, bpar.num_descendants, seed_boost, datadir, "ancgen"; overwrite_boosts=overwrite_boosts)
     end
     if todo["plot_boosts"]

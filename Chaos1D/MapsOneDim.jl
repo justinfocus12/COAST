@@ -377,9 +377,9 @@ function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_
 end
 
 function nlg1m(x::Number) 
-    return -log1p(-x)/log(2) #log_2(1/(1-x))
+    return -log1p(-x)/log(2) # log_2(1/(1-x))
 end
-function nlg1m_inv(y::Number) 
+function nlg1m_inv(y::Number) # 1 - 1/(2^y)
     return -expm1(-y*log(2))
 end
 
