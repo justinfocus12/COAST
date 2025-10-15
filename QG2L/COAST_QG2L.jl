@@ -1107,13 +1107,14 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         fig = Figure(size=(100*Nmcs2mix+50,200))
                         lout = fig[1,1] = GridLayout()
                         axargs = Dict(:ylabel=>fdivlabel, :xlabel=>"𝑁", :xscale=>identity, :titlefont=>:regular, :titlesize=>12, :xgridvisible=>false, :ygridvisible=>false, :xlabelsize=>12, :ylabelsize=>12, :xticklabelsize=>10, :yticklabelsize=>10, :yscale=>log10) #i(fdivname in ["chi2","kl"] ? log10 : identity))
-                        mix_compare_colors = Dict(mc=>"red" for mc=mcs2mix) #mixcrit_colors
+                        mix_compare_colors = Dict(mc=>"firebrick" for mc=mcs2mix) #mixcrit_colors
+                        short_dns_color = :dodgerblue
                         axs = [Axis(lout[1,i_mc]; axargs...) for i_mc=1:Nmcs2mix]
                         for (i_mc,mc) in enumerate(mcs2mix)
                             ax = axs[i_mc]
                             # Short DNS 
-                            band!(ax, Point2f.(Nancsubs, fdivs_eqnanc_lo), Point2f.(Nancsubs, fdivs_eqnanc_hi); color=:orange4, alpha=0.25)
-                            scatterlines!(ax, Nancsubs, fdivs_eqnanc_mid; color=:orange4, linestyle=:solid, marker=:circle)
+                            band!(ax, Point2f.(Nancsubs, fdivs_eqnanc_lo), Point2f.(Nancsubs, fdivs_eqnanc_hi); color=short_dns_color, alpha=0.25)
+                            scatterlines!(ax, Nancsubs, fdivs_eqnanc_mid; color=short_dns_color, linestyle=:solid, marker=:circle)
                             band!(ax, Point2f.(Nancsubs[Nancsubs .<= Nancsub_comparable_max], fdivs_eqcost_lo), Point2f.(Nancsubs[Nancsubs .<= Nancsub_comparable_max], fdivs_eqcost_hi); color=:gray, alpha=0.25)
                             scatterlines!(ax, Nancsubs[Nancsubs .<= Nancsub_comparable_max], fdivs_eqcost_mid; color=:black, linestyle=:solid, marker=:star5)
                             # include the values of the the thresholded mixing criteria 
@@ -1174,7 +1175,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                            min.(xlimits[2], thresh_cquantile.*ccdf_pot_valid_seplon_eqnanc_hi[:,i_Nancsub]),
                                            levels_exc,
                                           ),
-                                  color=:orange4, alpha=0.25
+                                  color=short_dns_color, alpha=0.25
                                  )
                             band!(axancgen, 
                                   Point2f.(
@@ -1188,10 +1189,10 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                                   color=:gray, alpha=0.25
                                  )
                             scatterlines!(axancgen, thresh_cquantile.*ccdf_pot_valid_seplon_eqcost_mid[:,i_Nancsub], levels[i_thresh_cquantile:end]; linewidth=1, color=:black, marker=:star5)
-                            scatterlines!(axancgen, thresh_cquantile.*ccdf_pot_valid_seplon_eqnanc_mid[:,i_Nancsub], levels[i_thresh_cquantile:end]; linewidth=1, color=:orange4, marker=:circle)
+                            scatterlines!(axancgen, thresh_cquantile.*ccdf_pot_valid_seplon_eqnanc_mid[:,i_Nancsub], levels[i_thresh_cquantile:end]; linewidth=1, color=short_dns_color, marker=:circle)
                             # Ancestor fdivs
-                            scatter!(axfdiv, Nmcs2mix+1+0.1, fdivs_eqnanc_mid[i_Nancsub]; color=:orange4, marker=:circle, markersize=12)
-                            lines!(axfdiv, [1,1].*(Nmcs2mix+1+0.1), [fdivs_eqnanc_lo[i_Nancsub], fdivs_eqnanc_hi[i_Nancsub]]; color=:orange4, linewidth=2)
+                            scatter!(axfdiv, Nmcs2mix+1+0.1, fdivs_eqnanc_mid[i_Nancsub]; color=short_dns_color, marker=:circle, markersize=12)
+                            lines!(axfdiv, [1,1].*(Nmcs2mix+1+0.1), [fdivs_eqnanc_lo[i_Nancsub], fdivs_eqnanc_hi[i_Nancsub]]; color=short_dns_color, linewidth=2)
                             # Equal-cost DNS fdivls
                             scatter!(axfdiv, Nmcs2mix+1-0.1, fdivs_eqcost_mid[i_Nancsub]; color=:black, marker=:star5, markersize=12)
                             lines!(axfdiv, [1,1].*(Nmcs2mix+1-0.1), [fdivs_eqcost_lo[i_Nancsub], fdivs_eqcost_hi[i_Nancsub]]; color=:black, linewidth=2)
