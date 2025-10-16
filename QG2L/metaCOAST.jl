@@ -68,9 +68,9 @@ end
 
 function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; i_expt=nothing)
     todo = Dict{String,Bool}(
-                             "plot_mixcrits_ydep" =>             1,
+                             "plot_mixcrits_ydep" =>             0,
                              "compile_fdivs" =>                  0,
-                             "plot_fdivs" =>                     0,
+                             "plot_fdivs" =>                     1,
                              "plot_ccdfs_latdep" =>              0,
                              # danger zone
                              "remove_pngs" =>                    0,
@@ -453,7 +453,7 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         lout = fig[1,1] = GridLayout()
                         toplabel = Label(lout[1,1:Nmcs2plot], @sprintf("%s, %d≤𝑁≤%d", scalestr, minimum(Nancsubs_mid), maximum(Nancsubs_mid)), fontsize=14,font=:regular,valign=:bottom,padding=(0,0,0,0))
                         titlefun = (mc -> @sprintf("%s %s", (mc in ["lt","contcorr","globcorr"] ? "best" : "max"),mixcrit_labels[mc]))
-                        mix_compare_colors = Dict(mc=>:red for mc=syncmcs)
+                        mix_compare_colors = Dict(mc=>:firebrick for mc=syncmcs)
                         axs_mc = [
                                   Axis(
                                        lout[2,i_mc], 
@@ -472,8 +472,8 @@ function metaCOAST_latdep_procedure(expt_supdir::String, resultdir_dns::String; 
                         for ax = axs_mc
                             #band!(ax, Point2f.(fdivs_ancgen_valid_lo,ytgts), Point2f.(fdivs_ancgen_valid_hi,ytgts); color=:gray, alpha=0.5)
                             #lines!(ax, fdivs_ancgen_valid_pt, ytgts; color=:black, linewidth=1)
-                            band!(ax, Point2f.(fdivs_eqnancvalid_valid_lo,ytgts), Point2f.(fdivs_eqnancvalid_valid_hi,ytgts); color=:orange4, alpha=0.25)
-                            scatterlines!(ax, fdivs_eqnancvalid_valid_mid, ytgts; color=:orange4, linewidth=1, marker=:circle, )
+                            band!(ax, Point2f.(fdivs_eqnancvalid_valid_lo,ytgts), Point2f.(fdivs_eqnancvalid_valid_hi,ytgts); color=:dodgerblue, alpha=0.25)
+                            scatterlines!(ax, fdivs_eqnancvalid_valid_mid, ytgts; color=:dodgerblue, linewidth=1, marker=:circle, )
                             band!(ax, Point2f.(fdivs_eqcostvalid_valid_lo,ytgts), Point2f.(fdivs_eqcostvalid_valid_hi,ytgts); color=:gray, alpha=0.25)
                             scatterlines!(ax, fdivs_eqcostvalid_valid_mid, ytgts; color=:black, linewidth=1, marker=:star5)
 
