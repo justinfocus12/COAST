@@ -17,16 +17,17 @@ function BoostParams()
             duration_ancgen = 2^12, 
             duration_spinup = 2^4,
             threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
-            perturbation_neglog = 14,  # how many bits to keep when doing the perturbation 
+            perturbation_neglog = 12,  # how many bits to keep when doing the perturbation 
             min_cluster_gap = 2^6,
             bit_precision = 32,
             ast_min = 1,
-            ast_max = 15,
+            ast_max = 12,
             bst = 2,
             num_descendants = 31,
             latentize = true, # but this is trivial
            )
 end
+
 
 function strrep(bpar::NamedTuple)
     # For naming file 
@@ -49,12 +50,26 @@ function compute_pdf_wholetruth(x::Float64)
     return 1.0
 end
 
+tentmap(x::Float64) = clamp(2*(x < 0.5 ? x : 1-x), 0, 1)
+
+function illustrate_map(plotdir::String)
+    fig = Figure(size=(400,400))
+    lout = fig[1,1] = GridLayout()
+    ax = Axis(lout[1,1]; xlabel="𝑥", ylabel="𝑇(𝑥)", title="Tent map")
+    xgrid = collect(range(0, 1; length=65))
+    lines!(ax, xgrid, tentmap.(xgrid); color=:black)
+    save(joinpath(plotdir,"tentmap.png"), fig)
+    return
+end
+
+           
+
 function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG)
     xs = zeros(Float64, (1,duration))
     x = x_init[1]
     ts = collect(1:duration)
     for t = 1:duration
-        x = mod(2*(x < 0.5 ? x : 1-x), 1)
+        x = tentmap(x) #
         x = mod(
                 #(div(x, 1/(2^bit_precision)) + Random.rand(rng, [0,1]))
                 (floor(Int, x*2^bit_precision) + Random.rand(rng, Float64))
@@ -77,16 +92,17 @@ end
 
 function main()
     todo = Dict{String,Bool}(
-                             "run_dns_valid" =>            1,
-                             "plot_dns_valid" =>           1,
-                             "run_dns_ancgen" =>           1,
-                             "plot_dns_ancgen" =>          1,
-                             "analyze_peaks_valid" =>      1,
-                             "analyze_peaks_ancgen" =>     1,
-                             "boost_peaks" =>              1,
-                             "plot_boosts" =>              1,
-                             "mix_conditional_tails" =>    1,
-                             "plot_moctails" =>            1,
+                             "illustrate_map" =>           1,
+                             "run_dns_valid" =>            0,
+                             "plot_dns_valid" =>           0,
+                             "run_dns_ancgen" =>           0,
+                             "plot_dns_ancgen" =>          0,
+                             "analyze_peaks_valid" =>      0,
+                             "analyze_peaks_ancgen" =>     0,
+                             "boost_peaks" =>              0,
+                             "plot_boosts" =>              0,
+                             "mix_conditional_tails" =>    0,
+                             "plot_moctails" =>            0,
                             )
 
     overwrite_boosts = true
@@ -94,14 +110,14 @@ function main()
     bpar = BoostParams()
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-10-13",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-10-16",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
     mkpath(datadir)
     mkpath(figdir)
 
-    N_bin_over = 24
+    N_bin_over = 16
     threshold = compute_cquant_peak_wholetruth(exp2(-bpar.threshold_neglog))
     N_bin = N_bin_over * 2^bpar.threshold_neglog
     i_bin_thresh = N_bin - N_bin_over + 1
@@ -116,6 +132,11 @@ function main()
     asts = collect(range(bpar.ast_min, bpar.ast_max; step=1))
     duration_plot = 3*2^bpar.threshold_neglog # long enough to capture ~3 peaks 
     perturbation_width = 1/(2^bpar.perturbation_neglog)
+
+    if todo["illustrate_map"]
+        illustrate_map(figdir)
+    end
+
 
     if todo["run_dns_valid"]
         seed_dns_valid = 9281

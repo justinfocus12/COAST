@@ -230,151 +230,6 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
     save(joinpath(figdir, "dns_peaks_over_threshold_$(file_suffix).png"), fig)
 end
 
-function analyze_boosts(datadir::String, figdir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64, threshold_neglog::Int64)
-    # ----------------------------------------------------
-    # Plotting 
-    #
-
-    fig = Figure(size=(80*N_ast, 850))
-    theme_ax = (xticklabelsize=12, yticklabelsize=12, xlabelsize=16, ylabelsize=16, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=16)
-    lout = fig[1,1] = GridLayout()
-
-
-    # ---------- Row 1: CCDFs at each AST separately ----------
-    for i_ast = 1:N_ast
-        xlimits = collect(extrema(ccdf2pmf(ccdf_peak_anc)))
-        ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., xscale=identity, yscale=identity, ylabel="Tail PDFs,\nUniform AST", ylabelrotation=0)
-        lines!(ax, ccdf2pmf(ccdf_peak_anc), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
-        lines!(ax, ccdf2pmf(ccdf_peak_valid), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
-        lines!(ax, ccdf2pmf(ccdf_peak_wholetruth), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
-        lines!(ax, ccdf2pmf(ccdfs_moctail_astunif_rect[:,i_ast]), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
-        xlims!(ax, xlimits...)
-    end
-
-    # ----------- Rows 2-3: thrent and COAST frequency ------------
-    ax = Axis(lout[2,1:N_ast]; xlabel="−AST", ylabel="Thresholded\nEntropy.", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=false, xticklabelsvisible=false)
-    xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
-    for i_anc = 1:N_anc
-        scatterlines!(ax, -asts, thresholded_entropy[:,i_anc]; color=:gray79)
-    end
-    scatterlines!(ax, -asts, SB.mean(thresholded_entropy; dims=2)[:,1]; color=:red)
-    ax = Axis(lout[3,1:N_ast]; xlabel="−AST", ylabel="COAST\nfrequency", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=true, xticklabelsvisible=true)
-    xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
-    for i_ast = 1:N_ast
-        scatterlines!(ax, -asts[i_ast].*ones(2), [0, SB.mean(idx_astmaxthrent.==i_ast)]; color=:black, linewidth=8)
-    end
-    scatter!(ax, -threshold_neglog, 0.5; marker=:star6, color=:cyan, markersize=18)
-    scatter!(ax, -perturbation_neglog, 0.5; marker=:star6, color=:orange, markersize=18)
-    scatter!(ax, -(perturbation_neglog-threshold_neglog), 0.5; marker=:star6, color=:red, markersize=18)
-    ylims!(ax, 0, 1)
-
-    # --------- Row 4: the Thrent-based mixture --------------
-    i_astmaxthrent_mean = round(Int, SB.mean(idx_astmaxthrent)) # Put it horizontally at the mean COAST position 
-    @show i_astmaxthrent_mean
-    ax = Axis(lout[4,N_ast-i_astmaxthrent_mean+1]; theme_ax..., xscale=identity, yscale=identity, ylabel="AST = argmax(thresh. ent.)", ylabelrotation=0)
-    lines!(ax, ccdf2pmf(ccdf_peak_anc), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
-    lines!(ax, ccdf2pmf(ccdf_peak_valid), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
-    lines!(ax, ccdf2pmf(ccdf_peak_wholetruth), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
-    lines!(ax, ccdf2pmf(ccdf_moctail_astmaxthrent_rect), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
-    if i_astmaxthrent_mean < N_ast; ax.ylabelvisible = ax.yticklabelsvisible = false; end
-
-    for i_col = 1:N_ast
-        for i_row = [1,4]
-            if length(contents(lout[i_row,i_col])) == 0; continue; end
-            ax = content(lout[i_row,i_col])
-            if i_col < N_ast; colgap!(lout, i_col, 0); end
-            if i_col > 1; ax.ylabelvisible = ax.yticklabelsvisible = false; end
-            ax.xlabelvisible = ax.xticklabelsvisible = false
-            #xlims!(ax, minimum(filter(c->c>0, ccdf_peak_valid))/16, 1.0)
-            #ylims!(ax, 1.1*threshold-0.1*1, 1)
-        end
-    end
-
-    # ------------ Rows 5-7:  various divergences ------
-    for (i_row,losses_astunif,loss_astmaxthrent,divname) = zip(
-                                                             5:7,
-                                                             (losses_astunif_hell,losses_astunif_chi2,losses_astunif_wass),
-                                                             (loss_astmaxthrent_hell,loss_astmaxthrent_chi2,loss_astmaxthrent_wass),
-                                                             ("Hellinger\nDistance","χ² Divergence","𝐿¹ Distance")
-                                                            )
-        ax = Axis(lout[i_row,1:N_ast]; xlabel="−AST", ylabel=divname, ylabelrotation=0, yscale=log10, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)))
-        xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
-        scatterlines!(ax, -asts, losses_astunif; color=:black)
-        hlines!(ax, loss_astmaxthrent; color=:black, linestyle=(:dash,:dense))
-    end
-
-    for row = [1,4] # make the PMF rows bigger
-        rowsize!(lout, row, Relative(3/11))
-    end
-    for row = [2,3,5,6] # remove gaps between lineplot rows
-        ax = content(lout[row,:])
-        ax.xlabelvisible = ax.xticklabelsvisible = false
-        rowgap!(lout, row, 0)
-    end
-    
-    save(joinpath(figdir, "ccdfs_moctail.png"), fig)
-
-
-
-
-    # Plot entropies as functions of AST 
-    fig = Figure(size=(300,150))
-    lout = fig[1,1] = GridLayout()
-    ax = Axis(lout[1,1]; theme_ax..., xlabel="−AST", ylabel="Thresh. Ent.")
-    for i_anc = 1:N_anc
-        scatterlines!(ax, reverse(-asts), reverse(thresholded_entropy[:,i_anc]), color=:gray79, marker=:circle)
-        i_ast_argmax = idx_astmaxthrent[i_anc]
-        scatter!(ax, -asts[i_ast_argmax], thresholded_entropy[i_ast_argmax,i_anc]; color=:gray, marker=:star6)
-    end
-    scatterlines!(ax, reverse(-asts), reverse(SB.mean(thresholded_entropy; dims=2))[:,1]; color=:black, label="Mean", marker=:circle)
-    vlines!(ax, -SB.mean(asts[idx_astmaxthrent]); color=:black, linestyle=(:dash,:dense))
-    ax.xticks = reverse(-asts)
-    #ax.xticklabels = string.(reverse(-asts))
-    save(joinpath(figdir, "thrent_overlay.png"), fig)
-
-    # Plot the descendant peaks as a function of -AST; one row for each ancestor
-    theme_ax = (xticklabelsize=16, yticklabelsize=16, xlabelsize=20, ylabelsize=20, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=20)
-    fig = Figure(size=(500,60*N_anc))
-    lout = fig[1,1] = GridLayout()
-    xtickvals = reverse(-round.(Int, range(asts[1], asts[end]; length=3)))
-    xticks = (xtickvals, string.(xtickvals))
-    for i_anc = 1:N_anc
-        # Left column: maxima due to each AST 
-        ax = Axis(lout[i_anc,1]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2)
-        for i_ast = 1:N_ast
-            scatter!(ax, -asts[i_ast]*ones(N_dsc), Rs_peak_dsc[:,i_ast,i_anc]; color=:red, marker=:circle)
-        end
-        hlines!(ax, bin_lower_edges[i_bin_thresh]; color=:gray79)
-        hlines!(ax, Rs_peak_anc[i_anc]; color=:black, linestyle=(:dash,:dense))
-        ax = Axis(lout[i_anc,2]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2, yticklabelsvisible=false)
-        scatterlines!(ax, -reverse(asts), reverse(thresholded_entropy[:,i_anc]); color=:red)
-
-
-    end
-    for i_anc = 1:N_anc
-        ax1,ax2 = [content(lout[i_anc,j]) for j=1:2]
-
-        ax1.xticklabelsvisible = ax1.xlabelvisible = (i_anc==N_anc)
-        ax2.xticklabelsvisible = ax1.xlabelvisible = (i_anc==N_anc)
-
-        ax1.ylabel = "$(i_anc==1 ? "Ancestor " : "") $(i_anc)"
-        ax1.yticklabelsvisible = false
-        ax1.ylabelrotation = 0
-
-        ax2.ylabel = ""
-
-        if i_anc == 1; ax1.title = "𝑅*"; ax2.title = "Thresh. Ent."; end
-        if i_anc < N_anc; rowgap!(lout, i_anc, 0); end
-
-        ylims!(ax1, 2*bin_lower_edges[i_bin_thresh]-1, 1.0)
-    end
-    linkyaxes!((content(lout[i_anc,2]) for i_anc=1:N_anc)...)
-    colgap!(lout, 1, 15)
-    # TODO make a column for entropy
-    content(lout[end,1]).xlabel = "−AST"
-    save(joinpath(figdir, "peaks_dsc_stacked.png"), fig)
-    return thresholded_entropy 
-end
 
 function nlg1m(x::Number) 
     return -log1p(-x)/log(2) # log_2(1/(1-x))
@@ -420,14 +275,12 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
 
     jldopen(joinpath(datadir,"xs_dscs.jld2"), "r") do f
         for i_anc = 1:min(2,N_anc)
-            @show i_anc
             entropy_thresholded = zeros(Float64, N_ast)
             entropy_total = zeros(Float64, N_ast)
 
             fig = Figure(size=(200*4,75*N_ast))
             lout = fig[1,1] = GridLayout()
             for i_ast = 1:N_ast
-                @show i_ast
                 ax1 = Axis(lout[i_ast,1]; ylabel="$(i_ast==1 ? "AST = " : "")$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="𝑡", title="𝑅(𝑥(𝑡))", theme_ax...)
                 ax2 = Axis(lout[i_ast,2]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="𝑡", title="Peak 𝑅*", theme_ax...)
                 ax3 = Axis(lout[i_ast,3]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="δ𝑥(𝑡*−𝐴)", title="𝑅*(δ𝑥)", theme_ax..., xticklabelrotation=-pi/2) # xticks=([-1,-1/2,0,1/2,1]./(2^perturbation_neglog), ["−1","−½","0","+½","+1"]))
@@ -604,13 +457,20 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     scatterlines!(ax, -asts, SB.mean(thresholded_entropy; dims=2)[:,1]; color=:red)
     ax = Axis(lout[3,1:N_ast]; xlabel="−AST", ylabel="COAST\nfrequency", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=true, xticklabelsvisible=true)
     xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
+    #for i_ast = 1:N_ast
+    #    scatterlines!(ax, -asts[i_ast].*ones(2), [0, SB.mean(idx_astmaxthrent.==i_ast)]; color=:black, linewidth=8)
+    #end
+    coast_freq = zeros(Int64, N_ast)
+    @show coast_freq
     for i_ast = 1:N_ast
-        scatterlines!(ax, -asts[i_ast].*ones(2), [0, SB.mean(idx_astmaxthrent.==i_ast)]; color=:black, linewidth=8)
+        coast_freq[i_ast] += sum(idx_astmaxthrent.==i_ast)
     end
+    @show coast_freq
+    stairs!(ax, -asts, coast_freq/N_anc, color=:black, linewidth=3, step=:center)
     scatter!(ax, -threshold_neglog, 0.5; marker=:star6, color=:cyan, markersize=18)
     scatter!(ax, -perturbation_neglog, 0.5; marker=:star6, color=:orange, markersize=18)
     scatter!(ax, -(perturbation_neglog-threshold_neglog), 0.5; marker=:star6, color=:red, markersize=18)
-    ylims!(ax, 0, 1)
+    ylims!(ax, -0.01, 1.01)
 
     # --------- Row 4: the Thrent-based mixture --------------
     i_astmaxthrent_mean = round(Int, SB.mean(idx_astmaxthrent)) # Put it horizontally at the mean COAST position 

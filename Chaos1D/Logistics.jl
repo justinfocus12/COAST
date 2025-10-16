@@ -20,11 +20,11 @@ function BoostParams()
             min_cluster_gap = 2^6,
             bit_precision = 32,
             ast_min = 1,
-            ast_max = 15,
+            ast_max = 12,
             bst = 2,
             num_descendants = 31,
             latentize = false,# Do we transform to Z space? 
-            latentize_bins = true,
+            latentize_bins = false,
            )
 end
 
@@ -94,7 +94,7 @@ function main()
     bpar = BoostParams()
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-10-13",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-10-16",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
