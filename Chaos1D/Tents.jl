@@ -17,9 +17,9 @@ function BoostParams()
             duration_ancgen = 2^12, 
             duration_spinup = 2^4,
             threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
-            perturbation_neglog = 12,  # how many bits to keep when doing the perturbation 
-            min_cluster_gap = 2^6,
+            perturbation_neglog = 9,  # how many bits to keep when doing the perturbation 
             bit_precision = 32,
+            min_cluster_gap = 2^6, # longer than bit precision
             ast_min = 1,
             ast_max = 12,
             bst = 2,
@@ -92,7 +92,7 @@ end
 
 function main()
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           1,
+                             "illustrate_map" =>           0,
                              "run_dns_valid" =>            0,
                              "plot_dns_valid" =>           0,
                              "run_dns_ancgen" =>           0,
@@ -102,7 +102,7 @@ function main()
                              "boost_peaks" =>              0,
                              "plot_boosts" =>              0,
                              "mix_conditional_tails" =>    0,
-                             "plot_moctails" =>            0,
+                             "plot_moctails" =>            1,
                             )
 
     overwrite_boosts = true
@@ -110,7 +110,7 @@ function main()
     bpar = BoostParams()
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-10-16",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-10-28",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)

@@ -89,6 +89,14 @@ function wassersteindist(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float6
     return sum(abs.(ccdf2pmf(ccdf_truth) .- ccdf2pmf(ccdf_approx)))
 end
 
+function poweroftwostring(k::Int64)
+    symbols = ["2¹","2²","2³","2⁴","2⁵","2⁶","2⁷","2⁸","2⁹","2¹⁰","2¹¹","2¹²","2¹³","2¹⁴","2¹⁵"]
+    if 1 <= k <= length(symbols)
+        return symbols[k]
+    end
+    return "2^$(k)"
+end
+
 function powerofhalfstring(k::Int64)
     symbols = ["(½)","(½)²","(½)³","(½)⁴","(½)⁵","(½)⁶","(½)⁷","(½)⁸","(½)⁹","(½)¹⁰","(½)¹¹","(½)¹²","(½)¹³","(½)¹⁴","(½)¹⁵"]
     if 1 <= k <= length(symbols)
@@ -166,38 +174,45 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
                )
     end
 
+
     
     ts2plot = duration_spinup .+ (1:duration_plot)
     peaks2plot = findall(ts2plot[1] .<= ts_peak .<= ts2plot[end])
 
 
     theme_ax,theme_leg = get_themes()
-    fig = Figure(size=(400,400))
+    fig = Figure(size=(500,400))
     lout = fig[1,1] = GridLayout()
-    ax_Rs = Axis(lout[1,1]; theme_ax..., ylabel="𝑅(𝑋(𝑡))")
-    ax_peaks = Axis(lout[2,1]; theme_ax..., ylabel="Peaks {𝑅(𝑋(𝑡ₙ*))}")
-    ax_waits = Axis(lout[3,1]; theme_ax..., ylabel="𝑡*ₙ₊₁-𝑡*ₙ")
-    ax_hist_Rs = Axis(lout[1,2]; theme_ax..., xlabel="𝑝(𝑟)", yticklabelsvisible=false,)
-    ax_hist_peaks = Axis(lout[2,2]; theme_ax..., xlabel="ℙ{𝑅(𝑋)*>𝑟}")
-    ax_hist_waits = Axis(lout[3,2]; theme_ax..., xlabel="ℙ{τ > 𝑡*ₙ₊₁-𝑡*ₙ}", xscale=log2)
+    ax_Rs = Axis(lout[1,1]; theme_ax..., ylabel="𝑅(𝑋(𝑡))", xlabel="𝑡")
+    ax_peaks = Axis(lout[2,1]; theme_ax..., ylabel="Peaks {𝑅(𝑋(𝑡ₙ*))}", xlabel="𝑡ₙ*")
+    ax_waits = Axis(lout[3,1]; theme_ax..., ylabel="𝑡*ₙ₊₁-𝑡*ₙ", xlabel="𝑡ₙ*")
+    ax_hist_Rs = Axis(lout[1,2]; theme_ax..., xlabel="𝑝(𝑟)", yticklabelsvisible=false, xticklabelrotation=-pi/2)
+    ax_hist_peaks = Axis(lout[2,2]; theme_ax..., xlabel="ℙ{𝑅*>𝑟}", xticklabelrotation=-pi/2)
+    ax_hist_waits = Axis(lout[3,2]; theme_ax..., xlabel="ℙ{τ > 𝑡*ₙ₊₁-𝑡*ₙ}", xscale=log2, xticklabelrotation=-pi/2)
 
     # Full timeseries
     lines!(ax_Rs, ts2plot, Rs[ts2plot]; color=:black)
-    hlines!(ax_Rs, thresh; color=:gray, linewidth=1, alpha=0.5)
+    hlines!(ax_Rs, thresh; color=:black, linewidth=1, linestyle=(:dash,:dense))
     scatter!(ax_Rs, ts_peak[peaks2plot], Rs_peak[peaks2plot]; color=:black, marker=:star5)
     bin_edges_Rs = (isnothing(bin_edges) ? collect(range(0, 1; length=65)) : bin_edges)
     bin_centers_Rs = (bin_edges_Rs[1:end-1] .+ bin_edges_Rs[2:end])./2
     bins2plot = round.(Int, range(1, length(bin_centers_Rs); length=33))
-    hist_Rs = SB.normalize(SB.fit(SB.Histogram, Rs[cluster_starts[1]:cluster_stops[end]], bin_edges_Rs); mode=:pdf)
+    hist_Rs = SB.normalize(SB.fit(SB.Histogram, Rs[duration_spinup:end]#=cluster_starts[1]:cluster_stops[end]]=#, bin_edges_Rs); mode=:pdf)
     if !isnothing(pdf_wholetruth)
-        lines!(ax_hist_Rs, pdf_wholetruth[bins2plot], bin_centers_Rs[bins2plot]; color=:gray79, linewidth=4)
+        lines!(ax_hist_Rs, pdf_wholetruth[bins2plot], bin_centers_Rs[bins2plot]; color=:gray79, linewidth=4, label="Whole\nTruth")
     end
-    lines!(ax_hist_Rs, hist_Rs.weights[bins2plot], bin_centers_Rs[bins2plot]; color=:black)
+    simlength = length(ts)-duration_spinup
+    log2simlength = round(Int, log2(simlength))
+    lines!(ax_hist_Rs, hist_Rs.weights[bins2plot], bin_centers_Rs[bins2plot]; color=:black, label=@sprintf("DNS\n%.1f×%s", simlength/2^log2simlength, poweroftwostring(log2simlength)))
+    for ax = (ax_Rs,ax_hist_Rs)
+        hlines!(ax, thresh; color=:black, linewidth=1, linestyle=(:dash,:dense), label=@sprintf("Thresh\nμ[%s]", powerofhalfstring(round(Int,nlg1m(thresh)))))
+    end
     ylims!(ax_hist_Rs, 0, 1)
     ylims!(ax_Rs, 0, 1)
     xlims!(ax_hist_Rs, 0, 1.25)
     ax_hist_Rs.xticks = ([0, 1, 1.25], ["0","1","1.25"])
     linkyaxes!(ax_Rs, ax_hist_Rs)
+    leg = Legend(lout[1,3], ax_hist_Rs; labelsize=10, framevisible=false)
 
     # Peak timeseries 
     scatter!(ax_peaks, ts_peak, Rs_peak; color=:black, marker=:circle)
@@ -225,7 +240,9 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
     rowgap!(lout, 1, 10)
     rowgap!(lout, 2, 10)
     colgap!(lout, 1, 0)
+    colgap!(lout, 2, 0)
     colsize!(lout, 1, Relative(3/4))
+    colsize!(lout, 2, Relative(1/8))
 
     save(joinpath(figdir, "dns_peaks_over_threshold_$(file_suffix).png"), fig)
 end
@@ -281,14 +298,14 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
             fig = Figure(size=(200*4,75*N_ast))
             lout = fig[1,1] = GridLayout()
             for i_ast = 1:N_ast
-                ax1 = Axis(lout[i_ast,1]; ylabel="$(i_ast==1 ? "AST = " : "")$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="𝑡", title="𝑅(𝑥(𝑡))", theme_ax...)
-                ax2 = Axis(lout[i_ast,2]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="𝑡", title="Peak 𝑅*", theme_ax...)
-                ax3 = Axis(lout[i_ast,3]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="δ𝑥(𝑡*−𝐴)", title="𝑅*(δ𝑥)", theme_ax..., xticklabelrotation=-pi/2) # xticks=([-1,-1/2,0,1/2,1]./(2^perturbation_neglog), ["−1","−½","0","+½","+1"]))
+                ax1 = Axis(lout[i_ast,1]; ylabel="$(i_ast==1 ? "AST = " : "")$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, title="𝑅(𝑥(𝑡))", theme_ax...)
+                ax2 = Axis(lout[i_ast,2]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, title=@sprintf("Peak 𝑅*\nnear 𝑡*=%d", ts_peak[i_anc]), theme_ax...)
+                ax3 = Axis(lout[i_ast,3]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="δ𝑥(𝑡−𝑡*)", title="𝑅*(δ𝑥(𝑡-𝑡*))", theme_ax..., xticklabelrotation=-pi/2) # xticks=([-1,-1/2,0,1/2,1]./(2^perturbation_neglog), ["−1","−½","0","+½","+1"]))
                 # Plot the ancestor
                 tidx_anc = ts_peak[i_anc]-ts_anc[1]+1 .+ (-asts[end]:bst)
-                lines!(ax1, ts_anc[tidx_anc], xs_anc[1,tidx_anc]; color=:black, linewidth=2, linestyle=(:dash,:dense))
+                lines!(ax1, ts_anc[tidx_anc].-ts_peak[i_anc], xs_anc[1,tidx_anc]; color=:black, linewidth=2, linestyle=(:dash,:dense))
                 for ax = (ax1,ax2)
-                    xlims!(ax, ts_anc[tidx_anc[1]], ts_anc[tidx_anc[end]])
+                    xlims!(ax, ts_anc[tidx_anc[1]]-ts_peak[i_anc], ts_anc[tidx_anc[end]]-ts_peak[i_anc])
                     ax.xlabelvisible = ax.xticklabelsvisible = (i_ast == N_ast)
                 end
                 peaks_dsc = zeros(Float64, N_dsc)
@@ -299,11 +316,11 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                     t_init = f[joinpath(dscfullkey,"t_split")]
                     Nt = size(xs_dsc,2)
                     ts_dsc = t_init .+ collect(1:Nt)
-                    lines!(ax1, ts_dsc, xs_dsc[1,:]; color=:red)
+                    lines!(ax1, ts_dsc.-ts_peak[i_anc], xs_dsc[1,:]; color=:red)
                     for ax = (ax1,ax2)
-                        vlines!(ax, t_init; color=:red)
-                        scatter!(ax, t_init, x_init[1]; color=:red, marker=:star6)
-                        scatter!(ax, ts_dsc, intensity(xs_dsc); color=:red)
+                        vlines!(ax, t_init-ts_peak[i_anc]; color=:red)
+                        scatter!(ax, t_init.-ts_peak[i_anc], x_init[1]; color=:red, marker=:star6)
+                        scatter!(ax, ts_dsc.-ts_peak[i_anc], intensity(xs_dsc); color=:red)
                     end
                     scatter!(ax3, x_init[1]-xs_anc[1,ts_peak[i_anc]-asts[i_ast]-ts_anc[1]+1], maximum(xs_dsc[1,:]); color=:red, marker=:star5)
                     peaks_dsc[i_dsc] = maximum(xs_dsc[1,:])
@@ -317,7 +334,7 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                 ylims!(ax2, 3*threshold-2, 1)
                 ylims!(ax3, extrema(peaks_dsc)...)
                 for ax = (ax1,ax2)
-                    xlims!(ax, ts_anc[tidx_anc[1]], ts_anc[tidx_anc[end]])
+                    xlims!(ax, ts_anc[tidx_anc[1]]-ts_peak[i_anc], ts_anc[tidx_anc[end]]-ts_peak[i_anc])
                 end
                 xlims!(ax3, ([-1,1]./(2^perturbation_neglog))...)
                 for ax = (ax2,ax3)
@@ -380,6 +397,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
      loss_astmaxthrent_chi2,
      loss_astmaxthrent_wass,
      thresholded_entropy,
+     total_entropy,
     ) = (
          jldopen(joinpath(datadir,"boost_stats.jld2"), "r") do f
              return (
@@ -400,6 +418,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                      f["loss_astmaxthrent_chi2"], 
                      f["loss_astmaxthrent_wass"],
                      f["thresholded_entropy"],
+                     f["total_entropy"],
                     )
         end
        )
@@ -538,45 +557,51 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     save(joinpath(figdir, "thrent_overlay.png"), fig)
 
     # Plot the descendant peaks as a function of -AST; one row for each ancestor
-    theme_ax = (xticklabelsize=16, yticklabelsize=16, xlabelsize=20, ylabelsize=20, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=20)
-    fig = Figure(size=(500,60*N_anc))
+    N_anc_plot = 4
+    fig = Figure(size=(600,60*(N_anc_plot+2)))
+    theme_ax = (xticklabelsize=8, yticklabelsize=8, xlabelsize=10, ylabelsize=10, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=12)
     lout = fig[1,1] = GridLayout()
     xtickvals = reverse(-round.(Int, range(asts[1], asts[end]; length=3)))
     xticks = (xtickvals, string.(xtickvals))
-    for i_anc = 1:N_anc
+    for i_anc = 1:N_anc_plot
         # Left column: maxima due to each AST 
-        ax = Axis(lout[i_anc,1]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2)
+        ax = Axis(lout[1+i_anc,1]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2)
+        hlines!(ax, Rs_peak_anc[i_anc]; color=:steelblue, linestyle=:solid, label="𝑅* (anc.)")
         for i_ast = 1:N_ast
-            scatter!(ax, -asts[i_ast]*ones(N_dsc), Rs_peak_dsc[:,i_ast,i_anc]; color=:red, marker=:circle)
+            scatter!(ax, -asts[i_ast]*ones(N_dsc), Rs_peak_dsc[:,i_ast,i_anc]; color=:red, marker=:circle, markersize=3, label=(i_ast==1 ? "𝑅* (desc.)" : nothing))
         end
-        hlines!(ax, bin_lower_edges[i_bin_thresh]; color=:gray79)
-        hlines!(ax, Rs_peak_anc[i_anc]; color=:black, linestyle=(:dash,:dense))
-        ax = Axis(lout[i_anc,2]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2, yticklabelsvisible=false)
-        scatterlines!(ax, -reverse(asts), reverse(thresholded_entropy[:,i_anc]); color=:red)
-
-
+        hlines!(ax, bin_lower_edges[i_bin_thresh]; color=:black, linestyle=(:dash,:dense), label="Thresh. 𝜇")
+        # Right column: entropies 
+        ax = Axis(lout[1+i_anc,2]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2, yticklabelsvisible=false)
+        scatterlines!(ax, -reverse(asts), reverse(total_entropy[:,i_anc]); color=:black, label="Total", markersize=6)
+        scatterlines!(ax, -reverse(asts), reverse(thresholded_entropy[:,i_anc]); color=:red, markersize=6, linestyle=(:dash,:dense), label="Thresholded")
     end
-    for i_anc = 1:N_anc
-        ax1,ax2 = [content(lout[i_anc,j]) for j=1:2]
+    Legend(lout[1,1], content(lout[2,1]), "Severities"; framevisible=false, labelsize=10, titlesize=9, titlefont=:regular)
+    Legend(lout[1,2], content(lout[2,2]), "Entropies"; framevisible=false, labelsize=10, titlesize=9, titlefont=:regular, rowgap=2)
+    for i_anc = 1:N_anc_plot
+        ax1,ax2 = [content(lout[1+i_anc,j]) for j=1:2]
 
-        ax1.xticklabelsvisible = ax1.xlabelvisible = (i_anc==N_anc)
-        ax2.xticklabelsvisible = ax1.xlabelvisible = (i_anc==N_anc)
+        ax1.xticklabelsvisible = ax1.xlabelvisible = (i_anc==N_anc_plot)
+        ax2.xticklabelsvisible = ax1.xlabelvisible = (i_anc==N_anc_plot)
 
-        ax1.ylabel = "$(i_anc==1 ? "Ancestor " : "") $(i_anc)"
+        ax1.ylabel = "Anc. $(i_anc)"
         ax1.yticklabelsvisible = false
         ax1.ylabelrotation = 0
 
         ax2.ylabel = ""
 
-        if i_anc == 1; ax1.title = "𝑅*"; ax2.title = "Thresh. Ent."; end
-        if i_anc < N_anc; rowgap!(lout, i_anc, 0); end
-
+        #if i_anc == 1; ax1.title = "Severities"; ax2.title = "Entropies"; end
         ylims!(ax1, 2*bin_lower_edges[i_bin_thresh]-1, 1.0)
     end
-    linkyaxes!((content(lout[i_anc,2]) for i_anc=1:N_anc)...)
+    linkyaxes!((content(lout[1+i_anc,2]) for i_anc=1:N_anc_plot)...)
     colgap!(lout, 1, 15)
+    rowsize!(lout, 1, Relative(2/(2+N_anc_plot)))
+    for i_row = 1:N_anc_plot
+        rowgap!(lout, i_row, 3)
+    end
     # TODO make a column for entropy
-    content(lout[end,1]).xlabel = "−AST"
+    content(lout[N_anc_plot+1,1]).xlabel = "−AST"
+    content(lout[N_anc_plot+1,2]).xlabel = "−AST"
     save(joinpath(figdir, "peaks_dsc_stacked.png"), fig)
     return 
 end
@@ -666,7 +691,7 @@ function plot_dns(duration_spinup::Int64, duration_spinon::Int64, datadir::Strin
     ylims!(ax_hist, 0, 1)
     ylims!(ax_ts, 0, 1)
     if !isnothing(pdf_wholetruth)
-        lines!(ax_hist, pdf_wholetruth, bincenters; color=:black, linestyle=(:dash,:dense), linewidth=3)
+        lines!(ax_hist, pdf_wholetruth, bincenters; color=:black, linestyle=(:dash,:dense), linewidth=3, label="WholeTruth")
     end
     scatterlines!(ax_hist, h.weights, bincenters; color=:steelblue2, markersize=2)
 
@@ -737,9 +762,11 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
     ccdfs_moctail_astunif,ccdfs_moctail_astunif_rect = (zeros(Float64, (N_b,N_ast)) for N_b=(N_bin,N_bin-i_bin_thresh+1))
     ccdf_moctail_astmaxthrent,ccdf_moctail_astmaxthrent_rect = (zeros(Float64, (N_b,)) for N_b=(N_bin,N_bin-i_bin_thresh+1))
     thresholded_entropy = zeros(Float64, (N_ast, N_anc))
+    total_entropy = zeros(Float64, (N_ast, N_anc))
     for i_anc = 1:N_anc
         for i_ast = 1:N_ast
             thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end])
+            total_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
             ccdfs_dsc[:,i_ast,i_anc] .= compute_empirical_ccdf(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
             ccdfs_dsc_rect[:,i_ast,i_anc] .= ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] .+ (1-ccdfs_dsc[i_bin_thresh,i_ast,i_anc]).*(Rs_peak_anc[i_anc] .> bin_lower_edges[i_bin_thresh:N_bin])
             ccdfs_moctail_astunif[:,i_ast] .+= ccdfs_dsc[:,i_ast,i_anc]./N_anc
@@ -792,6 +819,7 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
         f["loss_astmaxthrent_chi2"] = loss_astmaxthrent_chi2
         f["loss_astmaxthrent_wass"] = loss_astmaxthrent_wass
         f["thresholded_entropy"] = thresholded_entropy
+        f["total_entropy"] = total_entropy
     end
     return
 end

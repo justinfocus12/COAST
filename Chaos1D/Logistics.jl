@@ -16,7 +16,7 @@ function BoostParams()
             duration_ancgen = 2^12, 
             duration_spinup = 2^4,
             threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
-            perturbation_neglog = 12,  # how many bits to keep when doing the perturbation 
+            perturbation_neglog = 7,  # how many bits to keep when doing the perturbation 
             min_cluster_gap = 2^6,
             bit_precision = 32,
             ast_min = 1,
