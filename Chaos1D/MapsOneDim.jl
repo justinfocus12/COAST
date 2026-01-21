@@ -3,6 +3,7 @@ import Random
 import StatsBase as SB
 using Printf: @sprintf
 using JLD2: jldopen
+using Infiltrator: @infiltrate
 using CairoMakie
 
 
@@ -90,7 +91,7 @@ function wassersteindist(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float6
 end
 
 function poweroftwostring(k::Int64)
-    symbols = ["2¹","2²","2³","2⁴","2⁵","2⁶","2⁷","2⁸","2⁹","2¹⁰","2¹¹","2¹²","2¹³","2¹⁴","2¹⁵"]
+    symbols = ["2¹","2²","2³","2⁴","2⁵","2⁶","2⁷","2⁸","2⁹","2¹⁰","2¹¹","2¹²","2¹³","2¹⁴","2¹⁵","2¹⁶","2¹⁷","2¹⁸"]
     if 1 <= k <= length(symbols)
         return symbols[k]
     end
@@ -165,6 +166,10 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
         return f["ts"], f["xs"]
     end
     Rs = intensity(xs) # pedantically, a scalar 
+    bin_edges_Rs = (isnothing(bin_edges) ? collect(range(0, 1; length=65)) : bin_edges)
+    bin_centers_Rs = (bin_edges_Rs[1:end-1] .+ bin_edges_Rs[2:end])./2
+    bins2plot = round.(Int, range(1, length(bin_centers_Rs); length=33))
+    hist_Rs = SB.normalize(SB.fit(SB.Histogram, Rs[duration_spinup:end]#=cluster_starts[1]:cluster_stops[end]]=#, bin_edges_Rs); mode=:pdf)
     ts_peak, Rs_peak, cluster_starts, cluster_stops = jldopen(joinpath(datadir, "dns_peaks_$(file_suffix).jld2"), "r") do f
         return (
                 f["ts_peak"],
@@ -173,31 +178,35 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
                 f["cluster_stops"],
                )
     end
+    waits = diff(ts_peak)
+    waits_sorted, ccdf_waits = empirical_ccdf(waits)
+    @show extrema(ccdf_waits)
 
 
-    
     ts2plot = duration_spinup .+ (1:duration_plot)
-    peaks2plot = findall(ts2plot[1] .<= ts_peak .<= ts2plot[end])
-
+    tlimits = (ts2plot[1],ts2plot[end])
+    peaks2plot = 1:length(ts_peak) #findall(ts2plot[1] .<= ts_peak .<= ts2plot[end])
 
     theme_ax,theme_leg = get_themes()
     fig = Figure(size=(500,400))
     lout = fig[1,1] = GridLayout()
-    ax_Rs = Axis(lout[1,1]; theme_ax..., ylabel="𝑅(𝑋(𝑡))", xlabel="𝑡")
-    ax_peaks = Axis(lout[2,1]; theme_ax..., ylabel="Peaks {𝑅(𝑋(𝑡ₙ*))}", xlabel="𝑡ₙ*")
-    ax_waits = Axis(lout[3,1]; theme_ax..., ylabel="𝑡*ₙ₊₁-𝑡*ₙ", xlabel="𝑡ₙ*")
-    ax_hist_Rs = Axis(lout[1,2]; theme_ax..., xlabel="𝑝(𝑟)", yticklabelsvisible=false, xticklabelrotation=-pi/2)
-    ax_hist_peaks = Axis(lout[2,2]; theme_ax..., xlabel="ℙ{𝑅*>𝑟}", xticklabelrotation=-pi/2)
-    ax_hist_waits = Axis(lout[3,2]; theme_ax..., xlabel="ℙ{τ > 𝑡*ₙ₊₁-𝑡*ₙ}", xscale=log2, xticklabelrotation=-pi/2)
+    ax_Rs = Axis(lout[1,1]; theme_ax..., ylabel="𝑅(𝑋(𝑡))", xlabel="𝑡", limits=(tlimits,(0,1)))
+    ax_peaks = Axis(lout[2,1]; theme_ax..., ylabel="Peaks {𝑅(𝑋(𝑡ₙ*))}", xlabel="𝑡ₙ*", limits=((ts[1],ts[end]),(thresh,1)))
+    ax_waits = Axis(lout[3,1]; theme_ax..., ylabel="𝑡*ₙ₊₁-𝑡*ₙ", xlabel="𝑡ₙ*", limits=((ts[1],ts[end]),nothing))
+    ax_hist_Rs = Axis(lout[1,2]; theme_ax..., xlabel="𝑝(𝑟)", yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,1.25),(0,1)), xticks=([0, 1, 1.25], ["0","1","1.25"]))
+    linkyaxes!(ax_Rs, ax_hist_Rs)
+    ax_hist_peaks = Axis(lout[2,2]; theme_ax..., xlabel="ℙ{𝑅*>𝑟}", xticklabelrotation=-pi/2, limits=((0,1),(thresh,1)))
+    linkyaxes!(ax_peaks, ax_hist_peaks)
+    Nwaits = length(waits)
+    ax_hist_waits = Axis(lout[3,2]; theme_ax..., xlabel="ℙ{τ > 𝑡*ₙ₊₁-𝑡*ₙ}", xticklabelrotation=-pi/2, limits=((1/Nwaits/4,1), (nothing,maximum(waits))), xscale=log2, xticks=([1/2^round(Int,log2(Nwaits)/2), 1], [powerofhalfstring(round(Int,log2(Nwaits)/2)), "1"]))
+    linkyaxes!(ax_waits, ax_hist_waits)
+
 
     # Full timeseries
     lines!(ax_Rs, ts2plot, Rs[ts2plot]; color=:black)
     hlines!(ax_Rs, thresh; color=:black, linewidth=1, linestyle=(:dash,:dense))
-    scatter!(ax_Rs, ts_peak[peaks2plot], Rs_peak[peaks2plot]; color=:black, marker=:star5)
-    bin_edges_Rs = (isnothing(bin_edges) ? collect(range(0, 1; length=65)) : bin_edges)
-    bin_centers_Rs = (bin_edges_Rs[1:end-1] .+ bin_edges_Rs[2:end])./2
-    bins2plot = round.(Int, range(1, length(bin_centers_Rs); length=33))
-    hist_Rs = SB.normalize(SB.fit(SB.Histogram, Rs[duration_spinup:end]#=cluster_starts[1]:cluster_stops[end]]=#, bin_edges_Rs); mode=:pdf)
+    scatter!(ax_Rs, ts_peak[peaks2plot], Rs_peak[peaks2plot]; color=:black, marker=:star5, markersize=4)
+    @show ts_peak[peaks2plot], Rs_peak[peaks2plot]
     if !isnothing(pdf_wholetruth)
         lines!(ax_hist_Rs, pdf_wholetruth[bins2plot], bin_centers_Rs[bins2plot]; color=:gray79, linewidth=4, label="Whole\nTruth")
     end
@@ -207,31 +216,20 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
     for ax = (ax_Rs,ax_hist_Rs)
         hlines!(ax, thresh; color=:black, linewidth=1, linestyle=(:dash,:dense), label=@sprintf("Thresh\nμ[%s]", powerofhalfstring(round(Int,nlg1m(thresh)))))
     end
-    ylims!(ax_hist_Rs, 0, 1)
-    ylims!(ax_Rs, 0, 1)
-    xlims!(ax_hist_Rs, 0, 1.25)
-    ax_hist_Rs.xticks = ([0, 1, 1.25], ["0","1","1.25"])
-    linkyaxes!(ax_Rs, ax_hist_Rs)
     leg = Legend(lout[1,3], ax_hist_Rs; labelsize=10, framevisible=false)
 
     # Peak timeseries 
-    scatter!(ax_peaks, ts_peak, Rs_peak; color=:black, marker=:circle)
+    scatter!(ax_peaks, ts_peak, Rs_peak; color=:black, marker=:circle, markersize=3)
     peaks_sorted,ccdf_peaks = empirical_ccdf(Rs_peak)
     if !isnothing(ccdf_peak_wholetruth)
         lines!(ax_hist_peaks, ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end-1]; color=:gray79, linewidth=3)
     end
     scatterlines!(ax_hist_peaks, ccdf_peaks, peaks_sorted; color=:black, marker=:circle, markersize=2)
-    ylims!(ax_peaks, thresh, 1.0)
-    ylims!(ax_hist_peaks, thresh, 1.0)
-    linkyaxes!(ax_peaks, ax_hist_peaks)
-    xlims!(ax_hist_peaks, 0, 1)
 
     # Wait timeseries
-    waits = diff(ts_peak)
-    waits_sorted, ccdf_waits = empirical_ccdf(waits)
-    scatter!(ax_waits, ts_peak[2:end], waits; color=:black, marker=:circle)
+    scatter!(ax_waits, ts_peak[2:end], waits; color=:black, marker=:circle, markersize=3)
     scatterlines!(ax_hist_waits, ccdf_waits, waits_sorted; color=:black, marker=:circle, markersize=2)
-    linkyaxes!(ax_waits, ax_hist_waits)
+    #ax_hist_waits.xscale = log2
 
     for ax = (ax_hist_Rs, ax_hist_peaks, ax_hist_waits)
         ax.ylabelvisible = ax.yticklabelsvisible=false
@@ -451,14 +449,15 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     bin_edges = vcat(bin_lower_edges, 1.0)
 
 
+    # ---------------- All diagnostics for one ancestor 
     fig = Figure(size=(80*N_ast, 850))
     theme_ax = (xticklabelsize=12, yticklabelsize=12, xlabelsize=16, ylabelsize=16, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=16)
     lout = fig[1,1] = GridLayout()
 
-
     # ---------- Row 1: CCDFs at each AST separately ----------
+    xlimits = extrema(ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]))
     for i_ast = 1:N_ast
-        ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., xscale=identity, yscale=identity, ylabel="Tail PDFs,\nUniform AST", ylabelrotation=0)
+        ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., xscale=identity, yscale=identity, limits=(xlimits, (bin_edges[i_bin_thresh], 1)), ylabel="Tail PDFs,\nUniform AST", ylabelrotation=0)
         lines!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
         lines!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
         if !isnothing(ccdf_peak_wholetruth)
@@ -476,9 +475,6 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     scatterlines!(ax, -asts, SB.mean(thresholded_entropy; dims=2)[:,1]; color=:red)
     ax = Axis(lout[3,1:N_ast]; xlabel="−AST", ylabel="COAST\nfrequency", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=true, xticklabelsvisible=true)
     xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
-    #for i_ast = 1:N_ast
-    #    scatterlines!(ax, -asts[i_ast].*ones(2), [0, SB.mean(idx_astmaxthrent.==i_ast)]; color=:black, linewidth=8)
-    #end
     coast_freq = zeros(Int64, N_ast)
     @show coast_freq
     for i_ast = 1:N_ast
@@ -486,25 +482,29 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     end
     @show coast_freq
     stairs!(ax, -asts, coast_freq/N_anc, color=:black, linewidth=3, step=:center)
-    scatter!(ax, -threshold_neglog, 0.5; marker=:star6, color=:cyan, markersize=18)
-    scatter!(ax, -perturbation_neglog, 0.5; marker=:star6, color=:orange, markersize=18)
-    scatter!(ax, -(perturbation_neglog-threshold_neglog), 0.5; marker=:star6, color=:red, markersize=18)
+    scatter!(ax, -threshold_neglog, 0.5; marker=:star6, color=:cyan, markersize=18, label=@sprintf("𝑀=%d",threshold_neglog))
+    scatter!(ax, -perturbation_neglog, 0.5; marker=:star6, color=:orange, markersize=18, label=@sprintf("𝐾=%d",perturbation_neglog))
+    scatter!(ax, -(perturbation_neglog-threshold_neglog), 0.5; marker=:star6, color=:red, markersize=18, label=@sprintf("𝐾−𝑀=%d",perturbation_neglog-threshold_neglog))
     ylims!(ax, -0.01, 1.01)
 
     # --------- Row 4: the Thrent-based mixture --------------
     i_astmaxthrent_mean = round(Int, SB.mean(idx_astmaxthrent)) # Put it horizontally at the mean COAST position 
-    ax = Axis(lout[4,N_ast-i_astmaxthrent_mean+1]; theme_ax..., xscale=identity, yscale=identity, ylabel="AST = argmax(thresh. ent.)", ylabelrotation=0)
-    lines!(ax, ccdf2pmf(ccdf_peak_anc), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
-    lines!(ax, ccdf2pmf(ccdf_peak_valid), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
+    ax = Axis(lout[4,N_ast-i_astmaxthrent_mean+1]; theme_ax..., xscale=identity, yscale=identity, limits=(xlimits, (bin_edges[i_bin_thresh], 1)), ylabel="AST = argmax(thresh. ent.)", ylabelrotation=0)
+    lines!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
+    lines!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
     if !isnothing(ccdf_peak_wholetruth)
-        lines!(ax, ccdf2pmf(ccdf_peak_wholetruth), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
+        lines!(ax, ccdf2pdf(ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
     end
-    lines!(ax, ccdf2pmf(ccdf_moctail_astmaxthrent_rect), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
+    lines!(ax, ccdf2pdf(ccdf_moctail_astmaxthrent_rect, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
     if i_astmaxthrent_mean < N_ast; ax.ylabelvisible = ax.yticklabelsvisible = false; end
+    # Stick in a legend 
+    leg = Legend(lout[4,1], content(lout[3,1:N_ast]), fontsize=8)
 
+    # Tidy up format for rows 1-4
     for i_col = 1:N_ast
         for i_row = [1,4]
             if length(contents(lout[i_row,i_col])) == 0; continue; end
+            if (i_col==1 && i_row==4); continue; end
             ax = content(lout[i_row,i_col])
             if i_col < N_ast; colgap!(lout, i_col, 0); end
             if i_col > 1; ax.ylabelvisible = ax.yticklabelsvisible = false; end
@@ -683,20 +683,26 @@ function plot_dns(duration_spinup::Int64, duration_spinon::Int64, datadir::Strin
     fig = Figure(size=(600,150))
     lout = fig[1,1] = GridLayout()
     theme_ax,theme_leg = get_themes()
-    ax_ts = Axis(lout[1,1]; xlabel="𝑡", ylabel="𝑥", theme_ax...)
+    ax_ts = Axis(lout[1,1]; xlabel="𝑡", ylabel="𝑥") #, theme_ax...)
+    #scatterlines!(ax_ts, 0:0.1:2pi, sin.(0:0.1:2pi); color="black")
+    ylims!(ax_ts, -1, 1)
     ax_hist = Axis(lout[1,2]; xlabel="𝑝(𝑥)", ylabel="𝑥", ylabelvisible=false, yticklabelsvisible=false, theme_ax...)
 
     scatterlines!(ax_ts, ts[t0:t0+Nt2plot], xs[1,t0:t0+Nt2plot]; color=:black)
+    xlims!(ax_ts, ts[t0], ts[t0+Nt2plot])
+    ylims!(ax_ts, 0, 1)
     xlims!(ax_hist, 0, 2)
     ylims!(ax_hist, 0, 1)
-    ylims!(ax_ts, 0, 1)
     if !isnothing(pdf_wholetruth)
         lines!(ax_hist, pdf_wholetruth, bincenters; color=:black, linestyle=(:dash,:dense), linewidth=3, label="WholeTruth")
     end
     scatterlines!(ax_hist, h.weights, bincenters; color=:steelblue2, markersize=2)
+    
 
     colsize!(lout, 2, Relative(1/6))
     colgap!(lout, 1, 0)
+
+    #@infiltrate
 
     save(joinpath(figdir, "dns_timeseries_hist_$(outfile_suffix).png"), fig)
 end

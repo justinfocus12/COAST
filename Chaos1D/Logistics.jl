@@ -16,15 +16,15 @@ function BoostParams()
             duration_ancgen = 2^12, 
             duration_spinup = 2^4,
             threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
-            perturbation_neglog = 7,  # how many bits to keep when doing the perturbation 
+            perturbation_neglog = 9,  # how many bits to keep when doing the perturbation 
             min_cluster_gap = 2^6,
             bit_precision = 32,
             ast_min = 1,
             ast_max = 12,
             bst = 2,
             num_descendants = 31,
-            latentize = false,# Do we transform to Z space? 
-            latentize_bins = false,
+            latentize = true,# Do we transform to Z space? 
+            latentize_bins = true,
            )
 end
 
@@ -94,7 +94,7 @@ function main()
     bpar = BoostParams()
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-10-16",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-01-21",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)

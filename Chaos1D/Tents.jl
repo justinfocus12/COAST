@@ -97,12 +97,12 @@ function main()
                              "plot_dns_valid" =>           0,
                              "run_dns_ancgen" =>           0,
                              "plot_dns_ancgen" =>          0,
-                             "analyze_peaks_valid" =>      0,
+                             "analyze_peaks_valid" =>      1,
                              "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
                              "plot_boosts" =>              0,
                              "mix_conditional_tails" =>    0,
-                             "plot_moctails" =>            1,
+                             "plot_moctails" =>            0,
                             )
 
     overwrite_boosts = true
@@ -110,7 +110,7 @@ function main()
     bpar = BoostParams()
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2025-10-28",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-01-21",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
