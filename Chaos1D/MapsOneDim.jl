@@ -268,7 +268,7 @@ end
 
 
 
-function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::Int64, N_dsc::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64) # could also have decreasing intervals, as in COAST paper.
+function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::Int64, N_dsc::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64) 
     ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_ancgen.jld2"), "r") do f
         return f["ts"], f["xs"]
     end
@@ -296,9 +296,9 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
             fig = Figure(size=(200*4,75*N_ast))
             lout = fig[1,1] = GridLayout()
             for i_ast = 1:N_ast
-                ax1 = Axis(lout[i_ast,1]; ylabel="$(i_ast==1 ? "AST = " : "")$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, title="𝑅(𝑥(𝑡))", theme_ax...)
-                ax2 = Axis(lout[i_ast,2]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, title=@sprintf("Peak 𝑅*\nnear 𝑡*=%d", ts_peak[i_anc]), theme_ax...)
-                ax3 = Axis(lout[i_ast,3]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="δ𝑥(𝑡−𝑡*)", title="𝑅*(δ𝑥(𝑡-𝑡*))", theme_ax..., xticklabelrotation=-pi/2) # xticks=([-1,-1/2,0,1/2,1]./(2^perturbation_neglog), ["−1","−½","0","+½","+1"]))
+                ax1 = Axis(lout[i_ast,1]; ylabel="$(i_ast==1 ? "AST = " : "")$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, title="𝑅(𝑥(𝑡))", theme_ax..., limits=((-asts[end]-1, bst+1),(0,1)))
+                ax2 = Axis(lout[i_ast,2]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, title=@sprintf("Peak 𝑅*\nnear 𝑡*=%d", ts_peak[i_anc]), theme_ax..., limits=((-asts[end]-1, bst+1),(2*threshold-1,1)))
+                ax3 = Axis(lout[i_ast,3]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="δ𝑥(𝑡−𝑡*)", title="𝑅*(δ𝑥(𝑡-𝑡*))", theme_ax..., xticklabelrotation=-pi/2, limits=((-1/2^perturbation_neglog,1/2^perturbation_neglog),(2*threshold-1,1)))
                 # Plot the ancestor
                 tidx_anc = ts_peak[i_anc]-ts_anc[1]+1 .+ (-asts[end]:bst)
                 lines!(ax1, ts_anc[tidx_anc].-ts_peak[i_anc], xs_anc[1,tidx_anc]; color=:black, linewidth=2, linestyle=(:dash,:dense))
@@ -349,10 +349,10 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                     end
                 end
             end
-            ax4 = Axis(lout[:,4]; title="Thresh.\nEntropy", theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2)
-            scatterlines!(ax4, entropy_thresholded, -asts, color=:red)
-            ax5 = Axis(lout[:,5]; title="Total\nEntropy", theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2)
-            scatterlines!(ax5, entropy_total, -asts; color=:steelblue)
+            title = "Entropy\n" * rich(rich("ToE", color=:steelblue, font=:bold) * ", " * rich("ThE", color=:red))
+            ax4 = Axis(lout[:,4]; title=title, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,max(maximum(entropy_thresholded),maximum(entropy_total))*1.1),(-asts[end]-1/2,1/2)))
+            scatterlines!(ax4, entropy_total, -asts; color=:steelblue, linewidth=4, label="ToE")
+            scatterlines!(ax4, entropy_thresholded, -asts, color=:red, label="ThE")
             ylims!(ax4, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
             for i_ast = 1:N_ast-1
                 rowgap!(lout, i_ast, 0)
@@ -361,10 +361,8 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
             colgap!(lout, 1, 10)
             colgap!(lout, 2, 10)
             colgap!(lout, 3, 0)
-            colgap!(lout, 4, 0)
 
-            colsize!(lout, 4, Relative(1/8))
-            colsize!(lout, 5, Relative(1/8))
+            colsize!(lout, 4, Relative(1/7))
 
             save(joinpath(figdir, "boosts_anc$(i_anc).png"), fig)
         end
@@ -467,14 +465,13 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     end
 
     # ----------- Rows 2-3: thrent and COAST frequency ------------
-    ax = Axis(lout[2,1:N_ast]; xlabel="−AST", ylabel="Thresholded\nEntropy.", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=false, xticklabelsvisible=false)
+    ax = Axis(lout[2,1:N_ast]; xlabel="−AST", ylabel="Thresholded\nEntropy.", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(thresholded_entropy)*1.05)), xlabelvisible=false, xticklabelsvisible=false)
     xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
     for i_anc = 1:N_anc
         scatterlines!(ax, -asts, thresholded_entropy[:,i_anc]; color=:gray79)
     end
     scatterlines!(ax, -asts, SB.mean(thresholded_entropy; dims=2)[:,1]; color=:red)
-    ax = Axis(lout[3,1:N_ast]; xlabel="−AST", ylabel="COAST\nfrequency", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=true, xticklabelsvisible=true)
-    xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
+    ax = Axis(lout[3,1:N_ast]; xlabel="−AST", ylabel="COAST\nfrequency", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=true, xticklabelsvisible=true, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,1)))
     coast_freq = zeros(Int64, N_ast)
     @show coast_freq
     for i_ast = 1:N_ast
@@ -521,7 +518,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                                                              (loss_astmaxthrent_hell,loss_astmaxthrent_chi2,loss_astmaxthrent_wass),
                                                              ("Hellinger\nDistance","χ² Divergence","𝐿¹ Distance")
                                                             )
-        ax = Axis(lout[i_row,1:N_ast]; xlabel="−AST", ylabel=divname, ylabelrotation=0, yscale=log10, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)))
+        ax = Axis(lout[i_row,1:N_ast]; xlabel="−AST", ylabel=divname, ylabelrotation=0, yscale=log10, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-asts[end]-1/2,1/2),(min(minimum(losses_astunif),minimum(loss_astmaxthrent)), max(maximum(losses_astunif),maximum(loss_astmaxthrent)))))
         xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
         scatterlines!(ax, -asts, losses_astunif; color=:black)
         hlines!(ax, loss_astmaxthrent; color=:black, linestyle=(:dash,:dense))
