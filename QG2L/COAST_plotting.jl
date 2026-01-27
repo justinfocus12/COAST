@@ -182,8 +182,8 @@ function plot_objective_response_linquad(
     label_r2_text = """
     Coefficient of 
     determination
-        𝑅²
     """
+        #𝑅²
     leftlab2d,leftlab1d,leftlabslope,leftlabeig,leftlabr2 = [Axis(lout[i_row,1], limits=(0,1,0,1)) for i_row=2:6] 
     Makie.text!(leftlab2d, 0, 0.5; text=label_pert_text, fontsize=12, align=(:left,:center))
     Makie.text!(leftlab1d, 0, 0.5; text=label_resp_text, fontsize=12, align=(:left,:center))

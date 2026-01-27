@@ -49,10 +49,10 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "evaluate_mixing_criteria" =>                       0,
                              "plot_objective" =>                                 0, 
-                             "plot_conditional_pdfs" =>                          0,
+                             "plot_conditional_pdfs" =>                          1,
                              "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        0, 
-                             "plot_COAST_mixture" =>                             1,
+                             "plot_COAST_mixture" =>                             0,
                              "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 
@@ -804,7 +804,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                 for (i_mc,mc) in enumerate(mixcrits2plot)
                     ax = Axis(
                               lout[i_mc,1]; 
-                              yscale=(mc in ["globcorr","contcorr"] ? transcorr_hard : identity),
+                              yscale=identity, #(mc in ["globcorr","contcorr"] ? transcorr_hard : identity),
                               ylabel=mixcrit_labels[mc], ylabelvisible=true, ylabelrotation=0, ylabelsize=15, 
                               titlefont=:regular, 
                               xlabel="−AST (𝑡*=$(t0str))", xlabelvisible=(i_mc==length(mixcrits2plot)), xticklabelsvisible=(i_mc==length(mixcrits2plot)), xlabelsize=15, 
@@ -836,7 +836,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                         ylims!(ax, -0.05, 1.05)
                     elseif mc in ["globcorr","contcorr"]
                         hlines!(ax, 1-(3/8)^2; color=:gray, alpha=1.0, linewidth=2, linestyle=(:dash,:dense))
-                        ytickvalues = [0.0, 0.1, 0.5, 0.9, 1.0]
+                        ytickvalues = [0.0, 0.25, 0.5, 0.75, 1.0]
                         ax.yticks = (ytickvalues, string.(ytickvalues))
                         ylims!(ax, 0.0, 1.0)
                     end
@@ -868,7 +868,7 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
             axs = [
                    Axis(
                         lout[i_mcgroup,1]; 
-                        yscale = (mcgroup[1] in ["contcorr","globcorr"] ? transcorr_hard : identity),
+                        yscale = identity, #(mcgroup[1] in ["contcorr","globcorr"] ? transcorr_hard : identity),
                         xlabel="−AST", ylabel=join([mixcrit_labels[mc] for mc=mcgroup], ",\n"), 
                         titlefont=:regular, xlabelvisible=(i_mcgroup==Nmcgroups), xticklabelsvisible=(i_mcgroup==Nmcgroups), 
                         xlabelsize=15, ylabelsize=15, xticklabelsize=12, yticklabelsize=12, ylabelrotation=0,
@@ -884,14 +884,14 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                 if any([mc in mcgroup for mc in ["globcorr", "contcorr"]])
                     hlines!(ax, 1-(3/8)^2; color=:gray, alpha=1.0, linewidth=2, linestyle=(:dash,:dense))
                     ylims!(ax, 0.0, 1.0)
-                    ytickvalues = [0.0, 0.1, 0.5, 0.9, 1.0]
+                    ytickvalues = [0.0, 0.25, 0.5, 0.75, 1.0]
                     ax.yticks = (ytickvalues, string.(ytickvalues))
                 end
                 if any([mc in mcgroup for mc in ["pth","pim","r2lin","r2quad"]])
                     ylims!(ax, 0.0, 1.0)
                 end
                 if Set(mcgroup) == Set(["r2lin","r2quad"])
-                    ax.ylabel = "Coefficient of\ndetermination\n𝑅²"
+                    ax.ylabel = "Coefficient of\ndetermination" #\n𝑅²"
                 end
                 #if any([mc in mcgroup for mc in ["ei","eot","ent"]])
                 #    ylims!(ax, 0.0, maximum(mchi)) #mixcrits[dst][rsp][mc]))
@@ -1512,7 +1512,7 @@ end
 
 
 all_procedures = ["COAST","metaCOAST"]
-i_proc = 2
+i_proc = 1
 # TODO augment META with composites, lead times displays etc
 
 idx_expt = Vector{Int64}([])
