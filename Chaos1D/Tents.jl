@@ -55,7 +55,7 @@ tentmap(x::Float64) = clamp(2*(x < 0.5 ? x : 1-x), 0, 1)
 function illustrate_map(plotdir::String)
     fig = Figure(size=(400,400))
     lout = fig[1,1] = GridLayout()
-    ax = Axis(lout[1,1]; xlabel="𝑥", ylabel="𝑇(𝑥)", title="Tent map")
+    ax = Axis(lout[1,1]; xlabel="𝑥", ylabel="𝑇(𝑥)", title="Tent map", limits=((0,1),(0,1)))
     xgrid = collect(range(0, 1; length=65))
     lines!(ax, xgrid, tentmap.(xgrid); color=:black)
     save(joinpath(plotdir,"tentmap.png"), fig)
@@ -92,7 +92,7 @@ end
 
 function main()
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           0,
+                             "illustrate_map" =>           1,
                              "run_dns_valid" =>            0,
                              "plot_dns_valid" =>           0,
                              "run_dns_ancgen" =>           0,
@@ -102,7 +102,7 @@ function main()
                              "boost_peaks" =>              0,
                              "plot_boosts" =>              0,
                              "mix_conditional_tails" =>    0,
-                             "plot_moctails" =>            1,
+                             "plot_moctails" =>            0,
                             )
 
     overwrite_boosts = true

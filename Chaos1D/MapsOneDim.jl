@@ -518,8 +518,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                                                              (loss_astmaxthrent_hell,loss_astmaxthrent_chi2,loss_astmaxthrent_wass),
                                                              ("Hellinger\nDistance","χ² Divergence","𝐿¹ Distance")
                                                             )
-        ax = Axis(lout[i_row,1:N_ast]; xlabel="−AST", ylabel=divname, ylabelrotation=0, yscale=log10, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-asts[end]-1/2,1/2),(min(minimum(losses_astunif),minimum(loss_astmaxthrent)), max(maximum(losses_astunif),maximum(loss_astmaxthrent)))))
-        xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
+        ax = Axis(lout[i_row,1:N_ast]; xlabel="−AST", ylabel=divname, ylabelrotation=0, yscale=log10, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(min(minimum(losses_astunif),minimum(loss_astmaxthrent)), max(maximum(losses_astunif),maximum(loss_astmaxthrent)))))
         scatterlines!(ax, -asts, losses_astunif; color=:black)
         hlines!(ax, loss_astmaxthrent; color=:black, linestyle=(:dash,:dense))
     end
@@ -541,7 +540,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     # Plot entropies as functions of AST 
     fig = Figure(size=(300,150))
     lout = fig[1,1] = GridLayout()
-    ax = Axis(lout[1,1]; theme_ax..., xlabel="−AST", ylabel="Thresh. Ent.")
+    ax = Axis(lout[1,1]; theme_ax..., xlabel="−AST", ylabel="Thresh. Ent.", limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(total_entropy))))
     for i_anc = 1:N_anc
         scatterlines!(ax, reverse(-asts), reverse(thresholded_entropy[:,i_anc]), color=:gray79, marker=:circle)
         i_ast_argmax = idx_astmaxthrent[i_anc]
@@ -562,16 +561,16 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     xticks = (xtickvals, string.(xtickvals))
     for i_anc = 1:N_anc_plot
         # Left column: maxima due to each AST 
-        ax = Axis(lout[1+i_anc,1]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2)
+        ax = Axis(lout[1+i_anc,1]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,1)))
         hlines!(ax, Rs_peak_anc[i_anc]; color=:steelblue, linestyle=:solid, label="𝑅* (anc.)")
         for i_ast = 1:N_ast
             scatter!(ax, -asts[i_ast]*ones(N_dsc), Rs_peak_dsc[:,i_ast,i_anc]; color=:red, marker=:circle, markersize=3, label=(i_ast==1 ? "𝑅* (desc.)" : nothing))
         end
         hlines!(ax, bin_lower_edges[i_bin_thresh]; color=:black, linestyle=(:dash,:dense), label="Thresh. 𝜇")
         # Right column: entropies 
-        ax = Axis(lout[1+i_anc,2]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2, yticklabelsvisible=false)
-        scatterlines!(ax, -reverse(asts), reverse(total_entropy[:,i_anc]); color=:black, label="Total", markersize=6)
-        scatterlines!(ax, -reverse(asts), reverse(thresholded_entropy[:,i_anc]); color=:red, markersize=6, linestyle=(:dash,:dense), label="Thresholded")
+        ax = Axis(lout[1+i_anc,2]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2, yticklabelsvisible=false, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(total_entropy))))
+        scatterlines!(ax, -reverse(asts), reverse(total_entropy[:,i_anc]); color=:steelblue, label="ToE", markersize=6, linewidth=3)
+        scatterlines!(ax, -reverse(asts), reverse(thresholded_entropy[:,i_anc]); color=:red, markersize=6, label="ThE", linewidth=1)
     end
     Legend(lout[1,1], content(lout[2,1]), "Severities"; framevisible=false, labelsize=10, titlesize=9, titlefont=:regular)
     Legend(lout[1,2], content(lout[2,2]), "Entropies"; framevisible=false, labelsize=10, titlesize=9, titlefont=:regular, rowgap=2)
@@ -593,6 +592,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     linkyaxes!((content(lout[1+i_anc,2]) for i_anc=1:N_anc_plot)...)
     colgap!(lout, 1, 15)
     rowsize!(lout, 1, Relative(2/(2+N_anc_plot)))
+    colsize!(lout, 2, Relative(1/6))
     for i_row = 1:N_anc_plot
         rowgap!(lout, i_row, 3)
     end
