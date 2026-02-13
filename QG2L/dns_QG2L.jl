@@ -77,8 +77,8 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
                 "compute_global_histograms" =>      0,
                 "compute_extrema" =>                0,
                 "plot_energy" =>                    0,
-                "plot_hovmoller" =>                 0, 
-                "animate" =>                        1,
+                "plot_hovmoller" =>                 1, 
+                "animate" =>                        0,
                 # ---------- defunct ---------
                 "compute_rough_quantiles" =>        0,
                 "compute_local_GPD_params" =>       0,
@@ -457,6 +457,23 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             anomaly_cont = true
             anomaly_heat = true
             @show obs_name
+            # --------- Plot a timeseries ----------------
+            x_point_frac = 0.5
+            y_point_frac = 0.5
+            ix_point = round(Int, x_point_frac * sdm.Nx)
+            iy_point = round(Int, y_point_frac * sdm.Ny)
+            f_point = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])...; dims=2)[ix_point,iy_point,:,:]
+            Nt_point = min(400,size(f_point, 2))
+            fig = Figure(size=(1000,400))
+            lout = fig[1,1] = GridLayout()
+            for iz_point = 1:2
+                ax = Axis(lout[iz_point,1], xlabel="𝑡", title=@sprintf("%s(𝑥=%.1f𝐿,𝑦=%0.1f𝐿)",obs_labels[obs_name], x_point_frac, y_point_frac), ylabel=@sprintf("𝑧=%d",iz_point), xlabelvisible=(iz_point==2), xticklabelsvisible=(iz_point==2), titlevisible=(iz_point==1), titlefont=:regular)
+                lines!(ax, (1:Nt_point).*sdm.tu, f_point[iz_point,1:Nt_point]; color=:black)
+            end
+            rowgap!(lout,1,0)
+            save(joinpath(figdir, "timeseries_$(obs_name).png"), fig)
+            # --------------------------------------------
+
             # --------- Plot several snapshots -----------
             fheat_2d = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])..., dims=4)[:,:,:,tidx_hov[tidx_snap]]
             @show size(fheat_2d)
@@ -471,6 +488,7 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             obs_mssk_xall = JLD2.jldopen(joinpath(resultdir,"moments_mssk_$(obs_name).jld2"),"r") do f
                 return f["mssk_xall"]
             end
+
 
             #@infiltrate
             fig = Figure(size=(1200,600))
@@ -593,6 +611,6 @@ end
 for i_expt = idx_expt
     println()
     println("------------------- Starting experiment $i_expt ----------------")
-    direct_numerical_simulation_procedure(; i_expt=i_expt, overwrite_expt_setup=true, overwrite_ensemble=false)
+    direct_numerical_simulation_procedure(; i_expt=i_expt, overwrite_expt_setup=false, overwrite_ensemble=false)
     println()
 end
