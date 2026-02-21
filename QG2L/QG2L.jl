@@ -97,7 +97,6 @@ function expt_setup(php, sdm; pert_mag_ox=0.1)
     @show instab[1,:]
     @show kxs,kys
     @show length(pertop.sf_pert_modes)
-    @infiltrate
     return (cop,pertop)
 end
 

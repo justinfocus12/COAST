@@ -460,35 +460,37 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             @show obs_name
             # --------- Plot a timeseries and spectra in both space and time  ----------------
             x_point_frac = 0.5
-            y_point_frac = 26/64
+            y_point_frac = 14/64
             ix_point = round(Int, x_point_frac * sdm.Nx)
             iy_point = round(Int, y_point_frac * sdm.Ny)
-            flat = SB.mean(cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])...; dims=2)[:,iy_point-1:iy_point+2,:,:]; dims=2)[:,1,:,:]
+            flat = SB.mean(cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])...; dims=2)[:,iy_point:iy_point,:,:]; dims=2)[:,1,:,:]
             f_point = flat[ix_point,:,:]
             # hovmoller diagram and spectrum
             Nt_spectrum_comp = size(flat,3)
+            @show Nt_spectrum_comp
             Nt_spectrum_plot = div(Nt_spectrum_comp,3)
-            Nt_hovmoller_plot = 30
-            flathat = FFTW.fft(flat, [3,1]) # keep temporal frequencies positive 
+            Nt_hovmoller_plot = 360
+            flathat = FFTW.rfft(flat, [3,1]) # keep temporal frequencies positive 
             println(extrema(abs.(flathat)))
             kxmax = div(sdm.Nx,4)
-            fig = Figure(size=(1000,800))
+            fig = Figure(size=(1000,1200))
             lout = fig[1,1] = GridLayout()
             if SB.mean(isfinite.(flathat)) > 0.8
-                for iz = 1:2
+                for iz = 1:1
                     # hovmoller
                     xtickvalues = range(0, sdm.Lx; length=5)
                     xticklabels = (x->@sprintf("%d", x)).(xtickvalues)
                     ytickvalues = tgrid[round.(Int, range(1,Nt_hovmoller_plot; length=5))]
                     yticklabels = string.(ytickvalues)
                     ax_hov = Axis(lout[iz,1], xlabel="𝑥", ylabel="𝑡", xticks=(xtickvalues,xticklabels), yticks=(ytickvalues,yticklabels))
-                    hm_hov = heatmap!(ax_hov, sdm.xgrid, tgrid[1:Nt_hovmoller_plot], flat[:,iz,1:Nt_spectrum_plot]; colormap=:coolwarm)
+                    hm_hov = heatmap!(ax_hov, sdm.xgrid, tgrid[1:Nt_hovmoller_plot], flat[:,iz,1:Nt_hovmoller_plot]; colormap=:coolwarm)
                     cbar_hov = Colorbar(lout[iz,2], hm_hov)
                     # spectrum
-                    krange = -6:6
-                    xtickvalues = range(krange[1], krange[end]; length=5)
+                    kxmax = 6
+                    krange = -kxmax:kxmax
+                    xtickvalues = round.(Int, range(krange[1], krange[end]; length=5))
                     xticklabels = (x->@sprintf("%d", x)).(xtickvalues)
-                    periods = reverse(Nt_spectrum_comp./(1:Nt_spectrum_plot))
+                    periods = Nt_spectrum_comp./(1:Nt_spectrum_plot)
                     ytickvalues = round.(Int, range(1,Nt_spectrum_plot;length=6))
                     yticklabels = (i_period->@sprintf("%d", periods[i_period])).(ytickvalues)
                     ax_spec = Axis(lout[iz,3], xlabel="𝑘", ylabel="period", 
@@ -496,7 +498,7 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
                                    yticks=(ytickvalues,yticklabels))
                     hm_spec = heatmap!(ax_spec, 
                                        krange, 1:Nt_spectrum_plot, 
-                                       reverse(FFTW.fftshift(abs.(flathat[:,iz,2:Nt_spectrum_plot+1]), 1)[div(sdm.Nx,2).+krange,:]; dims=2); 
+                                       circshift(abs.(flathat[:,iz,2:Nt_spectrum_plot+1]), [kxmax,0])[1:(2*kxmax+1),:]; 
                                        colormap=:lajolla, colorscale=log10)
                     cbar_spec= Colorbar(lout[iz,4], hm_spec)
                 end
@@ -656,6 +658,6 @@ end
 for i_expt = idx_expt
     println()
     println("------------------- Starting experiment $i_expt ----------------")
-    direct_numerical_simulation_procedure(; i_expt=i_expt, overwrite_expt_setup=false, overwrite_ensemble=false)
+    direct_numerical_simulation_procedure(; i_expt=i_expt, overwrite_expt_setup=true, overwrite_ensemble=false)
     println()
 end
