@@ -463,23 +463,41 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             y_point_frac = 26/64
             ix_point = round(Int, x_point_frac * sdm.Nx)
             iy_point = round(Int, y_point_frac * sdm.Ny)
-            f_lat = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])...; dims=2)[:,iy_point,:,:]
-            f_point = f_lat[ix_point,:,:]
-            Nt_point = size(f_point, 2) #min(400,size(f_point, 2))
+            flat = SB.mean(cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])...; dims=2)[:,iy_point-1:iy_point+2,:,:]; dims=2)[:,1,:,:]
+            f_point = flat[ix_point,:,:]
             # hovmoller diagram and spectrum
-            Nt_spectrum = 100
-            flathat = FFTW.fft(f_lat, [1,3])
+            Nt_spectrum_comp = size(flat,3)
+            Nt_spectrum_plot = div(Nt_spectrum_comp,3)
+            Nt_hovmoller_plot = 30
+            flathat = FFTW.fft(flat, [3,1]) # keep temporal frequencies positive 
             println(extrema(abs.(flathat)))
             kxmax = div(sdm.Nx,4)
             fig = Figure(size=(1000,800))
             lout = fig[1,1] = GridLayout()
             if SB.mean(isfinite.(flathat)) > 0.8
                 for iz = 1:2
-                    ax_hov = Axis(lout[iz,1], xlabel="𝑥", ylabel="𝑡", xticks=range(0,sdm.Lx;length=5), yticks=range(0,Nt_spectrum;length=5))
-                    hm_hov = heatmap!(ax_hov, sdm.xgrid, tgrid[1:Nt_spectrum], f_lat[:,iz,1:Nt_spectrum]; colormap=:coolwarm)
+                    # hovmoller
+                    xtickvalues = range(0, sdm.Lx; length=5)
+                    xticklabels = (x->@sprintf("%d", x)).(xtickvalues)
+                    ytickvalues = tgrid[round.(Int, range(1,Nt_hovmoller_plot; length=5))]
+                    yticklabels = string.(ytickvalues)
+                    ax_hov = Axis(lout[iz,1], xlabel="𝑥", ylabel="𝑡", xticks=(xtickvalues,xticklabels), yticks=(ytickvalues,yticklabels))
+                    hm_hov = heatmap!(ax_hov, sdm.xgrid, tgrid[1:Nt_hovmoller_plot], flat[:,iz,1:Nt_spectrum_plot]; colormap=:coolwarm)
                     cbar_hov = Colorbar(lout[iz,2], hm_hov)
-                    ax_spec = Axis(lout[iz,3], xlabel="𝑘", ylabel="ω", xticks=range(0,kxmax;length=5), yticks=range(0,Nt_spectrum;length=5))
-                    hm_spec = heatmap!(ax_spec, sdm.xgrid, tgrid[1:Nt_spectrum], abs.(flathat[:,iz,:]); colormap=:lajolla, colorscale=log)
+                    # spectrum
+                    krange = -6:6
+                    xtickvalues = range(krange[1], krange[end]; length=5)
+                    xticklabels = (x->@sprintf("%d", x)).(xtickvalues)
+                    periods = reverse(Nt_spectrum_comp./(1:Nt_spectrum_plot))
+                    ytickvalues = round.(Int, range(1,Nt_spectrum_plot;length=6))
+                    yticklabels = (i_period->@sprintf("%d", periods[i_period])).(ytickvalues)
+                    ax_spec = Axis(lout[iz,3], xlabel="𝑘", ylabel="period", 
+                                   xticks=(xtickvalues,xticklabels),
+                                   yticks=(ytickvalues,yticklabels))
+                    hm_spec = heatmap!(ax_spec, 
+                                       krange, 1:Nt_spectrum_plot, 
+                                       reverse(FFTW.fftshift(abs.(flathat[:,iz,2:Nt_spectrum_plot+1]), 1)[div(sdm.Nx,2).+krange,:]; dims=2); 
+                                       colormap=:lajolla, colorscale=log10)
                     cbar_spec= Colorbar(lout[iz,4], hm_spec)
                 end
                 colsize!(lout, 1, Relative(5/12))
@@ -495,7 +513,7 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             lout = fig[1,1] = GridLayout()
             for iz_point = 1:2
                 ax = Axis(lout[iz_point,1], xlabel="𝑡", title=@sprintf("%s(𝑥=%.1f𝐿,𝑦=%0.1f𝐿)",obs_labels[obs_name], x_point_frac, y_point_frac), ylabel=@sprintf("𝑧=%d",iz_point), xlabelvisible=(iz_point==2), xticklabelsvisible=(iz_point==2), titlevisible=(iz_point==1), titlefont=:regular)
-                lines!(ax, (1:Nt_point).*sdm.tu, f_point[iz_point,1:Nt_point]; color=:black)
+                lines!(ax, (1:Nt_spectrum_plot).*sdm.tu, f_point[iz_point,1:Nt_spectrum_plot]; color=:black)
             end
             rowgap!(lout,1,0)
             save(joinpath(figdir, "timeseries_$(obs_name).png"), fig)
