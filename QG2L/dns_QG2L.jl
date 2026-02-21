@@ -11,6 +11,7 @@ import Random
 import StatsBase as SB
 import Distributions as Dists
 import JLD2
+import FFTW
 
 using CairoMakie
 
@@ -457,14 +458,40 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             anomaly_cont = true
             anomaly_heat = true
             @show obs_name
-            # --------- Plot a timeseries ----------------
+            # --------- Plot a timeseries and spectra in both space and time  ----------------
             x_point_frac = 0.5
-            y_point_frac = 0.5
+            y_point_frac = 26/64
             ix_point = round(Int, x_point_frac * sdm.Nx)
             iy_point = round(Int, y_point_frac * sdm.Ny)
-            f_point = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])...; dims=2)[ix_point,iy_point,:,:]
-            Nt_point = min(400,size(f_point, 2))
-            fig = Figure(size=(1000,400))
+            f_lat = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])...; dims=2)[:,iy_point,:,:]
+            f_point = f_lat[ix_point,:,:]
+            Nt_point = size(f_point, 2) #min(400,size(f_point, 2))
+            # hovmoller diagram and spectrum
+            Nt_spectrum = 100
+            flathat = FFTW.fft(f_lat, [1,3])
+            println(extrema(abs.(flathat)))
+            kxmax = div(sdm.Nx,4)
+            fig = Figure(size=(1000,800))
+            lout = fig[1,1] = GridLayout()
+            if SB.mean(isfinite.(flathat)) > 0.8
+                for iz = 1:2
+                    ax_hov = Axis(lout[iz,1], xlabel="𝑥", ylabel="𝑡", xticks=range(0,sdm.Lx;length=5), yticks=range(0,Nt_spectrum;length=5))
+                    hm_hov = heatmap!(ax_hov, sdm.xgrid, tgrid[1:Nt_spectrum], f_lat[:,iz,1:Nt_spectrum]; colormap=:coolwarm)
+                    cbar_hov = Colorbar(lout[iz,2], hm_hov)
+                    ax_spec = Axis(lout[iz,3], xlabel="𝑘", ylabel="ω", xticks=range(0,kxmax;length=5), yticks=range(0,Nt_spectrum;length=5))
+                    hm_spec = heatmap!(ax_spec, sdm.xgrid, tgrid[1:Nt_spectrum], abs.(flathat[:,iz,:]); colormap=:lajolla, colorscale=log)
+                    cbar_spec= Colorbar(lout[iz,4], hm_spec)
+                end
+                colsize!(lout, 1, Relative(5/12))
+                colsize!(lout, 2, Relative(1/12))
+                colsize!(lout, 3, Relative(5/12))
+                save(joinpath(figdir, "spectrum_$(obs_name).png"), fig)
+            end
+
+
+            
+            # timeseries
+            fig = Figure(size=(800,400))
             lout = fig[1,1] = GridLayout()
             for iz_point = 1:2
                 ax = Axis(lout[iz_point,1], xlabel="𝑡", title=@sprintf("%s(𝑥=%.1f𝐿,𝑦=%0.1f𝐿)",obs_labels[obs_name], x_point_frac, y_point_frac), ylabel=@sprintf("𝑧=%d",iz_point), xlabelvisible=(iz_point==2), xticklabelsvisible=(iz_point==2), titlevisible=(iz_point==1), titlefont=:regular)
