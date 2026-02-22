@@ -453,59 +453,64 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
         tgrid = range(hovmoller_timespan[1], hovmoller_timespan[2]; step=1) #range(tfins[memfirst_hov-1]+1, tfins[memlast_hov]; step=1)
         tidx_snap = round.(Int, range(1, length(tgrid); length=Nsnap))
         sf_2d = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs["sf"])..., dims=4)[:,:,:,tidx_hov[tidx_snap]]
-        #@infiltrate
-        for obs_name = obs2plot
+        # TODO add the linear stability spectrum to this giant figure. Show which wavenumbers are dominant 
+        for obs_name = ["sf","conc"] #iobs2plot
             anomaly_cont = true
             anomaly_heat = true
             @show obs_name
             # --------- Plot a timeseries and spectra in both space and time  ----------------
             x_point_frac = 0.5
-            y_point_frac = 14/64
+            y_point_frac = 26/64
+            iz = 1
             ix_point = round(Int, x_point_frac * sdm.Nx)
             iy_point = round(Int, y_point_frac * sdm.Ny)
-            flat = SB.mean(cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])...; dims=2)[:,iy_point:iy_point,:,:]; dims=2)[:,1,:,:]
-            f_point = flat[ix_point,:,:]
+            flat = SB.mean(cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])...; dims=2)[:,iy_point:iy_point,iz,:]; dims=2)[:,1,:]
+            f_point = flat[ix_point,:]
             # hovmoller diagram and spectrum
-            Nt_spectrum_comp = size(flat,3)
-            @show Nt_spectrum_comp
-            Nt_spectrum_plot = div(Nt_spectrum_comp,3)
-            Nt_hovmoller_plot = 360
-            flathat = FFTW.rfft(flat, [3,1]) # keep temporal frequencies positive 
+            tmax_spec_comp = size(flat,2)
+            ktmax_plot = div(tmax_spec_comp,4)
+            tmax_hov_plot = 360
+            flathat = FFTW.rfft(flat, [2,1]) # keep temporal frequencies positive 
             println(extrema(abs.(flathat)))
-            kxmax = div(sdm.Nx,4)
+            kxmax_plot = 8
             fig = Figure(size=(1000,1200))
             lout = fig[1,1] = GridLayout()
             if SB.mean(isfinite.(flathat)) > 0.8
-                for iz = 1:1
-                    # hovmoller
-                    xtickvalues = range(0, sdm.Lx; length=5)
-                    xticklabels = (x->@sprintf("%d", x)).(xtickvalues)
-                    ytickvalues = tgrid[round.(Int, range(1,Nt_hovmoller_plot; length=5))]
-                    yticklabels = string.(ytickvalues)
-                    ax_hov = Axis(lout[iz,1], xlabel="𝑥", ylabel="𝑡", xticks=(xtickvalues,xticklabels), yticks=(ytickvalues,yticklabels))
-                    hm_hov = heatmap!(ax_hov, sdm.xgrid, tgrid[1:Nt_hovmoller_plot], flat[:,iz,1:Nt_hovmoller_plot]; colormap=:coolwarm)
-                    cbar_hov = Colorbar(lout[iz,2], hm_hov)
-                    # spectrum
-                    kxmax = 6
-                    krange = -kxmax:kxmax
-                    xtickvalues = round.(Int, range(krange[1], krange[end]; length=5))
-                    xticklabels = (x->@sprintf("%d", x)).(xtickvalues)
-                    periods = Nt_spectrum_comp./(1:Nt_spectrum_plot)
-                    ytickvalues = round.(Int, range(1,Nt_spectrum_plot;length=6))
-                    yticklabels = (i_period->@sprintf("%d", periods[i_period])).(ytickvalues)
-                    ax_spec = Axis(lout[iz,3], xlabel="𝑘", ylabel="period", 
-                                   xticks=(xtickvalues,xticklabels),
-                                   yticks=(ytickvalues,yticklabels))
-                    hm_spec = heatmap!(ax_spec, 
-                                       krange, 1:Nt_spectrum_plot, 
-                                       circshift(abs.(flathat[:,iz,2:Nt_spectrum_plot+1]), [kxmax,0])[1:(2*kxmax+1),:]; 
-                                       colormap=:lajolla, colorscale=log10)
-                    cbar_spec= Colorbar(lout[iz,4], hm_spec)
+                # hovmoller
+                xtickvalues = range(0, sdm.Lx; length=5)
+                xticklabels = (x->@sprintf("%d", x)).(xtickvalues)
+                ytickvalues = round.(Int, range(1,tmax_hov_plot; length=9))
+                yticklabels = string.(ytickvalues)
+                ax_hov = Axis(lout[1:2,1], xlabel="𝑥", ylabel="𝑡", xticks=(xtickvalues,xticklabels), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, title=@sprintf("%s(𝑥,𝑦=%.1f𝐿)",obs_labels[obs_name],y_point_frac), limits=((0,sdm.Lx),(0,tmax_hov_plot)))
+                hm_hov = heatmap!(ax_hov, sdm.xgrid, 1:tmax_hov_plot, flat[:,1:tmax_hov_plot]; colormap=:coolwarm)
+                cbar_hov = Colorbar(lout[1:2,2], hm_hov)
+                # timeseries
+                ax_timeseries = Axis(lout[1:2,3], title=@sprintf("%s(𝑥=%.1f𝐿,𝑦=%.1f𝐿)", obs_labels[obs_name],x_point_frac,y_point_frac), limits=(nothing,(0,tmax_hov_plot)))
+                lines!(ax_timeseries, f_point[1:tmax_hov_plot], 1:tmax_hov_plot; color=:black)
+
+                # spectrum
+                krange = -kxmax_plot:kxmax_plot
+                xtickvalues = [-kxmax_plot, -div(kxmax_plot,2), 0, div(kxmax_plot,2), kxmax_plot]
+                xticklabels = (x->@sprintf("%d", x)).(xtickvalues)
+                periods = tmax_spec_comp./(0:ktmax_plot) # first entry will be Inf 
+                ytickvalues = round.(Int, range(1, ktmax_plot; length=6))
+                yticklabels = (i_period->@sprintf("%d", periods[i_period])).(ytickvalues)
+                ax_spec = Axis(lout[1,4], xlabel="𝑘", ylabel="period", 
+                               xticks=(xtickvalues,xticklabels),
+                               yticks=(ytickvalues,yticklabels))
+                hm_spec = heatmap!(ax_spec, 
+                                   krange, 0:ktmax_plot-1, 
+                                   circshift(abs.(flathat), [kxmax_plot,0])[1:(2*kxmax_plot+1),1:ktmax_plot+1]; 
+                                   colormap=:lajolla, colorscale=log10)
+                cbar_spec = Colorbar(lout[1,5], hm_spec)
+                
+                linkyaxes!(ax_hov, ax_timeseries)
+                colshares = [5,1,5,8,1]
+                for i_col = 1:5
+                    colsize!(lout, i_col, Relative(colshares[i_col]/sum(colshares)))
                 end
-                colsize!(lout, 1, Relative(5/12))
-                colsize!(lout, 2, Relative(1/12))
-                colsize!(lout, 3, Relative(5/12))
-                save(joinpath(figdir, "spectrum_$(obs_name).png"), fig)
+
+                save(joinpath(figdir, @sprintf("spectrum_y%d_%s.png", iy_point, obs_name)), fig)
             end
 
 
@@ -513,11 +518,8 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
             # timeseries
             fig = Figure(size=(800,400))
             lout = fig[1,1] = GridLayout()
-            for iz_point = 1:2
-                ax = Axis(lout[iz_point,1], xlabel="𝑡", title=@sprintf("%s(𝑥=%.1f𝐿,𝑦=%0.1f𝐿)",obs_labels[obs_name], x_point_frac, y_point_frac), ylabel=@sprintf("𝑧=%d",iz_point), xlabelvisible=(iz_point==2), xticklabelsvisible=(iz_point==2), titlevisible=(iz_point==1), titlefont=:regular)
-                lines!(ax, (1:Nt_spectrum_plot).*sdm.tu, f_point[iz_point,1:Nt_spectrum_plot]; color=:black)
-            end
-            rowgap!(lout,1,0)
+            ax = Axis(lout[1,1], xlabel="𝑡", title=@sprintf("%s(𝑥=%.1f𝐿,𝑦=%0.1f𝐿)",obs_labels[obs_name], x_point_frac, y_point_frac), titlefont=:regular)
+            lines!(ax, (1:tmax_hov_plot).*sdm.tu, f_point[1:tmax_hov_plot]; color=:black)
             save(joinpath(figdir, "timeseries_$(obs_name).png"), fig)
             # --------------------------------------------
 

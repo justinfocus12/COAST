@@ -26,6 +26,7 @@ function signsymb(v::Float64)
     end
 end
 
+
 function hatickvals(vals2plot::Array{Float64})
     vmin,vmax = extrema(vals2plot)
     vmid = (vmin+vmax)/2
