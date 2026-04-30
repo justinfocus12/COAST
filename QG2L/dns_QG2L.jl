@@ -453,74 +453,110 @@ function direct_numerical_simulation_procedure(; i_expt=nothing, overwrite_expt_
         tgrid = range(hovmoller_timespan[1], hovmoller_timespan[2]; step=1) #range(tfins[memfirst_hov-1]+1, tfins[memlast_hov]; step=1)
         tidx_snap = round.(Int, range(1, length(tgrid); length=Nsnap))
         sf_2d = cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs["sf"])..., dims=4)[:,:,:,tidx_hov[tidx_snap]]
-        # TODO add the linear stability spectrum to this giant figure. Show which wavenumbers are dominant 
-        for obs_name = ["sf","conc"] #iobs2plot
+        for obs_name = obs2plot
             anomaly_cont = true
             anomaly_heat = true
             @show obs_name
             # --------- Plot a timeseries and spectra in both space and time  ----------------
-            x_point_frac = 0.5
-            y_point_frac = 26/64
             iz = 1
-            ix_point = round(Int, x_point_frac * sdm.Nx)
-            iy_point = round(Int, y_point_frac * sdm.Ny)
-            flat = SB.mean(cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])...; dims=2)[:,iy_point:iy_point,iz,:]; dims=2)[:,1,:]
-            f_point = flat[ix_point,:]
-            # hovmoller diagram and spectrum
-            tmax_spec_comp = size(flat,2)
-            ktmax_plot = div(tmax_spec_comp,4)
-            tmax_hov_plot = 360
-            flathat = FFTW.rfft(flat, [2,1]) # keep temporal frequencies positive 
-            println(extrema(abs.(flathat)))
-            kxmax_plot = 8
-            fig = Figure(size=(1000,1200))
-            lout = fig[1,1] = GridLayout()
-            if SB.mean(isfinite.(flathat)) > 0.8
-                # hovmoller
-                xtickvalues = range(0, sdm.Lx; length=5)
-                xticklabels = (x->@sprintf("%d", x)).(xtickvalues)
-                ytickvalues = round.(Int, range(1,tmax_hov_plot; length=9))
-                yticklabels = string.(ytickvalues)
-                ax_hov = Axis(lout[1:2,1], xlabel="𝑥", ylabel="𝑡", xticks=(xtickvalues,xticklabels), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, title=@sprintf("%s(𝑥,𝑦=%.1f𝐿)",obs_labels[obs_name],y_point_frac), limits=((0,sdm.Lx),(0,tmax_hov_plot)))
-                hm_hov = heatmap!(ax_hov, sdm.xgrid, 1:tmax_hov_plot, flat[:,1:tmax_hov_plot]; colormap=:coolwarm)
-                cbar_hov = Colorbar(lout[1:2,2], hm_hov)
-                # timeseries
-                ax_timeseries = Axis(lout[1:2,3], title=@sprintf("%s(𝑥=%.1f𝐿,𝑦=%.1f𝐿)", obs_labels[obs_name],x_point_frac,y_point_frac), limits=(nothing,(0,tmax_hov_plot)))
-                lines!(ax_timeseries, f_point[1:tmax_hov_plot], 1:tmax_hov_plot; color=:black)
-
-                # spectrum
-                krange = -kxmax_plot:kxmax_plot
-                xtickvalues = [-kxmax_plot, -div(kxmax_plot,2), 0, div(kxmax_plot,2), kxmax_plot]
-                xticklabels = (x->@sprintf("%d", x)).(xtickvalues)
-                periods = tmax_spec_comp./(0:ktmax_plot) # first entry will be Inf 
-                ytickvalues = round.(Int, range(1, ktmax_plot; length=6))
-                yticklabels = (i_period->@sprintf("%d", periods[i_period])).(ytickvalues)
-                ax_spec = Axis(lout[1,4], xlabel="𝑘", ylabel="period", 
-                               xticks=(xtickvalues,xticklabels),
-                               yticks=(ytickvalues,yticklabels))
-                hm_spec = heatmap!(ax_spec, 
-                                   krange, 0:ktmax_plot-1, 
-                                   circshift(abs.(flathat), [kxmax_plot,0])[1:(2*kxmax_plot+1),1:ktmax_plot+1]; 
-                                   colormap=:lajolla, colorscale=log10)
-                cbar_spec = Colorbar(lout[1,5], hm_spec)
-                
-                linkyaxes!(ax_hov, ax_timeseries)
-                colshares = [5,1,5,8,1]
-                for i_col = 1:5
-                    colsize!(lout, i_col, Relative(colshares[i_col]/sum(colshares)))
+            x_point_frac = 0.5
+            for y_point_frac in [14,26,NaN]./64
+                ix_point = round(Int, x_point_frac * sdm.Nx)
+                if isfinite(y_point_frac)
+                    iy_point = round(Int, y_point_frac * sdm.Ny)
+                    flat = SB.mean(cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])...; dims=2)[:,iy_point-2:iy_point+2,iz,:]; dims=2)[:,1,:]
+                else
+                    iy_point = 0
+                    flat = SB.mean(cat(QG2L.compute_observable_ensemble(hist_filenames_hov, obs_funs[obs_name])...; dims=2)[:,5:end-5,iz,:]; dims=2)[:,1,:]
                 end
+                f_point = flat[ix_point,:]
+                # hovmoller diagram and spectrum
+                tmax_spec_comp = size(flat,2)
+                ktmax_plot = div(tmax_spec_comp,4)
+                tmax_hov_plot = 360
+                flathat = FFTW.rfft(flat, [2,1]) # keep temporal frequencies positive 
+                println(extrema(abs.(flathat)))
+                fig = Figure(size=(1200,1000))
+                lout = fig[1,1] = GridLayout()
+                if SB.mean(isfinite.(flathat)) > 0.8
+                    # hovmoller
+                    xtickvalues = range(0, sdm.Lx; length=5)
+                    xticklabels = (x->@sprintf("%d", x)).(xtickvalues)
+                    ytickvalues = round.(Int, range(1,tmax_hov_plot; length=9))
+                    yticklabels = string.(ytickvalues)
+                    ax_hov = Axis(lout[1:3,1], xlabel="𝑥", ylabel="𝑡", xticks=(xtickvalues,xticklabels), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, title=@sprintf("%s(𝑥,𝑦=%.1f𝐿)",obs_labels[obs_name],y_point_frac), limits=((0,sdm.Lx),(0,tmax_hov_plot)))
+                    hm_hov = heatmap!(ax_hov, sdm.xgrid, 1:tmax_hov_plot, flat[:,1:tmax_hov_plot]; colormap=:coolwarm)
+                    cbar_hov = Colorbar(lout[1:3,2], hm_hov)
+                    # timeseries
+                    ax_timeseries = Axis(lout[1:3,3], title=@sprintf("%s(𝑥=%.1f𝐿,𝑦=%.1f𝐿)", obs_labels[obs_name],x_point_frac,y_point_frac), limits=(nothing,(0,tmax_hov_plot)))
+                    lines!(ax_timeseries, f_point[1:tmax_hov_plot], 1:tmax_hov_plot; color=:black)
 
-                save(joinpath(figdir, @sprintf("spectrum_y%d_%s.png", iy_point, obs_name)), fig)
-            end
+                    # spectrum
+                    kxmax_plot = 8
+                    xtickvalues = [-kxmax_plot, -div(kxmax_plot,2), 0, div(kxmax_plot,2), kxmax_plot]
+                    xticklabels = (x->@sprintf("%d", x)).(xtickvalues)
+                    periods = tmax_spec_comp./(0:ktmax_plot) # first entry will be Inf 
+                    ytickvalues = round.(Int, range(1, ktmax_plot; length=6))
+                    yticklabels = (i_period->@sprintf("%d", periods[i_period])).(ytickvalues)
+                    ax_spec = Axis(lout[1,4:5], xlabel="𝑘", ylabel="period", title="Power spectrum",
+                                   xticks=(xtickvalues,xticklabels),
+                                   yticks=(ytickvalues,yticklabels))
+                    hm_spec = heatmap!(ax_spec, 
+                                       -kxmax_plot:kxmax_plot, 0:ktmax_plot-1, 
+                                       circshift(abs2.(flathat), [kxmax_plot,0])[1:(2*kxmax_plot+1),1:ktmax_plot+1]; 
+                                       colormap=Reverse(:roma), colorscale=log10)
+                    cbar_spec = Colorbar(lout[1,6], hm_spec)
+                    # Linear growth rates
+                    kxmax_plot = 8
+                    ax_realeig1 = Axis(lout[2,4], xlabel="𝑘", ylabel="ℓ", title="Growth rate Re{λ₁}", limits=((0,kxmax_plot),(-kxmax_plot,kxmax_plot)))
+                    ax_realeig2 = Axis(lout[2,5], xlabel="𝑘", ylabel="ℓ", title="Growth rate Re{λ₂}", limits=((0,kxmax_plot),(-kxmax_plot,kxmax_plot)))
+                    eig1idx = argmax(real.(cop.evals_ctime); dims=3) # which of the two eigenvalues is less stable 
+                    eig2idx = argmin(real.(cop.evals_ctime); dims=3) # which of the two eigenvalues is more stable 
+                    eig1_plot = circshift(cop.evals_ctime[eig1idx][:,:,1], [0,kxmax_plot])[1:(kxmax_plot+1), 1:(2*kxmax_plot+1)];
+                    eig2_plot = circshift(cop.evals_ctime[eig2idx][:,:,1], [0,kxmax_plot])[1:(kxmax_plot+1), 1:(2*kxmax_plot+1)];
+                    realeig_vlim = maximum([maximum(abs.(real.(evs))) for evs in [eig1_plot,eig2_plot]])
+                    hm_realeig1 = heatmap!(ax_realeig1,
+                                           0:kxmax_plot, -kxmax_plot:kxmax_plot,
+                                           real.(eig1_plot),
+                                           colormap=:coolwarm, colorrange=[-1,1].*realeig_vlim)
+                    hm_realeig2 = heatmap!(ax_realeig2,
+                                           0:kxmax_plot, -kxmax_plot:kxmax_plot,
+                                           real.(eig2_plot),
+                                           colormap=:coolwarm, colorrange=[-1,1].*realeig_vlim)
+                    cbar_evals = Colorbar(lout[2,6], hm_realeig1)
+                    # Linear growth timescales
+                    ax_imageig1 = Axis(lout[3,4], xlabel="𝑘", ylabel="ℓ", title="Period 2π/Im{λ₁}", limits=((0,kxmax_plot),(-kxmax_plot,kxmax_plot)))
+                    ax_imageig2 = Axis(lout[3,5], xlabel="𝑘", ylabel="ℓ", title="Period 2π/Im{λ₂}", limits=((0,kxmax_plot),(-kxmax_plot,kxmax_plot)))
+                    hm_imageig1 = heatmap!(ax_imageig1,
+                                           0:kxmax_plot, -kxmax_plot:kxmax_plot,
+                                           2pi./abs.(imag.(eig1_plot)),
+                                           colormap=:gnuplot2, colorrange=(3,200), colorscale=log10,
+                                          )
+                    hm_imageig2 = heatmap!(ax_imageig2,
+                                           0:kxmax_plot, -kxmax_plot:kxmax_plot,
+                                           2pi./abs.(imag.(eig2_plot)),
+                                           colormap=:gnuplot2, colorrange=(3,200), colorscale=log10
+                                          )
+                    cbar_timescales = Colorbar(lout[3,6], hm_imageig2,) 
+                    
+                    linkyaxes!(ax_hov, ax_timeseries)
+                    colshares = [5,1,5,3,3,1]
+                    for i_col = 1:5
+                        colsize!(lout, i_col, Relative(colshares[i_col]/sum(colshares)))
+                    end
+
+                    save(joinpath(figdir, @sprintf("spectrum_y%d_%s.png", iy_point, obs_name)), fig)
+                end
 
 
             
-            # timeseries
-            fig = Figure(size=(800,400))
-            lout = fig[1,1] = GridLayout()
-            ax = Axis(lout[1,1], xlabel="𝑡", title=@sprintf("%s(𝑥=%.1f𝐿,𝑦=%0.1f𝐿)",obs_labels[obs_name], x_point_frac, y_point_frac), titlefont=:regular)
-            lines!(ax, (1:tmax_hov_plot).*sdm.tu, f_point[1:tmax_hov_plot]; color=:black)
-            save(joinpath(figdir, "timeseries_$(obs_name).png"), fig)
+                # timeseries
+                fig = Figure(size=(800,400))
+                lout = fig[1,1] = GridLayout()
+                ax = Axis(lout[1,1], xlabel="𝑡", title=@sprintf("%s(𝑥=%.1f𝐿,𝑦=%0.1f𝐿)",obs_labels[obs_name], x_point_frac, y_point_frac), titlefont=:regular)
+                lines!(ax, (1:tmax_hov_plot).*sdm.tu, f_point[1:tmax_hov_plot]; color=:black)
+                save(joinpath(figdir, @sprintf("timeseries_y%d_%s.png", iy_point, obs_name)), fig)
+            end
             # --------------------------------------------
 
             # --------- Plot several snapshots -----------

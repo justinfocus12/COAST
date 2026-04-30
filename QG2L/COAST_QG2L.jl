@@ -48,11 +48,11 @@ function COAST_procedure(ensdir_dns::String, resultdir_dns::String, expt_supdir:
                              "plot_contour_dispersion_distribution" =>           0,
                              "regress_lead_dependent_risk_polynomial" =>         0, 
                              "evaluate_mixing_criteria" =>                       0,
-                             "plot_objective" =>                                 0, 
+                             "plot_objective" =>                                 1, 
                              "plot_conditional_pdfs" =>                          0,
                              "plot_mixcrits_overlay" =>                          0,
                              "mix_COAST_distributions" =>                        0, 
-                             "plot_COAST_mixture" =>                             1,
+                             "plot_COAST_mixture" =>                             0,
                              "mixture_COAST_phase_diagram" =>                    0,
                              "plot_composite_contours" =>                        0,
                              # Danger zone 

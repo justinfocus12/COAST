@@ -89,8 +89,8 @@ function plot_objective_response_linquad(
     thresh_cquantile = ccdf_levels[i_thresh_cquantile]
     r2thresh = r2threshes[1]
 
-    color_lin = :cyan
-    color_quad = :sienna1
+    color_lin = :dodgerblue #:cyan
+    color_quad = :red #:sienna1
     color_zern = :purple
     Nleadtime = length(leadtimes)
     Nanc = length(coast.ancestors)
