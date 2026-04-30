@@ -90,6 +90,15 @@ function wassersteindist(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float6
     return sum(abs.(ccdf2pmf(ccdf_truth) .- ccdf2pmf(ccdf_approx)))
 end
 
+function xlgx(x::Float64)
+    return (x==0 ? 0 : x*log2(x))
+end
+
+function kldiv(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
+    pmf_truth, pmf_approx = map(ccdf2pmf, (ccdf_truth, ccdf_approx))
+    return -sum(pmf_approx .* xlgx.(pmf_truth ./ pmf_approx))
+end
+
 function poweroftwostring(k::Int64)
     symbols = ["2¹","2²","2³","2⁴","2⁵","2⁶","2⁷","2⁸","2⁹","2¹⁰","2¹¹","2¹²","2¹³","2¹⁴","2¹⁵","2¹⁶","2¹⁷","2¹⁸"]
     if 1 <= k <= length(symbols)
@@ -106,7 +115,22 @@ function powerofhalfstring(k::Int64)
     return "(½)^$(k)"
 end
 
-function boost_peaks(simulate_fun::Function, latentize::Bool, conjugate_fwd_fun::Function, conjugate_bwd_fun::Function, threshold::Float64, perturbation_neglog::Int64, asts::Vector{Int64}, bst::Int64, bit_precision::Int64, Ndsc_per_leadtime::Int64, seed::Int64, datadir::String, file_suffix::String; overwrite_boosts::Bool=false) 
+function boost_peaks(
+        simulate_fun::Function, 
+        latentize::Bool, 
+        conjugate_fwd_fun::Function, 
+        conjugate_bwd_fun::Function, 
+        threshold::Float64, 
+        perturbation_neglog::Int64, 
+        asts::Vector{Int64}, 
+        bst::Int64, 
+        bit_precision::Int64, 
+        Ndsc_per_leadtime::Int64, 
+        seed::Int64, 
+        datadir::String, 
+        file_suffix::String; 
+        overwrite_boosts::Bool=false
+    ) 
     ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_$(file_suffix).jld2"), "r") do f
         return f["ts"], f["xs"]
     end
@@ -603,7 +627,14 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     return 
 end
 
-function find_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, duration_spinon::Int64, min_cluster_gap::Int64, datadir::String, file_suffix::String)
+function find_peaks_over_threshold(
+        thresh::Float64, 
+        duration_spinup::Int64, 
+        duration_spinon::Int64, 
+        min_cluster_gap::Int64, 
+        datadir::String, 
+        file_suffix::String
+    )
 
     # Collect all independent peaks over the threshold, fit a GPD
     ts,xs = jldopen(joinpath(datadir, "dns_$(file_suffix).jld2"), "r") do f
@@ -775,8 +806,17 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
             ccdfs_moctail_astunif[:,i_ast] .+= ccdfs_dsc[:,i_ast,i_anc]./N_anc
             ccdfs_moctail_astunif_rect[:,i_ast] .+= ccdfs_dsc_rect[:,i_ast,i_anc]./N_anc
         end
-        # Max-thresholded-entropy: take LAST instance of maximum
-        idx_astmaxthrent[i_anc] = N_ast - argmax(reverse(thresholded_entropy[:,i_anc])) + 1
+        # 
+        # ------------ Maximize thresholded entropy ---------------
+        #
+        idx_astmaxthrent[i_anc] = argmax(thresholded_entropy[:,i_anc])
+        #idx_astmaxthrent[i_anc] = N_ast - argmax(reverse(thresholded_entropy[:,i_anc])) + 1
+        #first_decrease = findfirst(diff(thresholded_entropy[:,i_anc]) .< 0) 
+        #@show thresholded_entropy[:,i_anc]'
+        #idx_astmaxthrent[i_anc] = (isnothing(first_decrease) ? N_ast : first_decrease)
+        # 
+        # ---------------------------------------------------------
+        #
         @show thresholded_entropy[i_anc]
         # Oh wait but need to apply adjustment...
         ccdf_moctail_astmaxthrent .+= ccdfs_dsc[:,idx_astmaxthrent[i_anc],i_anc]./N_anc
@@ -786,14 +826,17 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
 
     # compute losses: with respect to the whole truth if it is available, but otherwise the ground truth 
     ccdf_peak_truth = (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth)
-    losses_astunif_hell,losses_astunif_chi2,losses_astunif_wass = (zeros(Float64, N_ast) for _=1:3)
+    losses_astunif_hell,losses_astunif_chi2,losses_astunif_wass,losses_astunif_kl = (zeros(Float64, N_ast) for _=1:3)
     loss_astmaxthrent_hell = hellingerdist(ccdf_peak_truth, ccdf_moctail_astmaxthrent_rect)
     loss_astmaxthrent_chi2 = chi2div(ccdf_peak_truth, ccdf_moctail_astmaxthrent_rect)
     loss_astmaxthrent_wass = wassersteindist(ccdf_peak_truth, ccdf_moctail_astmaxthrent_rect)
+    loss_astmaxthrent_kl = kldiv(ccdf_peak_truth, ccdf_moctail_astmaxthrent_rect)
     for i_ast = 1:N_ast
         losses_astunif_hell[i_ast] = hellingerdist(ccdf_peak_truth, ccdfs_moctail_astunif_rect[:,i_ast])
         losses_astunif_chi2[i_ast] = chi2div(ccdf_peak_truth, ccdfs_moctail_astunif_rect[:,i_ast])
         losses_astunif_wass[i_ast] = wassersteindist(ccdf_peak_truth, ccdfs_moctail_astunif_rect[:,i_ast])
+        losses_astunif_kl[i_ast] = kldiv(ccdf_peak_truth, ccdfs_moctail_astunif_rect[:,i_ast])
+        # TODO compute losses by KL divergence 
     end
     println("asts, losses_astunif_hell")
     display(hcat(asts, losses_astunif_hell))

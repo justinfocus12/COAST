@@ -12,7 +12,7 @@ struct TentMapParams
 end
 
 function BoostParams()
-    return (
+    return (;
             duration_valid = 2^18,
             duration_ancgen = 2^12, 
             duration_spinup = 2^4,
@@ -22,9 +22,9 @@ function BoostParams()
             bit_precision = 32,
             ast_min = 1,
             ast_max = 12,
-            bst = 2,
+            bst = 2, # how long to run each descendant past the ancestor's peak 
             num_descendants = 31,
-            latentize = true, # but this is trivial
+            latentize = true, # but this is trivial for the tent map 
            )
 end
 
@@ -65,7 +65,7 @@ end
            
 
 function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG)
-    xs = zeros(Float64, (1,duration))
+    xs = zeros(Float64, (1,duration)) # x_init is not included in the final output array 
     x = x_init[1]
     ts = collect(1:duration)
     for t = 1:duration
@@ -93,16 +93,16 @@ end
 function main()
     todo = Dict{String,Bool}(
                              "illustrate_map" =>           1,
-                             "run_dns_valid" =>            0,
-                             "plot_dns_valid" =>           0,
-                             "run_dns_ancgen" =>           0,
-                             "plot_dns_ancgen" =>          0,
-                             "analyze_peaks_valid" =>      0,
-                             "analyze_peaks_ancgen" =>     0,
-                             "boost_peaks" =>              0,
-                             "plot_boosts" =>              0,
-                             "mix_conditional_tails" =>    0,
-                             "plot_moctails" =>            0,
+                             "run_dns_valid" =>            1,
+                             "plot_dns_valid" =>           1,
+                             "run_dns_ancgen" =>           1,
+                             "plot_dns_ancgen" =>          1,
+                             "analyze_peaks_valid" =>      1,
+                             "analyze_peaks_ancgen" =>     1,
+                             "boost_peaks" =>              1,
+                             "plot_boosts" =>              1,
+                             "mix_conditional_tails" =>    1,
+                             "plot_moctails" =>            1,
                             )
 
     overwrite_boosts = true
@@ -110,7 +110,7 @@ function main()
     bpar = BoostParams()
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-01-21",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-04-29",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)

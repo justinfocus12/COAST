@@ -23,7 +23,7 @@ function BoostParams()
             ast_max = 12,
             bst = 2,
             num_descendants = 31,
-            latentize = true,# Do we transform to Z space? 
+            latentize = false,# Do we transform to Z space? 
             latentize_bins = true,
            )
 end
@@ -94,7 +94,7 @@ function main()
     bpar = BoostParams()
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-01-21",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-04-29",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
