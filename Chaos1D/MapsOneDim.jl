@@ -144,7 +144,6 @@ function boost_peaks(
                 f["cluster_stops"],
                )
     end
-    @show ts_peak[1:4]
     Npeaks = length(ts_peak)
     pert_seq = van_der_corput(Ndsc_per_leadtime) #.* perturbation_width
     datafile = joinpath(datadir,"xs_dscs.jld2")
@@ -496,15 +495,25 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     lout = fig[1,1] = GridLayout()
 
     # ---------- Row 1: CCDFs at each AST separately ----------
-    xlimits = extrema(ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]))
+    #xlimits = clamp.(extrema(ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end])), 1/maximum(diff(bin_edges)), 1/sum(ccdf_peak_anc)/minimum(diff(bin_edges))) 
+
+
+                     
+    xlimits = [1/N_dsc/maximum(diff(bin_edges)), 1/minimum(diff(bin_edges))]
+    @infiltrate
     for i_ast = 1:N_ast
-        ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., xscale=identity, yscale=identity, limits=(xlimits, (bin_edges[i_bin_thresh], 1)), ylabel="Tail PDFs,\nUniform AST", ylabelrotation=0)
-        lines!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
-        lines!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
+        pdf_moctail = ccdf2pdf(ccdfs_moctail_astunif_rect[:,i_ast], bin_edges[i_bin_thresh:end])
+        #xlimits .= [min(xlimits[1],minimum(filter(x->x>0, pdf_moctail))), max(xlimits[2],maximum(pdf_moctail))]
+        ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), ylabel="Tail PDFs,\nUniform AST", ylabelrotation=0)
+        scatter!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:gray79, label="Ancestors only")
+        scatter!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, label="Long DNS")
         if !isnothing(ccdf_peak_wholetruth)
             lines!(ax, ccdf2pdf(ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
         end
-        lines!(ax, ccdf2pdf(ccdfs_moctail_astunif_rect[:,i_ast], bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
+        scatter!(ax, ccdf2pdf(ccdfs_moctail_astunif_rect[:,i_ast], bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:red)
+    end
+    for i_ast = 1:N_ast
+        xlims!(contents(lout[1,i_ast])[1], tuple(xlimits...))
     end
 
     # ----------- Rows 2-3: thrent and COAST frequency ------------
@@ -529,13 +538,13 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
 
     # --------- Row 4: the Thrent-based mixture --------------
     i_astmaxthrent_mean = round(Int, SB.mean(idx_astmaxthrent)) # Put it horizontally at the mean COAST position 
-    ax = Axis(lout[4,N_ast-i_astmaxthrent_mean+1]; theme_ax..., xscale=identity, yscale=identity, limits=(xlimits, (bin_edges[i_bin_thresh], 1)), ylabel="AST = argmax(thresh. ent.)", ylabelrotation=0)
-    lines!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:gray79, linestyle=:solid, linewidth=3, label="Ancestors only")
-    lines!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Long DNS", linewidth=2)
+    ax = Axis(lout[4,N_ast-i_astmaxthrent_mean+1]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), ylabel="AST = argmax(thresh. ent.)", ylabelrotation=0)
+    scatter!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:gray79, label="Ancestors only")
+    scatter!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, label="Long DNS", )
     if !isnothing(ccdf_peak_wholetruth)
         lines!(ax, ccdf2pdf(ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
     end
-    lines!(ax, ccdf2pdf(ccdf_moctail_astmaxthrent_rect, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:red, linewidth=1)
+    scatter!(ax, ccdf2pdf(ccdf_moctail_astmaxthrent_rect, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:red)
     if i_astmaxthrent_mean < N_ast; ax.ylabelvisible = ax.yticklabelsvisible = false; end
     # Stick in a legend 
     leg = Legend(lout[4,1], content(lout[3,1:N_ast]), fontsize=8)
@@ -608,7 +617,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     save(joinpath(figdir, "thrent_overlay.png"), fig)
 
     # Plot the descendant peaks as a function of -AST; one row for each ancestor
-    N_anc_plot = 4
+    N_anc_plot = min(4, N_anc)
     fig = Figure(size=(600,60*(N_anc_plot+2)))
     theme_ax = (xticklabelsize=8, yticklabelsize=8, xlabelsize=10, ylabelsize=10, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=12)
     lout = fig[1,1] = GridLayout()
