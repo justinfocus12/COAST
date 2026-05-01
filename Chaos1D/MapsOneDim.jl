@@ -97,7 +97,8 @@ end
 
 function kldiv(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
     pmf_truth, pmf_approx = map(ccdf2pmf, (ccdf_truth, ccdf_approx))
-    return sum(-xlogy.(pmf_truth, pmf_approx) .+ xlogx.(pmf_truth))
+    return sum(xlogy.(pmf_approx, pmf_approx./pmf_truth))
+    #return sum(-xlogy.(pmf_truth, pmf_approx) .+ xlogx.(pmf_truth))
 end
 
 function poweroftwostring(k::Int64)
@@ -313,11 +314,11 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
     threshold = bin_lower_edges[i_bin_thresh]
 
 
-    xs_init = zeros(Float64, (1,N_dsc, N_ast, N_anc))
-    xs_dsc = zeros(Float64, (1,N_ast+bst+1, N_dsc, N_ast, N_anc)) # will have some filler values
+    xs_init = zeros(Float64, (1, N_dsc, N_ast, N_anc))
+    xs_dsc = [zeros(Float64, (1, ast+bst, N_dsc, N_anc)) for ast=asts] # will have some filler values
     ts_init = zeros(Int64, (N_dsc, N_ast, N_anc))
-    entropy_thresholded = zeros(Float64, (N_anc, N_ast))
-    entropy_total = zeros(Float64, (N_anc, N_ast))
+    entropy_thresholded = zeros(Float64, (N_ast, N_anc))
+    entropy_total = zeros(Float64, (N_ast, N_anc))
     # TODO keep initializing the necessary arrays to load all the data to, opening-and-shutting the file before plotting
     jldopen(joinpath(datadir,"xs_dscs.jld2"), "r") do f
         for i_anc = 1:N_anc
@@ -325,7 +326,7 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                 for i_dsc = 1:N_dsc
                     dscfullkey = joinpath("ianc$(i_anc)","iast$(i_ast)","idsc$(i_dsc)")
                     xs_init[:,i_dsc,i_ast,i_anc] .= f[joinpath(dscfullkey,"x_init")]
-                    xs_dsc[:,:,i_dsc,i_ast,i_anc] .= f[joinpath(dscfullkey,"xs")]
+                    xs_dsc[i_ast][:,:,i_dsc,i_anc] .= f[joinpath(dscfullkey,"xs")]
                     ts_init[i_dsc, i_ast, i_anc] = f[joinpath(dscfullkey,"t_split")]
                 end
             end
@@ -347,9 +348,8 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
             end
             peaks_dsc = zeros(Float64, N_dsc)
             for i_dsc = 1:N_dsc
-                dscfullkey = joinpath("ianc$(i_anc)","iast$(i_ast)","idsc$(i_dsc)")
                 x_init = xs_init[:,i_dsc, i_ast, i_anc]
-                x_dsc = xs_dsc[:,:,i_dsc,i_ast,i_anc]
+                x_dsc = xs_dsc[i_ast][:,:,i_dsc,i_anc]
                 t_init = ts_init[i_dsc,i_ast,i_anc]
                 Nt = size(x_dsc,2)
                 ts_dsc = t_init .+ collect(1:Nt)
@@ -359,11 +359,11 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                     scatter!(ax, t_init.-ts_peak[i_anc], x_init[1]; color=:red, marker=:star6)
                     scatter!(ax, ts_dsc.-ts_peak[i_anc], intensity(x_dsc); color=:red)
                 end
-                scatter!(ax3, x_init[1]-xs_anc[1,ts_peak[i_anc]-asts[i_ast]-ts_anc[1]+1], maximum(xs_dsc[1,:]); color=:red, marker=:star5)
-                peaks_dsc[i_dsc] = maximum(xs_dsc[1,:])
+                scatter!(ax3, x_init[1]-xs_anc[1,ts_peak[i_anc]-asts[i_ast]-ts_anc[1]+1], maximum(x_dsc[1,:]); color=:red, marker=:star5)
+                peaks_dsc[i_dsc] = maximum(x_dsc[1,:])
             end
-            entropy_thresholded[i_ast] = compute_thresholded_entropy(peaks_dsc, bin_lower_edges[i_bin_thresh:end])
-            entropy_total[i_ast] = compute_thresholded_entropy(peaks_dsc, bin_lower_edges)
+            entropy_thresholded[i_ast,i_anc] = compute_thresholded_entropy(peaks_dsc, bin_lower_edges[i_bin_thresh:end])
+            entropy_total[i_ast,i_anc] = compute_thresholded_entropy(peaks_dsc, bin_lower_edges)
             hlines!(ax1, threshold; color=:gray)
             hlines!(ax2, threshold; color=:gray)
             hlines!(ax3, threshold; color=:gray)
@@ -390,8 +390,8 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
         end
         title = "Entropy\n" * rich(rich("ToE", color=:steelblue, font=:bold) * ", " * rich("ThE", color=:red))
         ax4 = Axis(lout[:,4]; title=title, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,max(maximum(entropy_thresholded),maximum(entropy_total))*1.1),(-asts[end]-1/2,1/2)))
-        scatterlines!(ax4, entropy_total, -asts; color=:steelblue, linewidth=4, label="ToE")
-        scatterlines!(ax4, entropy_thresholded, -asts, color=:red, label="ThE")
+        scatterlines!(ax4, entropy_total[:,i_anc], -asts; color=:steelblue, linewidth=4, label="ToE")
+        scatterlines!(ax4, entropy_thresholded[:,i_anc], -asts, color=:red, label="ThE")
         ylims!(ax4, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
         for i_ast = 1:N_ast-1
             rowgap!(lout, i_ast, 0)
@@ -561,7 +561,19 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                                                              (loss_astmaxthrent_hell,loss_astmaxthrent_chi2,loss_astmaxthrent_wass,loss_astmaxthrent_kldiv),
                                                              ("Hellinger\nDistance","χ² Divergence","𝐿¹ Distance","KL Divergence")
                                                             )
-        ax = Axis(lout[i_row,1:N_ast]; xlabel="−AST", ylabel=divname, ylabelrotation=0, yscale=log10, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(min(minimum(losses_astunif),minimum(loss_astmaxthrent)), max(maximum(losses_astunif),maximum(loss_astmaxthrent)))))
+        # compute y-axis limits 
+        ylo,yhi = (0.85, 1.15) .* (
+                                 min(minimum(losses_astunif),minimum(loss_astmaxthrent)), 
+                                 max(maximum(losses_astunif),maximum(loss_astmaxthrent))
+                                )
+        yticklabels = (y->@sprintf("%.1e",y)).([ylo,yhi])
+        ax = Axis(lout[i_row,1:N_ast]; 
+                  xlabel="−AST", ylabel=divname, yscale=log10,
+                  ylabelrotation=0, xgridvisible=false, ygridvisible=false, 
+                  xticks=(-asts, string.(-asts)), 
+                  limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])), (ylo,yhi)),
+                  yticks=([ylo,yhi],yticklabels),
+                 )
         scatterlines!(ax, -asts, losses_astunif; color=:black)
         hlines!(ax, loss_astmaxthrent; color=:black, linestyle=(:dash,:dense))
     end
@@ -569,10 +581,10 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     for row = [1,4] # make the PMF rows bigger
         rowsize!(lout, row, Relative(3/11))
     end
-    for row = [2,3,5,6] # remove gaps between lineplot rows
+    for row = [2,3,5,6,7] # remove gaps between lineplot rows
         ax = content(lout[row,:])
         ax.xlabelvisible = ax.xticklabelsvisible = false
-        rowgap!(lout, row, 0)
+        rowgap!(lout, row, 10)
     end
     
     save(joinpath(figdir, "ccdfs_moctail.png"), fig)
