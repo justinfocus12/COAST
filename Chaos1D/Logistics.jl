@@ -13,10 +13,10 @@ end
 function BoostParams()
     return (
             duration_valid = 2^18,
-            duration_ancgen = 2^12, 
+            duration_ancgen = 2^15, 
             duration_spinup = 2^4,
-            threshold_neglog = 4, # 2^(-threshold_neglog) is the threshold
-            perturbation_neglog = 12,  # how many bits to keep when doing the perturbation 
+            threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
+            perturbation_neglog = 9,  # how many bits to keep when doing the perturbation 
             min_cluster_gap = 2^6,
             bit_precision = 32,
             ast_min = 1,
@@ -60,6 +60,15 @@ function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64
     return xs, ts
 end
 
+function illustrate_map(plotdir::String)
+    fig = Figure(size=(400,400))
+    lout = fig[1,1] = GridLayout()
+    ax = Axis(lout[1,1]; xlabel="𝑥", ylabel="𝐿(𝑥)", title="Logistic map", limits=((0,1),(0,1)))
+    xgrid = collect(range(0, 1; length=65))
+    lines!(ax, xgrid, 4 .* (xgrid) .* (1 .- xgrid); color=:black)
+    save(joinpath(plotdir,"logisticmap.png"), fig)
+    return
+end
 
 
 
@@ -75,26 +84,29 @@ function simulate(x0::Vector{Float64}, duration::Int64, bit_precision::Int64, rn
     return 
 end
 
-function main()
+function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "run_dns_valid" =>            0,
-                             "plot_dns_valid" =>           0,
-                             "run_dns_ancgen" =>           0,
-                             "plot_dns_ancgen" =>          0,
-                             "analyze_peaks_valid" =>      0,
-                             "analyze_peaks_ancgen" =>     0,
-                             "boost_peaks" =>              0,
-                             "plot_boosts" =>              0,
-                             "mix_conditional_tails" =>    0,
+                             "illustrate_map" =>           1,
+                             "run_dns_valid" =>            1,
+                             "plot_dns_valid" =>           1,
+                             "run_dns_ancgen" =>           1,
+                             "plot_dns_ancgen" =>          1,
+                             "analyze_peaks_valid" =>      1,
+                             "analyze_peaks_ancgen" =>     1,
+                             "boost_peaks" =>              1,
+                             "plot_boosts" =>              1,
+                             "mix_conditional_tails" =>    1,
                              "plot_moctails" =>            1,
                             )
 
     overwrite_boosts = true
 
-    bpar = BoostParams()
+    bpar_default = BoostParams()
+    bpar = (; bpar_default..., bpar_adj...)
+    
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-04-29",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-04",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
@@ -121,6 +133,9 @@ function main()
     duration_plot = 3*2^bpar.threshold_neglog # long enough to capture ~3 peaks 
     perturbation_width = 1/(2^bpar.perturbation_neglog)
 
+    if todo["illustrate_map"]
+        illustrate_map(figdir)
+    end
     if todo["run_dns_valid"]
         seed_dns_valid = 9281
         rng_dns_valid = Random.MersenneTwister(seed_dns_valid)
@@ -162,4 +177,9 @@ function main()
     end
 end
 
-main()
+for threshold_neglog = [4,5,6][2:2]
+    for perturbation_neglog = [8, 10, 11][3:3]
+        bpar_adj = (; threshold_neglog, perturbation_neglog)
+        main(bpar_adj)
+    end
+end

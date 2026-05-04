@@ -102,9 +102,9 @@ function kldiv(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
 end
 
 function poweroftwostring(k::Int64)
-    symbols = ["2¹","2²","2³","2⁴","2⁵","2⁶","2⁷","2⁸","2⁹","2¹⁰","2¹¹","2¹²","2¹³","2¹⁴","2¹⁵","2¹⁶","2¹⁷","2¹⁸"]
-    if 1 <= k <= length(symbols)
-        return symbols[k]
+    symbols = ["2⁰","2¹","2²","2³","2⁴","2⁵","2⁶","2⁷","2⁸","2⁹","2¹⁰","2¹¹","2¹²","2¹³","2¹⁴","2¹⁵","2¹⁶","2¹⁷","2¹⁸"]
+    if 0 <= k <= length(symbols)-1
+        return symbols[k+1]
     end
     return "2^$(k)"
 end
@@ -185,7 +185,7 @@ function boost_peaks(
     return
 end
 
-function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, duration_plot::Int64, datadir::String, figdir::String, file_suffix::String; bin_edges::ornot(Vector{Float64})=nothing, i_bin_thresh::ornot(Int64)=nothing, ccdf_peak_wholetruth::ornot(Vector{Float64})=nothing, pdf_wholetruth::ornot(Vector{Float64})=nothing, return_time_wholetruth::ornot(Float64)=nothing)
+function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, duration_plot::Int64, datadir::String, figdir::String, file_suffix::String; bin_edges::ornot(Vector{Float64})=nothing, i_bin_thresh::ornot(Int64)=nothing, ccdf_peak_wholetruth::ornot(Vector{Float64})=nothing, pdf_wholetruth::ornot(Vector{Float64})=nothing, return_time_wholetruth::ornot(Float64)=nothing, nlg2_thresh::ornot(Float64)=nothing)
 
     ts, xs = jldopen(joinpath(datadir, "dns_$(file_suffix).jld2"), "r") do f
         return f["ts"], f["xs"]
@@ -238,7 +238,7 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
     log2simlength = round(Int, log2(simlength))
     lines!(ax_hist_Rs, hist_Rs.weights[bins2plot], bin_centers_Rs[bins2plot]; color=:black, label=@sprintf("DNS\n%.1f×%s", simlength/2^log2simlength, poweroftwostring(log2simlength)))
     for ax = (ax_Rs,ax_hist_Rs)
-        hlines!(ax, thresh; color=:black, linewidth=1, linestyle=(:dash,:dense), label=@sprintf("Thresh\nμ[%s]", powerofhalfstring(round(Int,nlg1m(thresh)))))
+        hlines!(ax, thresh; color=:black, linewidth=1, linestyle=(:dash,:dense), label=@sprintf("Thresh\n1-%.1E", 1-thresh))
     end
     leg = Legend(lout[1,3], ax_hist_Rs; labelsize=10, framevisible=false)
 
@@ -362,6 +362,7 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                 peaks_dsc[i_dsc] = maximum(x_dsc[1,:])
             end
             entropy_thresholded[i_ast,i_anc] = compute_thresholded_entropy(peaks_dsc, bin_lower_edges[i_bin_thresh:end])
+            # TODO put in the new condent thing 
             entropy_total[i_ast,i_anc] = compute_thresholded_entropy(peaks_dsc, bin_lower_edges)
             hlines!(ax1, threshold; color=:gray)
             hlines!(ax2, threshold; color=:gray)
@@ -417,22 +418,23 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
      ccdf_peak_anc,
      ccdf_peak_valid,
      Rs_peak_dsc,
-     idx_astmaxthrent,
+     idx_coast,
      ccdfs_dsc,
      ccdfs_dsc_rect,
      ccdfs_moctail_astunif,
      ccdfs_moctail_astunif_rect,
-     ccdf_moctail_astmaxthrent,
-     ccdf_moctail_astmaxthrent_rect,
+     ccdf_moctail_coast,
+     ccdf_moctail_coast_rect,
      losses_astunif_hell,
      losses_astunif_chi2,
      losses_astunif_wass,
      losses_astunif_kldiv,
-     loss_astmaxthrent_hell,
-     loss_astmaxthrent_chi2,
-     loss_astmaxthrent_wass,
-     loss_astmaxthrent_kldiv,
+     loss_coast_hell,
+     loss_coast_chi2,
+     loss_coast_wass,
+     loss_coast_kldiv,
      thresholded_entropy,
+     conditional_entropy_proxy,
      total_entropy,
     ) = (
          jldopen(joinpath(datadir,"boost_stats.jld2"), "r") do f
@@ -440,22 +442,23 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                      f["ccdf_peak_anc"], 
                      f["ccdf_peak_valid"], 
                      f["Rs_peak_dsc"], 
-                     f["idx_astmaxthrent"], 
+                     f["idx_coast"], 
                      f["ccdfs_dsc"], 
                      f["ccdfs_dsc_rect"], 
                      f["ccdfs_moctail_astunif"], 
                      f["ccdfs_moctail_astunif_rect"], 
-                     f["ccdf_moctail_astmaxthrent"], 
-                     f["ccdf_moctail_astmaxthrent_rect"], 
+                     f["ccdf_moctail_coast"], 
+                     f["ccdf_moctail_coast_rect"], 
                      f["losses_astunif_hell"], 
                      f["losses_astunif_chi2"], 
                      f["losses_astunif_wass"], 
                      f["losses_astunif_kldiv"], 
-                     f["loss_astmaxthrent_hell"], 
-                     f["loss_astmaxthrent_chi2"], 
-                     f["loss_astmaxthrent_wass"],
-                     f["loss_astmaxthrent_kldiv"],
+                     f["loss_coast_hell"], 
+                     f["loss_coast_chi2"], 
+                     f["loss_coast_wass"],
+                     f["loss_coast_kldiv"],
                      f["thresholded_entropy"],
+                     f["conditional_entropy_proxy"],
                      f["total_entropy"],
                     )
         end
@@ -500,7 +503,6 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
 
                      
     xlimits = [1/N_dsc/maximum(diff(bin_edges)), 1/minimum(diff(bin_edges))]
-    @infiltrate
     for i_ast = 1:N_ast
         pdf_moctail = ccdf2pdf(ccdfs_moctail_astunif_rect[:,i_ast], bin_edges[i_bin_thresh:end])
         #xlimits .= [min(xlimits[1],minimum(filter(x->x>0, pdf_moctail))), max(xlimits[2],maximum(pdf_moctail))]
@@ -517,17 +519,17 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     end
 
     # ----------- Rows 2-3: thrent and COAST frequency ------------
-    ax = Axis(lout[2,1:N_ast]; xlabel="−AST", ylabel="Thresholded\nEntropy.", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(thresholded_entropy)*1.05)), xlabelvisible=false, xticklabelsvisible=false)
+    ax = Axis(lout[2,1:N_ast]; xlabel="−AST", ylabel="Thresholded\nEntropy.", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(conditional_entropy_proxy)*1.05)), xlabelvisible=false, xticklabelsvisible=false)
     xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
     for i_anc = 1:N_anc
-        scatterlines!(ax, -asts, thresholded_entropy[:,i_anc]; color=:gray79)
+        scatterlines!(ax, -asts, conditional_entropy_proxy[:,i_anc]; color=:gray79)
     end
-    scatterlines!(ax, -asts, SB.mean(thresholded_entropy; dims=2)[:,1]; color=:red)
+    scatterlines!(ax, -asts, SB.mean(conditional_entropy_proxy; dims=2)[:,1]; color=:red)
     ax = Axis(lout[3,1:N_ast]; xlabel="−AST", ylabel="COAST\nfrequency", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=true, xticklabelsvisible=true, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,1)))
     coast_freq = zeros(Int64, N_ast)
     @show coast_freq
     for i_ast = 1:N_ast
-        coast_freq[i_ast] += sum(idx_astmaxthrent.==i_ast)
+        coast_freq[i_ast] += sum(idx_coast.==i_ast)
     end
     @show coast_freq
     stairs!(ax, -asts, coast_freq/N_anc, color=:black, linewidth=3, step=:center)
@@ -537,15 +539,15 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     ylims!(ax, -0.01, 1.01)
 
     # --------- Row 4: the Thrent-based mixture --------------
-    i_astmaxthrent_mean = round(Int, SB.mean(idx_astmaxthrent)) # Put it horizontally at the mean COAST position 
-    ax = Axis(lout[4,N_ast-i_astmaxthrent_mean+1]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), ylabel="AST = argmax(thresh. ent.)", ylabelrotation=0)
+    i_coast_mean = round(Int, SB.mean(idx_coast)) # Put it horizontally at the mean COAST position 
+    ax = Axis(lout[4,N_ast-i_coast_mean+1]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), ylabel="AST = argmax(thresh. ent.)", ylabelrotation=0)
     scatter!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:gray79, label="Ancestors only")
     scatter!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, label="Long DNS", )
     if !isnothing(ccdf_peak_wholetruth)
         lines!(ax, ccdf2pdf(ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
     end
-    scatter!(ax, ccdf2pdf(ccdf_moctail_astmaxthrent_rect, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:red)
-    if i_astmaxthrent_mean < N_ast; ax.ylabelvisible = ax.yticklabelsvisible = false; end
+    scatter!(ax, ccdf2pdf(ccdf_moctail_coast_rect, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:red)
+    if i_coast_mean < N_ast; ax.ylabelvisible = ax.yticklabelsvisible = false; end
     # Stick in a legend 
     leg = Legend(lout[4,1], content(lout[3,1:N_ast]), fontsize=8)
 
@@ -564,16 +566,16 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     end
 
     # ------------ Rows 5-7:  various divergences ------
-    for (i_row,losses_astunif,loss_astmaxthrent,divname) = zip(
+    for (i_row,losses_astunif,loss_coast,divname) = zip(
                                                              5:8,
                                                              (losses_astunif_hell,losses_astunif_chi2,losses_astunif_wass,losses_astunif_kldiv),
-                                                             (loss_astmaxthrent_hell,loss_astmaxthrent_chi2,loss_astmaxthrent_wass,loss_astmaxthrent_kldiv),
+                                                             (loss_coast_hell,loss_coast_chi2,loss_coast_wass,loss_coast_kldiv),
                                                              ("Hellinger\nDistance","χ² Divergence","𝐿¹ Distance","KL Divergence")
                                                             )
         # compute y-axis limits 
         ylo,yhi = (0.85, 1.15) .* (
-                                 min(minimum(losses_astunif),minimum(loss_astmaxthrent)), 
-                                 max(maximum(losses_astunif),maximum(loss_astmaxthrent))
+                                 min(minimum(losses_astunif),minimum(loss_coast)), 
+                                 max(maximum(losses_astunif),maximum(loss_coast))
                                 )
         yticklabels = (y->@sprintf("%.1e",y)).([ylo,yhi])
         ax = Axis(lout[i_row,1:N_ast]; 
@@ -584,7 +586,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                   yticks=([ylo,yhi],yticklabels),
                  )
         scatterlines!(ax, -asts, losses_astunif; color=:black)
-        hlines!(ax, loss_astmaxthrent; color=:black, linestyle=(:dash,:dense))
+        hlines!(ax, loss_coast; color=:black, linestyle=(:dash,:dense))
     end
 
     for row = [1,4] # make the PMF rows bigger
@@ -606,12 +608,12 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     lout = fig[1,1] = GridLayout()
     ax = Axis(lout[1,1]; theme_ax..., xlabel="−AST", ylabel="Thresh. Ent.", limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(total_entropy))))
     for i_anc = 1:N_anc
-        scatterlines!(ax, reverse(-asts), reverse(thresholded_entropy[:,i_anc]), color=:gray79, marker=:circle)
-        i_ast_argmax = idx_astmaxthrent[i_anc]
-        scatter!(ax, -asts[i_ast_argmax], thresholded_entropy[i_ast_argmax,i_anc]; color=:gray, marker=:star6)
+        scatterlines!(ax, reverse(-asts), reverse(conditional_entropy_proxy[:,i_anc]), color=:gray79, marker=:circle)
+        i_ast_argmax = idx_coast[i_anc]
+        scatter!(ax, -asts[i_ast_argmax], conditional_entropy_proxy[i_ast_argmax,i_anc]; color=:gray, marker=:star6)
     end
-    scatterlines!(ax, reverse(-asts), reverse(SB.mean(thresholded_entropy; dims=2))[:,1]; color=:black, label="Mean", marker=:circle)
-    vlines!(ax, -SB.mean(asts[idx_astmaxthrent]); color=:black, linestyle=(:dash,:dense))
+    scatterlines!(ax, reverse(-asts), reverse(SB.mean(conditional_entropy_proxy; dims=2))[:,1]; color=:black, label="Mean", marker=:circle)
+    vlines!(ax, -SB.mean(asts[idx_coast]); color=:black, linestyle=(:dash,:dense))
     ax.xticks = reverse(-asts)
     #ax.xticklabels = string.(reverse(-asts))
     save(joinpath(figdir, "thrent_overlay.png"), fig)
@@ -634,7 +636,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
         # Right column: entropies 
         ax = Axis(lout[1+i_anc,2]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2, yticklabelsvisible=false, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(total_entropy))))
         scatterlines!(ax, -reverse(asts), reverse(total_entropy[:,i_anc]); color=:steelblue, label="ToE", markersize=6, linewidth=3)
-        scatterlines!(ax, -reverse(asts), reverse(thresholded_entropy[:,i_anc]); color=:red, markersize=6, label="ThE", linewidth=1)
+        scatterlines!(ax, -reverse(asts), reverse(conditional_entropy_proxy[:,i_anc]); color=:red, markersize=6, label="ThE", linewidth=1)
     end
     Legend(lout[1,1], content(lout[2,1]), "Severities"; framevisible=false, labelsize=10, titlesize=9, titlefont=:regular)
     Legend(lout[1,2], content(lout[2,2]), "Entropies"; framevisible=false, labelsize=10, titlesize=9, titlefont=:regular, rowgap=2)
@@ -829,19 +831,21 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
     end
 
     # Calculate thresholded entropy 
-    idx_astmaxthrent = zeros(Int64, N_anc)
+    idx_coast = zeros(Int64, N_anc)
 
     # Initialize conditional and mixed CCDFs, both full (including under threshold) and rectified (with accept reject)
     ccdfs_dsc,ccdfs_dsc_rect = (zeros(Float64, (N_b,N_ast,N_anc)) for N_b=(N_bin,N_bin-i_bin_thresh+1))
     ccdfs_moctail_astunif,ccdfs_moctail_astunif_rect = (zeros(Float64, (N_b,N_ast)) for N_b=(N_bin,N_bin-i_bin_thresh+1))
-    ccdf_moctail_astmaxthrent,ccdf_moctail_astmaxthrent_rect = (zeros(Float64, (N_b,)) for N_b=(N_bin,N_bin-i_bin_thresh+1))
+    ccdf_moctail_coast,ccdf_moctail_coast_rect = (zeros(Float64, (N_b,)) for N_b=(N_bin,N_bin-i_bin_thresh+1))
     thresholded_entropy = zeros(Float64, (N_ast, N_anc))
+    conditional_entropy_proxy = zeros(Float64, (N_ast, N_anc))
     total_entropy = zeros(Float64, (N_ast, N_anc))
     for i_anc = 1:N_anc
         for i_ast = 1:N_ast
             thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end])
             total_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
             ccdfs_dsc[:,i_ast,i_anc] .= compute_empirical_ccdf(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
+            conditional_entropy_proxy[i_ast, i_anc] = thresholded_entropy[i_ast,i_anc] / ccdfs_dsc[i_bin_thresh,i_ast,i_anc] + log2(ccdfs_dsc[i_bin_thresh,i_ast,i_anc])
             ccdfs_dsc_rect[:,i_ast,i_anc] .= ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] .+ (1-ccdfs_dsc[i_bin_thresh,i_ast,i_anc]).*(Rs_peak_anc[i_anc] .> bin_lower_edges[i_bin_thresh:N_bin])
             ccdfs_moctail_astunif[:,i_ast] .+= ccdfs_dsc[:,i_ast,i_anc]./N_anc
             ccdfs_moctail_astunif_rect[:,i_ast] .+= ccdfs_dsc_rect[:,i_ast,i_anc]./N_anc
@@ -849,28 +853,30 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
         # 
         # ------------ Maximize thresholded entropy ---------------
         #
-        idx_astmaxthrent[i_anc] = argmax(thresholded_entropy[:,i_anc])
-        #idx_astmaxthrent[i_anc] = N_ast - argmax(reverse(thresholded_entropy[:,i_anc])) + 1
-        #first_decrease = findfirst(diff(thresholded_entropy[:,i_anc]) .< 0) 
+        first_decrease = findfirst(diff(thresholded_entropy[:,i_anc]) .< 0) 
+        argmax_thrent = argmax(thresholded_entropy[:,i_anc]) 
+        argmax_condent = argmax(conditional_entropy_proxy[:,i_anc])
+        idx_coast[i_anc] = argmax_condent
+        #idx_coast[i_anc] = N_ast - argmax(reverse(thresholded_entropy[:,i_anc])) + 1
         #@show thresholded_entropy[:,i_anc]'
-        #idx_astmaxthrent[i_anc] = (isnothing(first_decrease) ? N_ast : first_decrease)
+        #idx_coast[i_anc] = (isnothing(first_decrease) ? N_ast : first_decrease)
         # 
         # ---------------------------------------------------------
         #
         @show thresholded_entropy[i_anc]
         # Oh wait but need to apply adjustment...
-        ccdf_moctail_astmaxthrent .+= ccdfs_dsc[:,idx_astmaxthrent[i_anc],i_anc]./N_anc
-        ccdf_moctail_astmaxthrent_rect .+= ccdfs_dsc_rect[:,idx_astmaxthrent[i_anc],i_anc]./N_anc
+        ccdf_moctail_coast .+= ccdfs_dsc[:,idx_coast[i_anc],i_anc]./N_anc
+        ccdf_moctail_coast_rect .+= ccdfs_dsc_rect[:,idx_coast[i_anc],i_anc]./N_anc
     end
-    @show idx_astmaxthrent
+    @show idx_coast
 
     # compute losses: with respect to the whole truth if it is available, but otherwise the ground truth 
     ccdf_peak_truth = (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth)
     losses_astunif_hell,losses_astunif_chi2,losses_astunif_wass,losses_astunif_kldiv = (zeros(Float64, N_ast) for _=1:4)
-    loss_astmaxthrent_hell = hellingerdist(ccdf_peak_truth, ccdf_moctail_astmaxthrent_rect)
-    loss_astmaxthrent_chi2 = chi2div(ccdf_peak_truth, ccdf_moctail_astmaxthrent_rect)
-    loss_astmaxthrent_wass = wassersteindist(ccdf_peak_truth, ccdf_moctail_astmaxthrent_rect)
-    loss_astmaxthrent_kldiv = kldiv(ccdf_peak_truth, ccdf_moctail_astmaxthrent_rect)
+    loss_coast_hell = hellingerdist(ccdf_peak_truth, ccdf_moctail_coast_rect)
+    loss_coast_chi2 = chi2div(ccdf_peak_truth, ccdf_moctail_coast_rect)
+    loss_coast_wass = wassersteindist(ccdf_peak_truth, ccdf_moctail_coast_rect)
+    loss_coast_kldiv = kldiv(ccdf_peak_truth, ccdf_moctail_coast_rect)
     for i_ast = 1:N_ast
         losses_astunif_hell[i_ast] = hellingerdist(ccdf_peak_truth, ccdfs_moctail_astunif_rect[:,i_ast])
         losses_astunif_chi2[i_ast] = chi2div(ccdf_peak_truth, ccdfs_moctail_astunif_rect[:,i_ast])
@@ -893,22 +899,23 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
         f["ccdf_peak_anc"] = ccdf_peak_anc
         f["ccdf_peak_valid"] = ccdf_peak_valid
         f["Rs_peak_dsc"] = Rs_peak_dsc
-        f["idx_astmaxthrent"] = idx_astmaxthrent
+        f["idx_coast"] = idx_coast
         f["ccdfs_dsc"] = ccdfs_dsc
         f["ccdfs_dsc_rect"] = ccdfs_dsc_rect
         f["ccdfs_moctail_astunif"] = ccdfs_moctail_astunif
         f["ccdfs_moctail_astunif_rect"] = ccdfs_moctail_astunif_rect
-        f["ccdf_moctail_astmaxthrent"] = ccdf_moctail_astmaxthrent
-        f["ccdf_moctail_astmaxthrent_rect"] = ccdf_moctail_astmaxthrent_rect
+        f["ccdf_moctail_coast"] = ccdf_moctail_coast
+        f["ccdf_moctail_coast_rect"] = ccdf_moctail_coast_rect
         f["losses_astunif_hell"] = losses_astunif_hell
         f["losses_astunif_chi2"] = losses_astunif_chi2
         f["losses_astunif_wass"] = losses_astunif_wass
         f["losses_astunif_kldiv"] = losses_astunif_kldiv
-        f["loss_astmaxthrent_hell"] = loss_astmaxthrent_hell
-        f["loss_astmaxthrent_chi2"] = loss_astmaxthrent_chi2
-        f["loss_astmaxthrent_wass"] = loss_astmaxthrent_wass
-        f["loss_astmaxthrent_kldiv"] = loss_astmaxthrent_kldiv
+        f["loss_coast_hell"] = loss_coast_hell
+        f["loss_coast_chi2"] = loss_coast_chi2
+        f["loss_coast_wass"] = loss_coast_wass
+        f["loss_coast_kldiv"] = loss_coast_kldiv
         f["thresholded_entropy"] = thresholded_entropy
+        f["conditional_entropy_proxy"] = conditional_entropy_proxy
         f["total_entropy"] = total_entropy
     end
     return

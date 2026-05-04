@@ -14,7 +14,7 @@ end
 function BoostParams()
     return (;
             duration_valid = 2^18,
-            duration_ancgen = 2^12, 
+            duration_ancgen = 2^15, 
             duration_spinup = 2^4,
             threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
             perturbation_neglog = 9,  # how many bits to keep when doing the perturbation 
@@ -90,7 +90,7 @@ function simulate(x0::Vector{Float64}, duration::Int64, bit_precision::Int64, rn
     return 
 end
 
-function main()
+function main(bpar_adj)
     todo = Dict{String,Bool}(
                              "illustrate_map" =>           1,
                              "run_dns_valid" =>            1,
@@ -107,10 +107,11 @@ function main()
 
     overwrite_boosts = true
 
-    bpar = BoostParams()
+    bpar_default = BoostParams()
+    bpar = (; bpar_default..., bpar_adj...)
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-04-29",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-04",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
@@ -179,4 +180,9 @@ function main()
     end
 end
 
-main()
+for threshold_neglog = [4,5,6]
+    for perturbation_neglog = [8, 10, 11]
+        bpar_adj = (; threshold_neglog, perturbation_neglog)
+        main(bpar_adj)
+    end
+end
