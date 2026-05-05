@@ -54,18 +54,20 @@ function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64
     x = x_init[1]
     ts = collect(1:duration)
     for t = 1:duration
-        x = mod(4*x*(1-x), 1)
+        x = logisticmap(x)
         xs[1,t] = x
     end
     return xs, ts
 end
+
+logisticmap(x::Float64) = clamp(4*x*(1-x), 0, 1)
 
 function illustrate_map(plotdir::String)
     fig = Figure(size=(400,400))
     lout = fig[1,1] = GridLayout()
     ax = Axis(lout[1,1]; xlabel="𝑥", ylabel="𝐿(𝑥)", title="Logistic map", limits=((0,1),(0,1)))
     xgrid = collect(range(0, 1; length=65))
-    lines!(ax, xgrid, 4 .* (xgrid) .* (1 .- xgrid); color=:black)
+    lines!(ax, xgrid, logisticmap.(xgrid); color=:black)
     save(joinpath(plotdir,"logisticmap.png"), fig)
     return
 end
@@ -106,7 +108,7 @@ function main(bpar_adj)
     
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-04",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-04/2",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
@@ -177,8 +179,8 @@ function main(bpar_adj)
     end
 end
 
-for threshold_neglog = [4,5,6][2:2]
-    for perturbation_neglog = [8, 10, 11][3:3]
+for perturbation_neglog = [8, 10, 11][1:1]
+    for threshold_neglog = [4,5,6][3:3]
         bpar_adj = (; threshold_neglog, perturbation_neglog)
         main(bpar_adj)
     end

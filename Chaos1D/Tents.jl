@@ -111,7 +111,7 @@ function main(bpar_adj)
     bpar = (; bpar_default..., bpar_adj...)
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-04",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-04/2",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
@@ -180,8 +180,8 @@ function main(bpar_adj)
     end
 end
 
-for threshold_neglog = [4,5,6]
-    for perturbation_neglog = [8, 10, 11]
+for perturbation_neglog = [8, 10, 11]
+    for threshold_neglog = [4,5,6]
         bpar_adj = (; threshold_neglog, perturbation_neglog)
         main(bpar_adj)
     end
