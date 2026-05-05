@@ -7,22 +7,8 @@ using Infiltrator: @infiltrate
 using LogExpFunctions: xlogx, xlogy
 using CairoMakie
 
-
-function van_der_corput(N)
-    # Generate the first N points of the van der corput sequence 
-    max_bit_length = floor(Int, 1+log2(N))
-    xs = zeros(Float64, N)
-    n = 1
-    for bit_length = 1:max_bit_length
-        for k = 1:(2^(bit_length-1))
-            if n <= N
-                xs[n] = (2*k-1)/(2^bit_length)
-            end
-            n += 1
-        end
-    end
-    return xs
-end
+include("displayfuns.jl")
+include("statfuns.jl")
 
 ornot(dt::DataType) = Union{Nothing,dt}
 
@@ -34,103 +20,6 @@ function intensity(xs::Matrix{Float64})
     return xs[1,:]
 end
 
-
-function empirical_ccdf(x::Vector{<:Number})
-    N = length(x)
-    order = sortperm(x)
-    ccdf = (collect(range(N, 1; step=-1)) .- 0.5)./N
-    return x[order], ccdf
-end
-
-function compute_empirical_ccdf(xs::Vector{Float64}, bin_lower_edges::Vector{Float64})
-    @assert all(diff(bin_lower_edges) .> 0)
-    @assert length(xs) > 0
-    ccdf = sum(Float64, xs .> bin_lower_edges'; dims=1)[1,:] ./ length(xs)
-    return ccdf
-end
-
-function compute_conditional_entropy_proxy(xs::Vector{Float64}, bin_lower_edges::Vector{Float64})
-    pmf = compute_empirical_ccdf(xs, bin_lower_edges) #sum(Float64, xs .> bin_lower_edges'; dims=1)[1,:]
-    pmf[1:end-1] .-= pmf[2:end]
-    if length(xs) > 0
-        pmf ./= length(xs)
-    end
-    pmf_sum = sum(pmf)
-    condent = -sum(xlog2x.(pmf)) + xlog2x(pmf_sum)
-    # question mark: divide by 1/(1-sum(pmf)) ?
-    pmf_sum > 0 && (condent /= pmf_sum)
-    return condent 
-end
-
-function compute_thresholded_entropy(xs::Vector{Float64}, bin_lower_edges::Vector{Float64})
-    pmf = compute_empirical_ccdf(xs, bin_lower_edges) #sum(Float64, xs .> bin_lower_edges'; dims=1)[1,:]
-    pmf[1:end-1] .-= pmf[2:end]
-    if all(pmf .== 0)
-        return 0.0
-    end
-    pmf ./= length(xs)
-    entropy = 0.0
-    for (i_bin,bin_lo) in enumerate(bin_lower_edges)
-        if pmf[i_bin] > 0
-            entropy -= pmf[i_bin]*log2(pmf[i_bin])
-        end
-    end
-    return entropy
-end
-
-
-function ccdf2pmf(ccdf::Vector{Float64})
-    pmf = vcat(-diff(ccdf), ccdf[end])
-    return pmf
-end
-
-function ccdf2pdf(ccdf::Vector{Float64}, bin_edges::Vector{Float64})
-    return ccdf2pmf(ccdf) ./ diff(bin_edges)
-end
-
-function chi2div(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
-    pmf_truth = ccdf2pmf(ccdf_truth)
-    pmf_approx = ccdf2pmf(ccdf_approx)
-    return sum((pmf_truth .- pmf_approx).^2 ./ pmf_truth)
-end
-
-function hellingerdist(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
-    pmf_truth = ccdf2pmf(ccdf_truth)
-    pmf_approx = ccdf2pmf(ccdf_approx)
-    return sum((sqrt.(pmf_truth) .- sqrt.(pmf_approx)).^2)
-end
-
-function wassersteindist(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
-    return sum(abs.(ccdf2pmf(ccdf_truth) .- ccdf2pmf(ccdf_approx)))
-end
-
-function xlog2x(x::Float64)
-    return xlogx(x)/log(2)
-end
-function xlog2y(x::Float64, y::Float64)
-    return xlogy(x,y)/log(2)
-end
-
-function kldiv(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
-    pmf_truth, pmf_approx = map(ccdf2pmf, (ccdf_truth, ccdf_approx))
-    return sum(xlog2y.(pmf_approx, pmf_approx./pmf_truth))
-end
-
-function poweroftwostring(k::Int64)
-    symbols = ["2⁰","2¹","2²","2³","2⁴","2⁵","2⁶","2⁷","2⁸","2⁹","2¹⁰","2¹¹","2¹²","2¹³","2¹⁴","2¹⁵","2¹⁶","2¹⁷","2¹⁸"]
-    if 0 <= k <= length(symbols)-1
-        return symbols[k+1]
-    end
-    return "2^$(k)"
-end
-
-function powerofhalfstring(k::Int64)
-    symbols = ["(½)","(½)²","(½)³","(½)⁴","(½)⁵","(½)⁶","(½)⁷","(½)⁸","(½)⁹","(½)¹⁰","(½)¹¹","(½)¹²","(½)¹³","(½)¹⁴","(½)¹⁵"]
-    if 1 <= k <= length(symbols)
-        return symbols[k]
-    end
-    return "(½)^$(k)"
-end
 
 function boost_peaks(
         simulate_fun::Function, 
@@ -177,7 +66,7 @@ function boost_peaks(
             xs_dsc = zeros(Float64, (1, ast+bst))
             # Depending on time and cost of simulation, maybe open the file inside the loop 
             jldopen(boostfile, "a+") do f
-                Ndsc_already_simulated = anckey in keys(f) && astkey in keys(f[joinpath(anckey)]) ? length(f[joinpath(anckey,astkey)]) : 0
+                Ndsc_already_simulated = (anckey in keys(f) && astkey in keys(f[joinpath(anckey)])) ? length(f[joinpath(anckey,astkey)]) : 0
                 for i_dsc = Ndsc_already_simulated+1:Ndsc_per_leadtime
                     rng = Random.MersenneTwister(seed)
                     z_init_anc = (latentize ? conjugate_fwd_fun : identity)(x_init_anc[1])
@@ -285,24 +174,6 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
 end
 
 
-function nlg1m(x::Number) 
-    return -log1p(-x)/log(2) # log_2(1/(1-x))
-end
-function nlg1m_inv(y::Number) # 1 - 1/(2^y)
-    return -expm1(-y*log(2))
-end
-
-Makie.inverse_transform(nlg1m) = nlg1m_inv
-Makie.defaultlimits(::typeof(nlg1m)) = (nlg1m_inv(2.0), nlg1m_inv(8.0))
-Makie.defined_interval(::typeof(nlg1m)) = Makie.OpenInterval(0.0,1.0) 
-function hatickvals(ylo,yhi)
-    nlg_first = ceil(Int, nlg1m(ylo))
-    nlg_last = floor(Int, nlg1m(yhi))
-    nlgs = unique(round.(Int, range(nlg_first, nlg_last; length=3)))
-    tickvals = nlg1m_inv.(nlgs)
-    ticklabs = ["1−2^(−$(tv))" for tv=tickvals] 
-    return (tickvals,ticklabs)
-end
 
 
 
@@ -859,51 +730,66 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
     end
 
     # Calculate thresholded entropy 
-    idx_coast = zeros(Int64, N_anc)
+    idx_moctail_coast = zeros(Int64, N_anc)
+    idx_poptail_coast = zeros(Int64, N_anc)
 
     # Initialize conditional and mixed CCDFs, both full (including under threshold) and rectified (with accept reject)
-    ccdfs_dsc,ccdfs_dsc_rect = (zeros(Float64, (N_b,N_ast,N_anc)) for N_b=(N_bin,N_bin-i_bin_thresh+1))
-    ccdfs_moctail_astunif,ccdfs_moctail_astunif_rect = (zeros(Float64, (N_b,N_ast)) for N_b=(N_bin,N_bin-i_bin_thresh+1))
-    ccdf_moctail_coast,ccdf_moctail_coast_rect = (zeros(Float64, (N_b,)) for N_b=(N_bin,N_bin-i_bin_thresh+1))
+    ccdfs_dsc = zeros(Float64, (N_bin,N_ast,N_anc)) # no rectifying
+
+    ccdfs_poptail_astunif = zeros(Float64, (N_bin-i_bin_thresh+1,N_ast))
+    ccdfs_pophead_astunif = zeros(Float64, (i_bin_thresh-1,N_ast))
+    ccdf_poptail_coast = zeros(Float64, (N_bin-i_bin_thresh+1))
+    ccdf_pophead_coast = zeros(Float64, (i_bin_thresh-1))
+
+    ccdfs_moctail_astunif = zeros(Float64, (N_bin-i_bin_thresh+1,N_ast))
+    ccdf_moctail_coast = zeros(Float64, (N_bin-i_bin_thresh+1))
+
     thresholded_entropy = zeros(Float64, (N_ast, N_anc))
-    conditional_entropy_proxy = zeros(Float64, (N_ast, N_anc))
+    conditional_entropy_proxy = fill(NaN, (N_ast, N_anc))
+
     total_entropy = zeros(Float64, (N_ast, N_anc))
-    N_anc_counted = zeros(Int64, N_ast) # exclude the degenerate ones 
+    anc_is_counted = zeros(Bool, (N_ast, N_anc))
+    ccdfs_dsc_tail_noaccrej = zeros(Float64,N_bin-i_bin_thresh+1) # scratch space
     for i_anc = 1:N_anc
         for i_ast = 1:N_ast
-            if maximum(Rs_peak_dsc[:,i_ast,i_anc]) > bin_lower_edges[i_bin_thresh]
-                N_anc_counted[i_ast] += 1
-            end
-            thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end])
+            # Stuff not pertainingto tails
             total_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
             ccdfs_dsc[:,i_ast,i_anc] .= compute_empirical_ccdf(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
-            conditional_entropy_proxy[i_ast, i_anc] = compute_conditional_entropy_proxy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end]) #ccdfs_dsc[i_bin_thresh,i_ast,i_anc]==0 ? -Inf : thresholded_entropy[i_ast,i_anc] / ccdfs_dsc[i_bin_thresh,i_ast,i_anc] + log2(ccdfs_dsc[i_bin_thresh,i_ast,i_anc])
-            ccdfs_dsc_rect_accrej = ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] .+ (1-ccdfs_dsc[i_bin_thresh,i_ast,i_anc]).*(Rs_peak_anc[i_anc] .> bin_lower_edges[i_bin_thresh:N_bin])
-            ccdfs_dsc_rect_noaccrej = (ccc->(ccc[1] > 0 ? ccc./ccc[1] : ccc))(ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc])
+            # Stuff pertaining to tails
+            anc_is_counted[i_ast,i_anc] = (maximum(Rs_peak_dsc[:,i_ast,i_anc]) > thresh)
+            @assert (anc_is_counted[i_ast,i_anc] == (ccdfs_dsc[i_bin_thresh,i_ast,i_anc] > 0))
+
+            ccdfs_dsc_tail_accrej = ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] .+ (1-ccdfs_dsc[i_bin_thresh,i_ast,i_anc]).*(Rs_peak_anc[i_anc] .> bin_lower_edges[i_bin_thresh:N_bin])
+            thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end])
+            conditional_entropy_proxy[i_ast, i_anc] = compute_conditional_entropy_proxy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end]) 
+            if anc_is_counted[i_ast,i_anc]
+                ccdfs_dsc_tail_noaccrej .= ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] / ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
+                conditional_entropy_proxy[i_ast, i_anc] /= ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
+            else
+                ccdfs_dsc_tail_noaccrej .= 0 
+            end
             # TODO enable noaccrej by keeping track of ancestors counted and discounting some 
-            ccdfs_dsc_rect[:,i_ast,i_anc] .= ccdfs_dsc_rect_accrej
-            ccdfs_moctail_astunif[:,i_ast] .+= ccdfs_dsc[:,i_ast,i_anc]./N_anc
-            ccdfs_moctail_astunif_rect[:,i_ast] .+= ccdfs_dsc_rect[:,i_ast,i_anc]./N_anc
+            ccdfs_poptail_astunif[:,i_ast] .+= ccdfs_dsc[i_bin_thresh:end,i_ast,i_anc]
+            ccdfs_pophead_astunif[:,i_ast] .+= ccdfs_dsc[1:i_bin_thresh-1,i_ast,i_anc]
+            ccdfs_moctail_astunif[:,i_ast] .+= ccdfs_dsc_tail_noaccrej
         end
         # 
-        # ------------ Maximize thresholded entropy ---------------
+        # ------------ Maximize whatever the acquisition function is. These only work for moctail, which is computed separately per ancestor. ---------------
         #
         first_decrease = findfirst(diff(thresholded_entropy[:,i_anc]) .< 0) 
         argmax_thrent = argmax(thresholded_entropy[:,i_anc]) 
         argmax_condent = argmax(conditional_entropy_proxy[:,i_anc])
         argmin_condent = argmin(conditional_entropy_proxy[:,i_anc])
         argmax_condent_later = argmax(conditional_entropy_proxy[1:argmin_condent,i_anc])
-        idx_coast[i_anc] = argmax_condent
-        #idx_coast[i_anc] = N_ast - argmax(reverse(thresholded_entropy[:,i_anc])) + 1
-        #@show thresholded_entropy[:,i_anc]'
-        #idx_coast[i_anc] = (isnothing(first_decrease) ? N_ast : first_decrease)
+        idx_moctail_coast[i_anc] = argmax_condent
         # 
         # ---------------------------------------------------------
         #
         @show thresholded_entropy[i_anc]
         # Oh wait but need to apply adjustment...
-        ccdf_moctail_coast .+= ccdfs_dsc[:,idx_coast[i_anc],i_anc]./N_anc
-        ccdf_moctail_coast_rect .+= ccdfs_dsc_rect[:,idx_coast[i_anc],i_anc]./N_anc
+        ccdf_moctail_coast .+= ccdfs_dsc[:,idx_moctail_coast[i_anc],i_anc]
+        ccdf_poptail_coast .+= ccdfs_dsc[i_bin_thresh:end,idx_poptail_coast[i_anc],i_anc]
+        ccdf_pophead_coast .+= ccdfs_dsc[1:i_bin_thresh-1,idx_poptail_coast[i_anc],i_anc]
     end
     @show idx_coast
 
