@@ -70,12 +70,11 @@ function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64
     ts = collect(1:duration)
     for t = 1:duration
         x = tentmap(x) #
-        x = mod(
-                #(div(x, 1/(2^bit_precision)) + Random.rand(rng, [0,1]))
-                (floor(Int, x*2^bit_precision) + Random.rand(rng, Float64))
-                / (2^bit_precision), 
-                1
-               )
+        x = clamp(
+                 (floor(Int, x*2^bit_precision) + Random.rand(rng, Float64))
+                 / (2^bit_precision), 
+                 0, 1
+                )
         xs[1,t] = x
     end
     return xs, ts
@@ -92,16 +91,16 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           1,
-                             "run_dns_valid" =>            1,
-                             "plot_dns_valid" =>           1,
-                             "run_dns_ancgen" =>           1,
-                             "plot_dns_ancgen" =>          1,
-                             "analyze_peaks_valid" =>      1,
-                             "analyze_peaks_ancgen" =>     1,
-                             "boost_peaks" =>              1,
-                             "plot_boosts" =>              1,
+                             "illustrate_map" =>           0,
+                             "run_dns_valid" =>            0,
+                             "plot_dns_valid" =>           0,
+                             "run_dns_ancgen" =>           0,
+                             "plot_dns_ancgen" =>          0,
+                             "analyze_peaks_valid" =>      0,
+                             "analyze_peaks_ancgen" =>     0,
+                             "boost_peaks" =>              0,
                              "mix_conditional_tails" =>    1,
+                             "plot_boosts" =>              1,
                              "plot_moctails" =>            1,
                             )
 
@@ -111,7 +110,7 @@ function main(bpar_adj)
     bpar = (; bpar_default..., bpar_adj...)
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-04/2",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-05/1",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
@@ -169,19 +168,19 @@ function main(bpar_adj)
         seed_boost = 8086
         boost_peaks(simulate, bpar.latentize, conjugate_fwd, conjugate_bwd, threshold, bpar.perturbation_neglog, asts, bpar.bst, bpar.bit_precision, bpar.num_descendants, seed_boost, datadir, "ancgen"; overwrite_boosts=overwrite_boosts)
     end
-    if todo["plot_boosts"]
-        plot_boosts(datadir, figdir, asts, bpar.bst, bpar.num_descendants, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog)
-    end
     if todo["mix_conditional_tails"]
         mix_conditional_tails(datadir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, ; ccdf_peak_wholetruth=ccdf_peak_wholetruth)
+    end
+    if todo["plot_boosts"]
+        plot_boosts(datadir, figdir, asts, bpar.bst, bpar.num_descendants, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog)
     end
     if todo["plot_moctails"]
         plot_moctails(datadir, figdir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog, bpar.threshold_neglog; ccdf_peak_wholetruth=ccdf_peak_wholetruth)
     end
 end
 
-for perturbation_neglog = [8, 10, 11]
-    for threshold_neglog = [4,5,6]
+for perturbation_neglog = [8, 10, 12][2:2]
+    for threshold_neglog = [4,5,6][3:3]
         bpar_adj = (; threshold_neglog, perturbation_neglog)
         main(bpar_adj)
     end

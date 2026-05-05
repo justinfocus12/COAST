@@ -49,6 +49,19 @@ function compute_empirical_ccdf(xs::Vector{Float64}, bin_lower_edges::Vector{Flo
     return ccdf
 end
 
+function compute_conditional_entropy_proxy(xs::Vector{Float64}, bin_lower_edges::Vector{Float64})
+    pmf = compute_empirical_ccdf(xs, bin_lower_edges) #sum(Float64, xs .> bin_lower_edges'; dims=1)[1,:]
+    pmf[1:end-1] .-= pmf[2:end]
+    if length(xs) > 0
+        pmf ./= length(xs)
+    end
+    pmf_sum = sum(pmf)
+    condent = -sum(xlog2x.(pmf)) + xlog2x(pmf_sum)
+    # question mark: divide by 1/(1-sum(pmf)) ?
+    pmf_sum > 0 && (condent /= pmf_sum)
+    return condent 
+end
+
 function compute_thresholded_entropy(xs::Vector{Float64}, bin_lower_edges::Vector{Float64})
     pmf = compute_empirical_ccdf(xs, bin_lower_edges) #sum(Float64, xs .> bin_lower_edges'; dims=1)[1,:]
     pmf[1:end-1] .-= pmf[2:end]
@@ -91,14 +104,16 @@ function wassersteindist(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float6
     return sum(abs.(ccdf2pmf(ccdf_truth) .- ccdf2pmf(ccdf_approx)))
 end
 
-function xlgx(x::Float64)
-    return (x==0 ? 0 : x*log2(x))
+function xlog2x(x::Float64)
+    return xlogx(x)/log(2)
+end
+function xlog2y(x::Float64, y::Float64)
+    return xlogy(x,y)/log(2)
 end
 
 function kldiv(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
     pmf_truth, pmf_approx = map(ccdf2pmf, (ccdf_truth, ccdf_approx))
-    return sum(xlogy.(pmf_approx, pmf_approx./pmf_truth))
-    #return sum(-xlogy.(pmf_truth, pmf_approx) .+ xlogx.(pmf_truth))
+    return sum(xlog2y.(pmf_approx, pmf_approx./pmf_truth))
 end
 
 function poweroftwostring(k::Int64)
@@ -305,8 +320,16 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                )
     end
 
-    ccdfs_dsc = jldopen(joinpath(datadir,"boost_stats.jld2"), "r") do f
-        return f["ccdfs_dsc"]
+    (
+     ccdfs_dsc,
+     total_entropy,
+     thresholded_entropy,
+     conditional_entropy_proxy
+    ) = jldopen(joinpath(datadir,"boost_stats.jld2"), "r") do f
+        return (f["ccdfs_dsc"],
+                f["total_entropy"],
+                f["thresholded_entropy"],
+                f["conditional_entropy_proxy"],)
     end
 
     theme_ax = (xticklabelsize=16, yticklabelsize=16, xlabelsize=20, ylabelsize=20, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=20)
@@ -320,9 +343,6 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
     xs_init = zeros(Float64, (1, N_dsc, N_ast, N_anc))
     xs_dsc = [zeros(Float64, (1, ast+bst, N_dsc, N_anc)) for ast=asts] # will have some filler values
     ts_init = zeros(Int64, (N_dsc, N_ast, N_anc))
-    thresholded_entropy = zeros(Float64, (N_ast, N_anc))
-    conditional_entropy_proxy = zeros(Float64, (N_ast, N_anc))
-    total_entropy = zeros(Float64, (N_ast, N_anc))
     # TODO keep initializing the necessary arrays to load all the data to, opening-and-shutting the file before plotting
     jldopen(joinpath(datadir,"xs_dscs.jld2"), "r") do f
         for i_anc = 1:N_anc
@@ -366,11 +386,7 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                 scatter!(ax3, x_init[1]-xs_anc[1,ts_peak[i_anc]-asts[i_ast]-ts_anc[1]+1], maximum(x_dsc[1,:]); color=:red, marker=:star5)
                 peaks_dsc[i_dsc] = maximum(x_dsc[1,:])
             end
-            thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(peaks_dsc, bin_lower_edges[i_bin_thresh:end])
-            conditional_entropy_proxy[i_ast,i_anc] = thresholded_entropy[i_ast,i_anc]/ccdfs_dsc[i_bin_thresh,i_ast,i_anc] + log2(ccdfs_dsc[i_bin_thresh,i_ast,i_anc])
-            #conditional_entropy_proxy[i_ast,i_anc] = thresholded_entropy[i_ast,i_anc] + xlogx(ccdfs_dsc[i_bin_thresh,i_ast,i_anc]) / log(2) 
             # TODO put in the new condent thing 
-            total_entropy[i_ast,i_anc] = compute_thresholded_entropy(peaks_dsc, bin_lower_edges)
             hlines!(ax1, threshold; color=:gray)
             hlines!(ax2, threshold; color=:gray)
             hlines!(ax3, threshold; color=:gray)
@@ -396,10 +412,10 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
             end
         end
         title = "Entropy\n" * rich(rich("ToE", color=:steelblue, font=:bold) * ", " * rich("ThE", color=:red))
-        ax4 = Axis(lout[:,4]; title=title, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,max(maximum(thresholded_entropy),maximum(total_entropy))*1.1),(-asts[end]-1/2,1/2)))
+        ax4 = Axis(lout[:,4]; title=title, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,max(maximum(conditional_entropy_proxy),maximum(thresholded_entropy),maximum(total_entropy))*1.1),(-asts[end]-1/2,1/2)))
         scatterlines!(ax4, total_entropy[:,i_anc], -asts; color=:steelblue, linewidth=4, label="ToE")
         scatterlines!(ax4, thresholded_entropy[:,i_anc], -asts, color=:red, label="ThE")
-        scatterlines!(ax4, conditional_entropy_proxy[:,i_anc], -asts, color=:red, label="CoEP")
+        scatterlines!(ax4, conditional_entropy_proxy[:,i_anc], -asts, color=:purple, label="CoEP")
         ylims!(ax4, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
         for i_ast = 1:N_ast-1
             rowgap!(lout, i_ast, 0)
@@ -832,7 +848,11 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
                         error()
                     end
                     Rs_dsc = intensity(f[joinpath("ianc$(i_anc)", "iast$(i_ast)", "idsc$(i_dsc)","xs")])
+                    # full maximum
                     Rs_peak_dsc[i_dsc,i_ast,i_anc] = maximum(Rs_dsc)
+                    # at same point 
+                    Rs_peak_dsc[i_dsc,i_ast,i_anc] = Rs_dsc[asts[i_ast]]
+                    
                 end
             end
         end
@@ -848,13 +868,20 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
     thresholded_entropy = zeros(Float64, (N_ast, N_anc))
     conditional_entropy_proxy = zeros(Float64, (N_ast, N_anc))
     total_entropy = zeros(Float64, (N_ast, N_anc))
+    N_anc_counted = zeros(Int64, N_ast) # exclude the degenerate ones 
     for i_anc = 1:N_anc
         for i_ast = 1:N_ast
+            if maximum(Rs_peak_dsc[:,i_ast,i_anc]) > bin_lower_edges[i_bin_thresh]
+                N_anc_counted[i_ast] += 1
+            end
             thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end])
             total_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
             ccdfs_dsc[:,i_ast,i_anc] .= compute_empirical_ccdf(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
-            conditional_entropy_proxy[i_ast, i_anc] = ccdfs_dsc[i_bin_thresh,i_ast,i_anc]==0 ? -Inf : thresholded_entropy[i_ast,i_anc] / ccdfs_dsc[i_bin_thresh,i_ast,i_anc] + log2(ccdfs_dsc[i_bin_thresh,i_ast,i_anc])
-            ccdfs_dsc_rect[:,i_ast,i_anc] .= ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] .+ (1-ccdfs_dsc[i_bin_thresh,i_ast,i_anc]).*(Rs_peak_anc[i_anc] .> bin_lower_edges[i_bin_thresh:N_bin])
+            conditional_entropy_proxy[i_ast, i_anc] = compute_conditional_entropy_proxy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end]) #ccdfs_dsc[i_bin_thresh,i_ast,i_anc]==0 ? -Inf : thresholded_entropy[i_ast,i_anc] / ccdfs_dsc[i_bin_thresh,i_ast,i_anc] + log2(ccdfs_dsc[i_bin_thresh,i_ast,i_anc])
+            ccdfs_dsc_rect_accrej = ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] .+ (1-ccdfs_dsc[i_bin_thresh,i_ast,i_anc]).*(Rs_peak_anc[i_anc] .> bin_lower_edges[i_bin_thresh:N_bin])
+            ccdfs_dsc_rect_noaccrej = (ccc->(ccc[1] > 0 ? ccc./ccc[1] : ccc))(ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc])
+            # TODO enable noaccrej by keeping track of ancestors counted and discounting some 
+            ccdfs_dsc_rect[:,i_ast,i_anc] .= ccdfs_dsc_rect_accrej
             ccdfs_moctail_astunif[:,i_ast] .+= ccdfs_dsc[:,i_ast,i_anc]./N_anc
             ccdfs_moctail_astunif_rect[:,i_ast] .+= ccdfs_dsc_rect[:,i_ast,i_anc]./N_anc
         end
@@ -879,6 +906,7 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
         ccdf_moctail_coast_rect .+= ccdfs_dsc_rect[:,idx_coast[i_anc],i_anc]./N_anc
     end
     @show idx_coast
+
 
     # compute losses: with respect to the whole truth if it is available, but otherwise the ground truth 
     ccdf_peak_truth = (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth)
