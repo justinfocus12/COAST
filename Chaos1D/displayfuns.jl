@@ -1,9 +1,19 @@
+
+
 function poweroftwostring(k::Int64)
     symbols = ["2⁰","2¹","2²","2³","2⁴","2⁵","2⁶","2⁷","2⁸","2⁹","2¹⁰","2¹¹","2¹²","2¹³","2¹⁴","2¹⁵","2¹⁶","2¹⁷","2¹⁸"]
     if 0 <= k <= length(symbols)-1
         return symbols[k+1]
     end
     return "2^$(k)"
+end
+
+function powerofhalfstring(k::Int64)
+    symbols = ["(½)⁰","(½)¹","(½)²","(½)³","(½)⁴","(½)⁵","(½)⁶","(½)⁷","(½)⁸","(½)⁹","(½)¹⁰","(½)¹¹","(½)¹²","(½)¹³","(½)¹⁴","(½)¹⁵","(½)¹⁶","(½)¹⁷","(½)¹⁸"]
+    if 0 <= k <= length(symbols)-1
+        return symbols[k+1]
+    end
+    return "(½)^$(k)"
 end
 
 function hatickvals(ylo,yhi)
