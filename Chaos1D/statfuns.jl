@@ -29,7 +29,7 @@ function compute_empirical_ccdf(xs::Vector{Float64}, bin_lower_edges::Vector{Flo
     return ccdf
 end
 
-function compute_conditional_entropy_proxy(xs::Vector{Float64}, bin_lower_edges::Vector{Float64})
+function compute_extreme_conditional_entropy(xs::Vector{Float64}, bin_lower_edges::Vector{Float64})
     ccdf = compute_empirical_ccdf(xs, bin_lower_edges) #sum(Float64, xs .> bin_lower_edges'; dims=1)[1,:]
     pmf = vcat(-diff(ccdf), ccdf[end])
     condent = -sum(xlog2x.(pmf)) + xlog2x(ccdf[1])

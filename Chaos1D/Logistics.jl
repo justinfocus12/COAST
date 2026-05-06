@@ -13,11 +13,11 @@ end
 function BoostParams()
     return (
             duration_valid = 2^18,
-            duration_ancgen = 2^15, 
+            duration_ancgen = 2^8, 
             duration_spinup = 2^4,
             threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
             perturbation_neglog = 9,  # how many bits to keep when doing the perturbation 
-            min_cluster_gap = 2^6,
+            min_cluster_gap = 2^4, # longer than maximum possible AST 
             bit_precision = 32,
             ast_min = 1,
             ast_max = 12,
@@ -114,7 +114,7 @@ function main(bpar_adj)
     
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-05/2",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-06/1",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
@@ -185,8 +185,8 @@ function main(bpar_adj)
     end
 end
 
-for perturbation_neglog = [8, 10, 12]
-    for threshold_neglog = [4, 5, 6]
+for perturbation_neglog = [8, 10, 12][2:2]
+    for threshold_neglog = [4, 5, 6][2:2]
         bpar_adj = (; threshold_neglog, perturbation_neglog)
         main(bpar_adj)
     end

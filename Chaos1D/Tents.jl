@@ -111,7 +111,7 @@ function main(bpar_adj)
     bpar = (; bpar_default..., bpar_adj...)
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-05/2",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-06/1",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)

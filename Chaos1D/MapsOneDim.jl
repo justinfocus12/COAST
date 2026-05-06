@@ -195,12 +195,16 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
      ccdfs_dsc,
      total_entropy,
      thresholded_entropy,
-     conditional_entropy_proxy
+     extreme_conditional_entropy,
+     Rs_peak_dsc,
     ) = jldopen(joinpath(datadir,"boost_stats.jld2"), "r") do f
-        return (f["ccdfs_dsc"],
+        return (
+                f["ccdfs_dsc"],
                 f["total_entropy"],
                 f["thresholded_entropy"],
-                f["conditional_entropy_proxy"],)
+                f["extreme_conditional_entropy"],
+                f["Rs_peak_dsc"],
+               )
     end
 
     theme_ax = (xticklabelsize=16, yticklabelsize=16, xlabelsize=20, ylabelsize=20, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=20)
@@ -231,9 +235,9 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
         fig = Figure(size=(200*4,75*N_ast))
         lout = fig[1,1] = GridLayout()
         for i_ast = 1:N_ast
-            ax1 = Axis(lout[i_ast,1]; ylabel="$(i_ast==1 ? "AST = " : "")$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, title="𝑅(𝑥(𝑡))", theme_ax..., limits=((-asts[end]-1, bst+1),(0,1)))
-            ax2 = Axis(lout[i_ast,2]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, title=@sprintf("Peak 𝑅*\nnear 𝑡*=%d", ts_peak[i_anc]), theme_ax..., limits=((-asts[end]-1, bst+1),(2*threshold-1,1)))
-            ax3 = Axis(lout[i_ast,3]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="δ𝑥(𝑡−𝑡*)", title="𝑅*(δ𝑥(𝑡-𝑡*))", theme_ax..., xticklabelrotation=-pi/2, limits=((-1/2^perturbation_neglog,1/2^perturbation_neglog),(2*threshold-1,1)))
+            ax1 = Axis(lout[i_ast,1]; ylabel="$(i_ast==1 ? "AST 𝐴 = " : "")$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, title="𝑅(𝑥(𝑡))", theme_ax..., limits=((-asts[end]-1, bst+1),(0,1)))
+            ax2 = Axis(lout[i_ast,2]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, title=@sprintf("𝑅(𝑡*=%d)", ts_peak[i_anc]), theme_ax..., limits=((-asts[end]-1, bst+1),(2*threshold-1,1)))
+            ax3 = Axis(lout[i_ast,3]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="δ𝑥(𝑡*−𝐴)", title="𝑅(δ𝑥(𝑡*−𝐴))", theme_ax..., xticklabelrotation=-pi/2, limits=((-1/2^perturbation_neglog,1/2^perturbation_neglog),(2*threshold-1,1)))
             # Plot the ancestor
             tidx_anc = ts_peak[i_anc]-ts_anc[1]+1 .+ (-asts[end]:bst)
             lines!(ax1, ts_anc[tidx_anc].-ts_peak[i_anc], xs_anc[1,tidx_anc]; color=:black, linewidth=2, linestyle=(:dash,:dense))
@@ -241,7 +245,6 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                 xlims!(ax, ts_anc[tidx_anc[1]]-ts_peak[i_anc], ts_anc[tidx_anc[end]]-ts_peak[i_anc])
                 ax.xlabelvisible = ax.xticklabelsvisible = (i_ast == N_ast)
             end
-            peaks_dsc = zeros(Float64, N_dsc)
             for i_dsc = 1:N_dsc
                 x_init = xs_init[:,i_dsc, i_ast, i_anc]
                 x_dsc = xs_dsc[i_ast][:,:,i_dsc,i_anc]
@@ -250,20 +253,21 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                 ts_dsc = t_init .+ collect(1:Nt)
                 lines!(ax1, ts_dsc.-ts_peak[i_anc], x_dsc[1,:]; color=:red)
                 for ax = (ax1,ax2)
-                    vlines!(ax, t_init-ts_peak[i_anc]; color=:red)
                     scatter!(ax, t_init.-ts_peak[i_anc], x_init[1]; color=:red, marker=:star6)
                     scatter!(ax, ts_dsc.-ts_peak[i_anc], intensity(x_dsc); color=:red)
                 end
-                scatter!(ax3, x_init[1]-xs_anc[1,ts_peak[i_anc]-asts[i_ast]-ts_anc[1]+1], maximum(x_dsc[1,:]); color=:red, marker=:star5)
-                peaks_dsc[i_dsc] = maximum(x_dsc[1,:])
+                scatter!(ax3, x_init[1]-xs_anc[1,ts_peak[i_anc]-asts[i_ast]-ts_anc[1]+1], Rs_peak_dsc[i_dsc,i_ast,i_anc]; color=:red, marker=:star5)
             end
-            # TODO put in the new condent thing 
+            for ax = (ax2,ax3)
+                vlines!(ax, -asts[i_ast]; color=:red)
+                vlines!(ax, 0; color=:gray)
+            end
             hlines!(ax1, threshold; color=:gray)
             hlines!(ax2, threshold; color=:gray)
             hlines!(ax3, threshold; color=:gray)
             ylims!(ax1, 0, 1)
             ylims!(ax2, 3*threshold-2, 1)
-            ylims!(ax3, extrema(peaks_dsc)...)
+            ylims!(ax3, 3*threshold-2, 1) 
             for ax = (ax1,ax2)
                 xlims!(ax, ts_anc[tidx_anc[1]]-ts_peak[i_anc], ts_anc[tidx_anc[end]]-ts_peak[i_anc])
             end
@@ -282,12 +286,19 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                 end
             end
         end
-        title = "Entropy\n" * rich(rich("ToE", color=:steelblue, font=:bold) * ", " * rich("ThE", color=:red))
-        ax4 = Axis(lout[:,4]; title=title, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,max(maximum(conditional_entropy_proxy),maximum(thresholded_entropy),maximum(total_entropy))*1.1),(-asts[end]-1/2,1/2)))
+        title4 = (
+                  rich("TotEnt", color=:steelblue, font=:bold)
+                  * "\n" * 
+                  rich("ThrEnt", color=:red)
+                 )
+        title5 = rich("XclEnt", color=:purple, font=:bold)
+        ax4 = Axis(lout[:,4]; title=title4, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,max(maximum(thresholded_entropy),maximum(total_entropy))*1.1),(-asts[end]-1/2,1/2)))
+        ax5 = Axis(lout[:,5]; title=title5, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,maximum(extreme_conditional_entropy)*1.1),(-asts[end]-1/2,1/2)))
         scatterlines!(ax4, total_entropy[:,i_anc], -asts; color=:steelblue, linewidth=4, label="ToE")
         scatterlines!(ax4, thresholded_entropy[:,i_anc], -asts, color=:red, label="ThE")
-        scatterlines!(ax4, conditional_entropy_proxy[:,i_anc], -asts, color=:purple, label="CoEP")
         ylims!(ax4, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
+        scatterlines!(ax5, extreme_conditional_entropy[:,i_anc], -asts, color=:purple, label="CoEP")
+        ylims!(ax5, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
         for i_ast = 1:N_ast-1
             rowgap!(lout, i_ast, 0)
         end
@@ -295,8 +306,10 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
         colgap!(lout, 1, 10)
         colgap!(lout, 2, 10)
         colgap!(lout, 3, 0)
+        colgap!(lout, 4, 0)
 
-        colsize!(lout, 4, Relative(1/7))
+        colsize!(lout, 4, Relative(1/10))
+        colsize!(lout, 5, Relative(1/10))
 
         save(joinpath(figdir, "boosts_anc$(i_anc).png"), fig)
         
@@ -326,7 +339,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
      loss_coast_wass,
      loss_coast_kldiv,
      thresholded_entropy,
-     conditional_entropy_proxy,
+     extreme_conditional_entropy,
      total_entropy,
     ) = (
          jldopen(joinpath(datadir,"boost_stats.jld2"), "r") do f
@@ -347,7 +360,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                      f["loss_coast_wass"],
                      f["loss_coast_kldiv"],
                      f["thresholded_entropy"],
-                     f["conditional_entropy_proxy"],
+                     f["extreme_conditional_entropy"],
                      f["total_entropy"],
                     )
         end
@@ -403,12 +416,12 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     end
 
     # ----------- Rows 2-3: thrent and COAST frequency ------------
-    ax = Axis(lout[2,1:N_ast]; xlabel="−AST", ylabel="CondEnt", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),extrema(filter(isfinite,conditional_entropy_proxy))), xlabelvisible=false, xticklabelsvisible=false)
+    ax = Axis(lout[2,1:N_ast]; xlabel="−AST", ylabel="XclEnt", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),extrema(filter(isfinite,extreme_conditional_entropy))), xlabelvisible=false, xticklabelsvisible=false)
     xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
     for i_anc = 1:N_anc
-        scatterlines!(ax, -asts, conditional_entropy_proxy[:,i_anc]; color=:gray79)
+        scatterlines!(ax, -asts, extreme_conditional_entropy[:,i_anc]; color=:gray79)
     end
-    scatterlines!(ax, -asts, SB.mean(conditional_entropy_proxy; dims=2)[:,1]; color=:red)
+    scatterlines!(ax, -asts, SB.mean(extreme_conditional_entropy; dims=2)[:,1]; color=:red)
     ax = Axis(lout[3,1:N_ast]; xlabel="−AST", ylabel="COAST\nfrequency", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=true, xticklabelsvisible=true, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,1)))
     coast_freq = zeros(Int64, N_ast)
     @show coast_freq
@@ -493,11 +506,11 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     lout = fig[1,1] = GridLayout()
     ax = Axis(lout[1,1]; theme_ax..., xlabel="−AST", ylabel="Thresh. Ent.", limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(total_entropy))))
     for i_anc = 1:N_anc
-        scatterlines!(ax, reverse(-asts), reverse(conditional_entropy_proxy[:,i_anc]), color=:gray79, marker=:circle)
+        scatterlines!(ax, reverse(-asts), reverse(extreme_conditional_entropy[:,i_anc]), color=:gray79, marker=:circle)
         i_ast_argmax = idx_moctail_coast[i_anc]
-        scatter!(ax, -asts[i_ast_argmax], conditional_entropy_proxy[i_ast_argmax,i_anc]; color=:gray, marker=:star6)
+        scatter!(ax, -asts[i_ast_argmax], extreme_conditional_entropy[i_ast_argmax,i_anc]; color=:gray, marker=:star6)
     end
-    scatterlines!(ax, reverse(-asts), reverse(SB.mean(conditional_entropy_proxy; dims=2))[:,1]; color=:black, label="Mean", marker=:circle)
+    scatterlines!(ax, reverse(-asts), reverse(SB.mean(extreme_conditional_entropy; dims=2))[:,1]; color=:black, label="Mean", marker=:circle)
     vlines!(ax, -SB.mean(asts[idx_moctail_coast]); color=:black, linestyle=(:dash,:dense))
     ax.xticks = reverse(-asts)
     #ax.xticklabels = string.(reverse(-asts))
@@ -521,7 +534,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
         # Right column: entropies 
         ax = Axis(lout[1+i_anc,2]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2, yticklabelsvisible=false, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(total_entropy))))
         scatterlines!(ax, -reverse(asts), reverse(total_entropy[:,i_anc]); color=:steelblue, label="ToE", markersize=6, linewidth=3)
-        scatterlines!(ax, -reverse(asts), reverse(conditional_entropy_proxy[:,i_anc]); color=:red, markersize=6, label="ThE", linewidth=1)
+        scatterlines!(ax, -reverse(asts), reverse(extreme_conditional_entropy[:,i_anc]); color=:red, markersize=6, label="ThE", linewidth=1)
     end
     Legend(lout[1,1], content(lout[2,1]), "Severities"; framevisible=false, labelsize=10, titlesize=9, titlefont=:regular)
     Legend(lout[1,2], content(lout[2,2]), "Entropies"; framevisible=false, labelsize=10, titlesize=9, titlefont=:regular, rowgap=2)
@@ -547,7 +560,6 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     for i_row = 1:N_anc_plot
         rowgap!(lout, i_row, 3)
     end
-    # TODO make a column for entropy
     content(lout[N_anc_plot+1,1]).xlabel = "−AST"
     content(lout[N_anc_plot+1,2]).xlabel = "−AST"
     save(joinpath(figdir, "peaks_dsc_stacked.png"), fig)
@@ -661,7 +673,7 @@ function plot_dns(duration_spinup::Int64, duration_spinon::Int64, datadir::Strin
     save(joinpath(figdir, "dns_timeseries_hist_$(outfile_suffix).png"), fig)
 end
 
-function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64; ccdf_peak_wholetruth::Union{Nothing,Vector{Float64}}=nothing)
+function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64; ccdf_peak_wholetruth::Union{Nothing,Vector{Float64}}=nothing, accrej::Bool=false)
     ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_ancgen.jld2"), "r") do f
         return f["ts"], f["xs"]
     end
@@ -733,7 +745,7 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
     ccdf_moctail_coast = zeros(Float64, (N_bin-i_bin_thresh+1))
 
     thresholded_entropy = zeros(Float64, (N_ast, N_anc))
-    conditional_entropy_proxy = fill(NaN, (N_ast, N_anc))
+    extreme_conditional_entropy = fill(NaN, (N_ast, N_anc))
 
     total_entropy = zeros(Float64, (N_ast, N_anc))
     anc_is_counted = zeros(Bool, (N_ast, N_anc))
@@ -746,31 +758,31 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
             ccdfs_dsc[:,i_ast,i_anc] .= compute_empirical_ccdf(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
             # Stuff pertaining to tails
             anc_is_counted[i_ast,i_anc] = (maximum(Rs_peak_dsc[:,i_ast,i_anc]) > bin_lower_edges[i_bin_thresh])
-            @assert (anc_is_counted[i_ast,i_anc] == (ccdfs_dsc[i_bin_thresh,i_ast,i_anc] > 0))
+            @assert (anc_is_counted[i_ast,i_anc] == ((ccdfs_dsc[i_bin_thresh,i_ast,i_anc] > 0)))
 
             ccdfs_dsc_tail_accrej = ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] .+ (1-ccdfs_dsc[i_bin_thresh,i_ast,i_anc]).*(Rs_peak_anc[i_anc] .> bin_lower_edges[i_bin_thresh:N_bin])
             thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end])
-            conditional_entropy_proxy[i_ast, i_anc] = compute_conditional_entropy_proxy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end]) 
+            extreme_conditional_entropy[i_ast, i_anc] = compute_extreme_conditional_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end]) 
             if anc_is_counted[i_ast,i_anc]
                 ccdfs_dsc_tail_noaccrej .= ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] ./ ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
-                conditional_entropy_proxy[i_ast, i_anc] /= ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
+                extreme_conditional_entropy[i_ast, i_anc] /= ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
             else
                 ccdfs_dsc_tail_noaccrej .= 0 
             end
             # TODO enable noaccrej by keeping track of ancestors counted and discounting some 
             ccdfs_poptail_astunif[:,i_ast] .+= ccdfs_dsc[i_bin_thresh:end,i_ast,i_anc]
-            ccdfs_moctail_astunif[:,i_ast] .+= ccdfs_dsc_tail_noaccrej
-            ccdfs_ctail[:,i_ast,i_anc] .= ccdfs_dsc_tail_noaccrej
+            ccdfs_moctail_astunif[:,i_ast] .+= accrej ? ccdfs_dsc_tail_accrej : ccdfs_dsc_tail_noaccrej
+            ccdfs_ctail[:,i_ast,i_anc] .= accrej ? ccdfs_dsc_tail_accrej : ccdfs_dsc_tail_noaccrej
         end
         # 
         # ------------ Maximize whatever the acquisition function is. These only work for moctail, which is computed separately per ancestor. ---------------
         #
         first_decrease = findfirst(diff(thresholded_entropy[:,i_anc]) .< 0) 
         argmax_thrent = argmax(thresholded_entropy[:,i_anc]) 
-        argmax_condent = argmax(conditional_entropy_proxy[:,i_anc])
-        argmin_condent = argmin(conditional_entropy_proxy[:,i_anc])
-        argmax_condent_later = argmax(conditional_entropy_proxy[1:argmin_condent,i_anc])
-        idx_moctail_coast[i_anc] = argmax_condent
+        argmax_exclent = argmax(extreme_conditional_entropy[:,i_anc])
+        argmin_exclent = argmin(extreme_conditional_entropy[:,i_anc])
+        argmax_exclent_later = argmax(extreme_conditional_entropy[1:argmin_exclent,i_anc])
+        idx_moctail_coast[i_anc] = argmax_exclent
         # TODO set a different rule for idx_poptail_coast
         idx_poptail_coast[i_anc] = idx_moctail_coast[i_anc]
         # 
@@ -839,7 +851,7 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
         f["loss_coast_wass"] = loss_coast_wass
         f["loss_coast_kldiv"] = loss_coast_kldiv
         f["thresholded_entropy"] = thresholded_entropy
-        f["conditional_entropy_proxy"] = conditional_entropy_proxy
+        f["extreme_conditional_entropy"] = extreme_conditional_entropy
         f["total_entropy"] = total_entropy
     end
     return
