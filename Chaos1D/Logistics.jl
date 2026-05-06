@@ -25,6 +25,7 @@ function BoostParams()
             num_descendants = 31,
             latentize = false,# Do we transform to Z space? 
             latentize_bins = true,
+            bin_width_neglog = 9,
            )
 end
 
@@ -120,7 +121,7 @@ function main(bpar_adj)
     mkpath(datadir)
     mkpath(figdir)
 
-    N_bin_over = 24
+    N_bin_over = 2^(bpar.bin_width_neglog - bpar.threshold_neglog)
     threshold = compute_cquant_peak_wholetruth(1/2^bpar.threshold_neglog)
     N_bin = N_bin_over * 2^bpar.threshold_neglog
     i_bin_thresh = N_bin - N_bin_over + 1
@@ -184,8 +185,8 @@ function main(bpar_adj)
     end
 end
 
-for perturbation_neglog = [8, 10, 12][1:1]
-    for threshold_neglog = [4,5,6][3:3]
+for perturbation_neglog = [8, 10, 12][:]
+    for threshold_neglog = [4, 5, 6][:]
         bpar_adj = (; threshold_neglog, perturbation_neglog)
         main(bpar_adj)
     end

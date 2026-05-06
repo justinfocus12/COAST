@@ -381,16 +381,11 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     bin_edges = vcat(bin_lower_edges, 1.0)
 
 
-    # ---------------- All diagnostics for one ancestor 
     fig = Figure(size=(80*N_ast, 850))
     theme_ax = (xticklabelsize=12, yticklabelsize=12, xlabelsize=16, ylabelsize=16, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=16)
     lout = fig[1,1] = GridLayout()
 
     # ---------- Row 1: CCDFs at each AST separately ----------
-    #xlimits = clamp.(extrema(ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end])), 1/maximum(diff(bin_edges)), 1/sum(ccdf_peak_anc)/minimum(diff(bin_edges))) 
-
-
-                     
     xlimits = [1/N_dsc/maximum(diff(bin_edges)), 1/minimum(diff(bin_edges))]
     for i_ast = 1:N_ast
         pdf_moctail = ccdf2pdf(ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:end])
@@ -408,7 +403,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     end
 
     # ----------- Rows 2-3: thrent and COAST frequency ------------
-    ax = Axis(lout[2,1:N_ast]; xlabel="−AST", ylabel="Thresholded\nEntropy.", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),extrema(filter(isfinite,conditional_entropy_proxy))), xlabelvisible=false, xticklabelsvisible=false)
+    ax = Axis(lout[2,1:N_ast]; xlabel="−AST", ylabel="CondEnt", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),extrema(filter(isfinite,conditional_entropy_proxy))), xlabelvisible=false, xticklabelsvisible=false)
     xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
     for i_anc = 1:N_anc
         scatterlines!(ax, -asts, conditional_entropy_proxy[:,i_anc]; color=:gray79)
@@ -462,18 +457,18 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                                                              ("Hellinger\nDistance","χ² Divergence","𝐿¹ Distance","KL Divergence")
                                                             )
         # compute y-axis limits 
-        ylo,yhi = (0.85, 1.15) .* (
+        ylo,yhi = (0.0, 1.15) .* (
                                  min(minimum(losses_astunif),minimum(loss_coast)), 
                                  max(maximum(losses_astunif),maximum(loss_coast))
                                 )
-        @infiltrate ylo <= 0
-        yticklabels = (y->@sprintf("%.1e",y)).([ylo,yhi])
+        yticks = [ylo,(ylo+yhi)/2,yhi]
+        yticklabels = (y->@sprintf("%.0E",y)).(yticks)
         ax = Axis(lout[i_row,1:N_ast]; 
-                  xlabel="−AST", ylabel=divname, yscale=log10,
+                  xlabel="−AST", ylabel=divname, yscale=identity,
                   ylabelrotation=0, xgridvisible=false, ygridvisible=false, 
                   xticks=(-asts, string.(-asts)), 
                   limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])), (ylo,yhi)),
-                  yticks=([ylo,yhi],yticklabels),
+                  yticks=(yticks,yticklabels),
                  )
         scatterlines!(ax, -asts, losses_astunif; color=:black)
         hlines!(ax, loss_coast; color=:black, linestyle=(:dash,:dense))
@@ -759,7 +754,7 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
             conditional_entropy_proxy[i_ast, i_anc] = compute_conditional_entropy_proxy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end]) 
             if anc_is_counted[i_ast,i_anc]
                 ccdfs_dsc_tail_noaccrej .= ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] / ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
-                #conditional_entropy_proxy[i_ast, i_anc] /= ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
+                conditional_entropy_proxy[i_ast, i_anc] /= ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
             else
                 ccdfs_dsc_tail_noaccrej .= 0 
             end
@@ -793,8 +788,10 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
     @show idx_moctail_coast
 
     ccdf_moctail_coast ./= anc_counts_moctail_coast
+    @assert 1==ccdf_moctail_coast[1]
     for i_ast = 1:N_ast
         ccdfs_moctail_astunif[:,i_ast] ./= sum(anc_is_counted[i_ast,:])
+        @assert 1==ccdfs_moctail_astunif[1,i_ast]
     end
     ccdf_poptail_coast ./= ccdf_poptail_coast[1]
 
@@ -805,7 +802,6 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
     loss_coast_chi2 = chi2div(ccdf_peak_truth, ccdf_moctail_coast)
     loss_coast_wass = wassersteindist(ccdf_peak_truth, ccdf_moctail_coast)
     loss_coast_kldiv = kldiv(ccdf_peak_truth, ccdf_moctail_coast)
-    @infiltrate loss_coast_kldiv <= 0
     for i_ast = 1:N_ast
         losses_astunif_hell[i_ast] = hellingerdist(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
         losses_astunif_chi2[i_ast] = chi2div(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])

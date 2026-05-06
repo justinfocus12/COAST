@@ -30,15 +30,10 @@ function compute_empirical_ccdf(xs::Vector{Float64}, bin_lower_edges::Vector{Flo
 end
 
 function compute_conditional_entropy_proxy(xs::Vector{Float64}, bin_lower_edges::Vector{Float64})
-    pmf = compute_empirical_ccdf(xs, bin_lower_edges) #sum(Float64, xs .> bin_lower_edges'; dims=1)[1,:]
-    pmf[1:end-1] .-= pmf[2:end]
-    if length(xs) > 0
-        pmf ./= length(xs)
-    end
-    pmf_sum = sum(pmf)
-    condent = -sum(xlog2x.(pmf)) + xlog2x(pmf_sum)
-    # question mark: divide by 1/(1-sum(pmf)) ?
-    #pmf_sum > 0 && (condent /= pmf_sum)
+    ccdf = compute_empirical_ccdf(xs, bin_lower_edges) #sum(Float64, xs .> bin_lower_edges'; dims=1)[1,:]
+    pmf = vcat(-diff(ccdf), ccdf[end])
+    condent = -sum(xlog2x.(pmf)) + xlog2x(ccdf[1])
+    @assert condent >= 0
     return condent 
 end
 
