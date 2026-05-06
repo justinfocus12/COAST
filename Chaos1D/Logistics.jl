@@ -185,8 +185,8 @@ function main(bpar_adj)
     end
 end
 
-for perturbation_neglog = [8, 10, 12][:]
-    for threshold_neglog = [4, 5, 6][:]
+for perturbation_neglog = [8, 10, 12]
+    for threshold_neglog = [4, 5, 6]
         bpar_adj = (; threshold_neglog, perturbation_neglog)
         main(bpar_adj)
     end

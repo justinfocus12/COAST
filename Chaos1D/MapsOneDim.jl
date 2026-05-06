@@ -458,9 +458,9 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                                                             )
         # compute y-axis limits 
         ylo,yhi = (0.0, 1.15) .* (
-                                 min(minimum(losses_astunif),minimum(loss_coast)), 
-                                 max(maximum(losses_astunif),maximum(loss_coast))
-                                )
+                                  min(minimum(filter(isfinite,losses_astunif)),loss_coast),
+                                  max(maximum(filter(isfinite,losses_astunif)),loss_coast),
+                                 )
         yticks = [ylo,(ylo+yhi)/2,yhi]
         yticklabels = (y->@sprintf("%.0E",y)).(yticks)
         ax = Axis(lout[i_row,1:N_ast]; 
@@ -657,7 +657,6 @@ function plot_dns(duration_spinup::Int64, duration_spinon::Int64, datadir::Strin
     colsize!(lout, 2, Relative(1/6))
     colgap!(lout, 1, 0)
 
-    #@infiltrate
 
     save(joinpath(figdir, "dns_timeseries_hist_$(outfile_suffix).png"), fig)
 end
@@ -753,7 +752,7 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
             thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end])
             conditional_entropy_proxy[i_ast, i_anc] = compute_conditional_entropy_proxy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end]) 
             if anc_is_counted[i_ast,i_anc]
-                ccdfs_dsc_tail_noaccrej .= ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] / ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
+                ccdfs_dsc_tail_noaccrej .= ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] ./ ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
                 conditional_entropy_proxy[i_ast, i_anc] /= ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
             else
                 ccdfs_dsc_tail_noaccrej .= 0 
@@ -790,8 +789,11 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
     ccdf_moctail_coast ./= anc_counts_moctail_coast
     @assert 1==ccdf_moctail_coast[1]
     for i_ast = 1:N_ast
-        ccdfs_moctail_astunif[:,i_ast] ./= sum(anc_is_counted[i_ast,:])
-        @assert 1==ccdfs_moctail_astunif[1,i_ast]
+        if any(anc_is_counted[i_ast,:])
+            ccdfs_moctail_astunif[:,i_ast] ./= sum(anc_is_counted[i_ast,:])
+        else
+            ccdfs_moctail_astunif[:,i_ast] .= NaN
+        end
     end
     ccdf_poptail_coast ./= ccdf_poptail_coast[1]
 
