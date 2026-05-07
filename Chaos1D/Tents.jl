@@ -14,18 +14,18 @@ end
 function BoostParams()
     return (;
             duration_valid = 2^18,
-            duration_ancgen = 2^15, 
+            duration_ancgen = 2^14, 
             duration_spinup = 2^4,
             threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
             perturbation_neglog = 9,  # how many bits to keep when doing the perturbation 
-            min_cluster_gap = 2^6, # longer than bit precision
+            min_cluster_gap = 2^4, # longer than bit precision
             bit_precision = 32,
             ast_min = 1,
             ast_max = 12,
             bst = 2, # how long to run each descendant past the ancestor's peak 
             num_descendants = 31,
             latentize = true, # but this is trivial for the tent map 
-            bin_width_neglog = 9,
+            bin_width_neglog = 14,
            )
 end
 
@@ -92,14 +92,14 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           1,
-                             "run_dns_valid" =>            1,
-                             "plot_dns_valid" =>           1,
-                             "run_dns_ancgen" =>           1,
-                             "plot_dns_ancgen" =>          1,
-                             "analyze_peaks_valid" =>      1,
-                             "analyze_peaks_ancgen" =>     1,
-                             "boost_peaks" =>              1,
+                             "illustrate_map" =>           0,
+                             "run_dns_valid" =>            0,
+                             "plot_dns_valid" =>           0,
+                             "run_dns_ancgen" =>           0,
+                             "plot_dns_ancgen" =>          0,
+                             "analyze_peaks_valid" =>      0,
+                             "analyze_peaks_ancgen" =>     0,
+                             "boost_peaks" =>              0,
                              "mix_conditional_tails" =>    1,
                              "plot_boosts" =>              1,
                              "plot_moctails" =>            1,
@@ -111,7 +111,7 @@ function main(bpar_adj)
     bpar = (; bpar_default..., bpar_adj...)
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-06/1",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-07/2",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
@@ -180,8 +180,8 @@ function main(bpar_adj)
     end
 end
 
-for perturbation_neglog = [8, 10, 12]
-    for threshold_neglog = [4, 5, 6]
+for perturbation_neglog = [14, 16, 18][2:2]
+    for threshold_neglog = [8, 10, 12][1:1]
         bpar_adj = (; threshold_neglog, perturbation_neglog)
         main(bpar_adj)
     end

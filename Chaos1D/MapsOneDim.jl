@@ -399,17 +399,18 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     lout = fig[1,1] = GridLayout()
 
     # ---------- Row 1: CCDFs at each AST separately ----------
-    xlimits = [1/N_dsc/maximum(diff(bin_edges)), 1/minimum(diff(bin_edges))]
+    xlimits = [minimum(filter(cc->cc>0, isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth)), 1]
+    #(1/2^threshold_neglog) .* [1/N_dsc/maximum(diff(bin_edges[i_bin_thresh:end])), 1/minimum(diff(bin_edges[i_bin_thresh:end]))] 
     for i_ast = 1:N_ast
-        pdf_moctail = ccdf2pdf(ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:end])
+        #pdf_moctail = ccdf2pdf(ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:end])
         #xlimits .= [min(xlimits[1],minimum(filter(x->x>0, pdf_moctail))), max(xlimits[2],maximum(pdf_moctail))]
         ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), ylabel="Tail PDFs,\nUniform AST", ylabelrotation=0)
-        scatter!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:gray79, label="Ancestors only")
-        scatter!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, label="Long DNS")
+        scatter!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=:gray79, label="Ancestors only")
+        scatter!(ax, ccdf_peak_valid, bin_edges[i_bin_thresh:N_bin]; color=:black, label="Long DNS")
         if !isnothing(ccdf_peak_wholetruth)
-            lines!(ax, ccdf2pdf(ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
+            lines!(ax, ccdf_peak_wholetruth, bin_edges[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
         end
-        scatter!(ax, ccdf2pdf(ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:red)
+        scatter!(ax, ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:N_bin]; color=:red)
     end
     for i_ast = 1:N_ast
         xlims!(contents(lout[1,i_ast])[1], tuple(xlimits...))
@@ -430,23 +431,23 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     end
     @show coast_freq
     stairs!(ax, -asts, coast_freq/N_anc, color=:black, linewidth=3, step=:center)
-    scatter!(ax, -threshold_neglog, 0.5; marker=:star6, color=:cyan, markersize=18, label=@sprintf("𝑀=%d",threshold_neglog))
-    scatter!(ax, -perturbation_neglog, 0.5; marker=:star6, color=:orange, markersize=18, label=@sprintf("𝐾=%d",perturbation_neglog))
+    #scatter!(ax, -threshold_neglog, 0.5; marker=:star6, color=:cyan, markersize=18, label=@sprintf("𝑀=%d",threshold_neglog))
+    #scatter!(ax, -perturbation_neglog, 0.5; marker=:star6, color=:orange, markersize=18, label=@sprintf("𝐾=%d",perturbation_neglog))
     scatter!(ax, -(perturbation_neglog-threshold_neglog), 0.5; marker=:star6, color=:red, markersize=18, label=@sprintf("𝐾−𝑀=%d",perturbation_neglog-threshold_neglog))
     ylims!(ax, -0.01, 1.01)
 
     # --------- Row 4: the Thrent-based mixture --------------
     i_coast_mean = round(Int, SB.mean(idx_moctail_coast)) # Put it horizontally at the mean COAST position 
     ax = Axis(lout[4,N_ast-i_coast_mean+1]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), ylabel="AST = argmax(thresh. ent.)", ylabelrotation=0)
-    scatter!(ax, ccdf2pdf(ccdf_peak_anc, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:gray79, label="Ancestors only")
-    scatter!(ax, ccdf2pdf(ccdf_peak_valid, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, label="Long DNS", )
+    scatter!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=:gray79, label="Ancestors only")
+    scatter!(ax, ccdf_peak_valid, bin_edges[i_bin_thresh:N_bin],;  color=:black, label="Long DNS", )
     if !isnothing(ccdf_peak_wholetruth)
-        lines!(ax, ccdf2pdf(ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
+        lines!(ax, ccdf_peak_wholetruth, bin_edges[i_bin_thresh:N_bin], ; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
     end
-    scatter!(ax, ccdf2pdf(ccdf_moctail_coast, bin_edges[i_bin_thresh:end]), bin_centers[i_bin_thresh:N_bin]; color=:red)
+    scatter!(ax, ccdf_moctail_coast, bin_edges[i_bin_thresh:N_bin], ; color=:red)
     if i_coast_mean < N_ast; ax.ylabelvisible = ax.yticklabelsvisible = false; end
     # Stick in a legend 
-    leg = Legend(lout[4,1], content(lout[3,1:N_ast]), fontsize=8)
+    leg = Legend(lout[4,1:2], content(lout[3,1:N_ast]), fontsize=8)
 
     # Tidy up format for rows 1-4
     for i_col = 1:N_ast
@@ -674,6 +675,7 @@ function plot_dns(duration_spinup::Int64, duration_spinon::Int64, datadir::Strin
 end
 
 function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64; ccdf_peak_wholetruth::Union{Nothing,Vector{Float64}}=nothing, accrej::Bool=false)
+    # TODO add a dimension for number of ancestors to mix, and bootstratpps for UQ
     ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_ancgen.jld2"), "r") do f
         return f["ts"], f["xs"]
     end
@@ -772,7 +774,7 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
             # TODO enable noaccrej by keeping track of ancestors counted and discounting some 
             ccdfs_poptail_astunif[:,i_ast] .+= ccdfs_dsc[i_bin_thresh:end,i_ast,i_anc]
             ccdfs_moctail_astunif[:,i_ast] .+= accrej ? ccdfs_dsc_tail_accrej : ccdfs_dsc_tail_noaccrej
-            ccdfs_ctail[:,i_ast,i_anc] .= accrej ? ccdfs_dsc_tail_accrej : ccdfs_dsc_tail_noaccrej
+            ccdfs_ctail[:,i_ast,i_anc] .=      accrej ? ccdfs_dsc_tail_accrej : ccdfs_dsc_tail_noaccrej
         end
         # 
         # ------------ Maximize whatever the acquisition function is. These only work for moctail, which is computed separately per ancestor. ---------------
@@ -795,6 +797,12 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
             anc_counts_moctail_coast += 1
         end
         ccdf_poptail_coast .+= ccdfs_dsc[i_bin_thresh:end,idx_poptail_coast[i_anc],i_anc] #
+        # ----------- DEBUG -----------
+        cc7 = ccdfs_moctail_astunif[:,7]
+        cc8 = ccdfs_moctail_astunif[:,8]
+        ccc = ccdf_moctail_coast
+        @infiltrate any((ccc .- cc7) .* (cc8 .- ccc) .< 0)
+        # -----------------------------
     end
     @show idx_moctail_coast
 
@@ -823,6 +831,7 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
         losses_astunif_kldiv[i_ast] = kldiv(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
         # TODO compute losses by KL divergence 
     end
+    @infiltrate
     println("asts, losses_astunif_hell")
     display(hcat(asts, losses_astunif_hell))
     println("asts, losses_astunif_chi2")
