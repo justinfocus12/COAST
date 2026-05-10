@@ -707,26 +707,6 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
     ccdf_peak_anc = compute_empirical_ccdf(Rs_peak_anc, bin_lower_edges[i_bin_thresh:N_bin])
     ccdf_peak_valid = compute_empirical_ccdf(Rs_peak_valid, bin_lower_edges[i_bin_thresh:N_bin])
 
-    # ------------------- Bootstrap resampling of indices -----------------
-    Ns_anc_boot = 2 .^ floor.(Int64, range(log2(N_anc), 0; step=-1))
-    N_boot_sizes = length(Ns_anc_boot)
-    N_boot_resamps = 20
-
-    # Make a matrix of resampling multiplicities, anc_mults of size (N_anc, N_boot_ancs, N_boot_sizes). For each (j,k), the sum over i of anc_mults[i,j,k] will be N_boot_sizes[k]. 
-    anc_mults = zeros(Int64, (N_anc, N_boot_resamps, N_boot_sizes))
-    anc_mults_valid = zeros(Int64, (N_anc_valid, N_boot_resamps, N_boot_sizes))
-    for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot)
-        ancs_boot = rand(rng, 1:N_anc, (N_anc_boot,N_boot_resamps))
-        ancs_boot_valid = rand(rng, 1:N_anc_valid, (N_anc_boot,N_boot_resamps))
-        for i_anc = 1:N_anc
-            anc_mults[i_anc,:,i_boot_size] .= sum(ancs_boot[:,i_boot_size] .== i_anc)
-        end
-        for i_anc = 1:N_anc_valid
-            anc_mults_valid[i_anc,:,i_boot_size] .= sum(ancs_boot_valid[:,i_boot_size] .== i_anc)
-        end
-    end
-    # ----------------------------------------------------------------------
-
     Rs_peak_dsc = zeros(Float64, (N_dsc, N_ast, N_anc))
     jldopen(joinpath(datadir,"xs_dscs.jld2"), "r") do f
         for i_anc = 1:N_anc
@@ -800,38 +780,68 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
         # ---------------------------------------------------------
     end
     # Now mix stuff together 
-    ccdfs_moctail_astunif,ccdfs_poptail_astunif = ntuple(_->zeros(Float64, (N_bin_over,N_ast)), 2)
-    ccdfs_moctail_astunif_boot,ccdfs_poptail_astunif_boot = ntuple(_->zeros(Float64, (N_bin_over,N_ast,N_boot_resamps,N_boot_sizes)), 2)
-    ccdf_moctail_coast,ccdf_poptail_coast = ntuple(_->zeros(Float64, (N_bin_over)), 2)
-    ccdf_moctail_coast_boot,ccdf_poptail_coast_boot = ntuple(_->zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes)), 2)
 
+    # Uniform AST
     ccdfs_poptail_astunif = sum(ccdfs_dsc[i_bin_thresh:end,:,:].*insertdims(anc_has_tail; dims=1); dims=(2,3))
     ccdfs_poptail_astunif ./= ccdfs_poptail_astunif[1:1,:,:]
-    ccdfs_moctail_astunif = sum(ccdfs_ctail .* insertdims(anc_has_tail./sum(anc_has_tail; dims=2); dims=1))
+    ccdfs_moctail_astunif = sum(
+                                ccdfs_ctail 
+                                .* insertdims(
+                                              anc_has_tail./sum(anc_has_tail; dims=2);
+                                              dims=1
+                                             );
+                                dims=2
+                               )
+    # COAST 
+    ccdf_moctail_coast,ccdf_poptail_coast = ntuple(_->zeros(Float64, (N_bin_over)), 2)
     for i_anc = 1:N_anc
-        #for i_ast = 1:N_ast
-        #    if anc_has_tail[i_ast,i_anc]
-        #        ccdfs_poptail_astunif[:,i_ast] .+= ccdfs_dsc[i_bin_thresh:end,i_ast,i_anc]
-        #        ccdfs_moctail_astunif[:,i_ast] .+= ccdfs_ctail[:,i_ast,i_anc]
-        #    end
-        #end
         if anc_has_tail[idx_moctail_coast[i_anc],i_anc]
             ccdf_moctail_coast .+= ccdfs_ctail[:,idx_moctail_coast[i_anc],i_anc] 
+            ccdf_poptail_coast .+= ccdfs_dsc[i_bin_thresh:end,idx_poptail_coast[i_anc],i_anc] #
             anc_counts_moctail_coast += 1
-        end
-        ccdf_poptail_coast .+= ccdfs_dsc[i_bin_thresh:end,idx_poptail_coast[i_anc],i_anc] #
-    end
-
-    ccdf_moctail_coast ./= anc_counts_moctail_coast
-    @assert 1==ccdf_moctail_coast[1]
-    for i_ast = 1:N_ast
-        if any(anc_has_tail[i_ast,:])
-            ccdfs_moctail_astunif[:,i_ast] ./= sum(anc_has_tail[i_ast,:])
-        else
-            ccdfs_moctail_astunif[:,i_ast] .= NaN
         end
     end
     ccdf_poptail_coast ./= ccdf_poptail_coast[1]
+
+    # ------------------- Bootstrap resampling of indices -----------------
+    Ns_anc_boot = 2 .^ floor.(Int64, 0, range(log2(N_anc); step=1))
+    N_boot_sizes = length(Ns_anc_boot)
+    N_boot_resamps = 20
+    ccdfs_moctail_astunif_boot,ccdfs_poptail_astunif_boot = ntuple(_->zeros(Float64, (N_bin_over,N_ast,N_boot_resamps,N_boot_sizes)), 2)
+    ccdf_moctail_coast_boot,ccdf_poptail_coast_boot = ntuple(_->zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes)), 2)
+    for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot)
+        for i_boot_resamp = 1:N_boot_resamps
+            ancs_boot = rand(rng, 1:N_anc, N_anc_boot)
+            anc_mults = sum(1:N_anc .== ancs_boot'; dims=2)[:,1]
+            # uniform AST 
+            anc_weights = anc_has_tail .* insertdims(anc_mults; dims=1)
+            anc_weights ./= sum(anc_weights; dims=2)
+            ccdfs_moctail_astunif_boot[:,:,i_boot_resamp,i_boot_size] .= sum(ccdfs_ctail .* insertdims(anc_weights; dims=1); dims=3)
+            ccdfs_poptail_astunif_boot[:,:,i_boot_resamp,i_boot_size] .= sum(ccdfs_dscs[i_bin_thresh:en
+
+    # Make a matrix of resampling multiplicities, anc_mults of size (N_anc, N_boot_ancs, N_boot_sizes). For each (j,k), the sum over i of anc_mults[i,j,k] will be N_boot_sizes[k]. 
+    anc_mults = zeros(Int64, (N_anc, N_boot_resamps, N_boot_sizes))
+    anc_mults_valid = zeros(Int64, (N_anc_valid, N_boot_resamps, N_boot_sizes))
+    anc_weights = zeros(Float64, (N_anc, N_boot_resamps, N_boot_sizes))
+    anc_weights_valid = zeros(Float64, (N_anc_valid, N_boot_resamps, N_boot_sizes))
+    for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot)
+        ancs_boot = rand(rng, 1:N_anc, (N_anc_boot,N_boot_resamps))
+        ancs_boot_valid = rand(rng, 1:N_anc_valid, (N_anc_boot,N_boot_resamps))
+        for i_anc = 1:N_anc
+            anc_mults[i_anc,:,i_boot_size] .= sum(ancs_boot[:,i_boot_size] .== i_anc)
+        end
+        anc_weights[:,:,i_boot_size] .= anc_mults[:,:,i_boot_size] .* anc_has_tail
+        anc_weights[:,:,i_boot_size] ./= sum(anc_weights[:,:,i_boot_size]; dims=1)
+        for i_anc = 1:N_anc_valid
+            anc_mults_valid[i_anc,:,i_boot_size] .= sum(ancs_boot_valid[:,i_boot_size] .== i_anc)
+        end
+        anc_weights_valid[:,:,i_boot_size] .= anc_mults_valid[:,:,i_boot_size] 
+        anc_weights_valid[:,:,i_boot_size] ./= sum(anc_weights_valid[:,:,i_boot_size]; dims=2)
+    end
+    # ----------------------------------------------------------------------
+    # ----------- Bootstrap-resample ccdfs ----------
+    for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot)
+
 
     # compute losses: with respect to the whole truth if it is available, but otherwise the ground truth 
     ccdf_peak_truth = (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth)
