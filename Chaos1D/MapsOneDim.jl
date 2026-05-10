@@ -1,5 +1,5 @@
 
-import Random
+using Random: MersenneTwister
 import StatsBase as SB
 using Printf: @sprintf
 using JLD2: jldopen
@@ -68,7 +68,7 @@ function boost_peaks(
             jldopen(boostfile, "a+") do f
                 Ndsc_already_simulated = (anckey in keys(f) && astkey in keys(f[joinpath(anckey)])) ? length(f[joinpath(anckey,astkey)]) : 0
                 for i_dsc = Ndsc_already_simulated+1:Ndsc_per_leadtime
-                    rng = Random.MersenneTwister(seed)
+                    rng = MersenneTwister(seed)
                     z_init_anc = (latentize ? conjugate_fwd_fun : identity)(x_init_anc[1])
                     z_init_dsc = mod(
                                      (
@@ -325,7 +325,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
      ccdf_peak_anc,
      ccdf_peak_valid,
      Rs_peak_dsc,
-     idx_moctail_coast,
+     idx_coast,
      ccdfs_dsc,
      ccdfs_moctail_astunif,
      ccdf_moctail_coast,
@@ -346,7 +346,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                      f["ccdf_peak_anc"], 
                      f["ccdf_peak_valid"], 
                      f["Rs_peak_dsc"], 
-                     f["idx_moctail_coast"], 
+                     f["idx_coast"], 
                      f["ccdfs_dsc"], 
                      f["ccdfs_moctail_astunif"], 
                      f["ccdf_moctail_coast"], 
@@ -425,7 +425,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     ax = Axis(lout[3,1:N_ast]; xlabel="−AST", ylabel="COAST\nfrequency", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=true, xticklabelsvisible=true, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,1)))
     coast_freq = zeros(Int64, N_ast)
     for i_ast = 1:N_ast
-        coast_freq[i_ast] += sum(idx_moctail_coast.==i_ast)
+        coast_freq[i_ast] += sum(idx_coast.==i_ast)
     end
     stairs!(ax, -asts, coast_freq/N_anc, color=:black, linewidth=3, step=:center)
     #scatter!(ax, -threshold_neglog, 0.5; marker=:star6, color=:cyan, markersize=18, label=@sprintf("𝑀=%d",threshold_neglog))
@@ -434,7 +434,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     ylims!(ax, -0.01, 1.01)
 
     # --------- Row 4: the Thrent-based mixture --------------
-    i_coast_mean = round(Int, SB.mean(idx_moctail_coast)) # Put it horizontally at the mean COAST position 
+    i_coast_mean = round(Int, SB.mean(idx_coast)) # Put it horizontally at the mean COAST position 
     ax = Axis(lout[4,N_ast-i_coast_mean+1]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), ylabel="AST = argmax(thresh. ent.)", ylabelrotation=0)
     scatter!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=:gray79, label="Ancestors only")
     scatter!(ax, ccdf_peak_valid, bin_edges[i_bin_thresh:N_bin],;  color=:black, label="Long DNS", )
@@ -505,11 +505,11 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     ax = Axis(lout[1,1]; theme_ax..., xlabel="−AST", ylabel="Thresh. Ent.", limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(total_entropy))))
     for i_anc = 1:N_anc
         scatterlines!(ax, reverse(-asts), reverse(extreme_conditional_entropy[:,i_anc]), color=:gray79, marker=:circle)
-        i_ast_argmax = idx_moctail_coast[i_anc]
+        i_ast_argmax = idx_coast[i_anc]
         scatter!(ax, -asts[i_ast_argmax], extreme_conditional_entropy[i_ast_argmax,i_anc]; color=:gray, marker=:star6)
     end
     scatterlines!(ax, reverse(-asts), reverse(SB.mean(extreme_conditional_entropy; dims=2))[:,1]; color=:black, label="Mean", marker=:circle)
-    vlines!(ax, -SB.mean(asts[idx_moctail_coast]); color=:black, linestyle=(:dash,:dense))
+    vlines!(ax, -SB.mean(asts[idx_coast]); color=:black, linestyle=(:dash,:dense))
     ax.xticks = reverse(-asts)
     #ax.xticklabels = string.(reverse(-asts))
     save(joinpath(figdir, "thrent_overlay.png"), fig)
@@ -670,7 +670,10 @@ function plot_dns(duration_spinup::Int64, duration_spinon::Int64, datadir::Strin
     save(joinpath(figdir, "dns_timeseries_hist_$(outfile_suffix).png"), fig)
 end
 
-function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, rngseed::Int64; ccdf_peak_wholetruth::Union{Nothing,Vector{Float64}}=nothing, accrej::Bool=false)
+function mix_conditional_tails(
+        datadir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, rngseed_boot::Int64;
+        ccdf_peak_wholetruth::Union{Nothing,Vector{Float64}}=nothing, accrej::Bool=false
+    )
     # TODO add a dimension for number of ancestors to mix, and bootstratpps for UQ
     ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_ancgen.jld2"), "r") do f
         return f["ts"], f["xs"]
@@ -730,8 +733,7 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
 
 
     # Keep track of which AST is best for each ancestor, according to XclEnt 
-    idx_moctail_coast = zeros(Int64, N_anc)
-    idx_poptail_coast = zeros(Int64, N_anc)
+    idx_coast = zeros(Int64, N_anc)
 
     # Initialize conditional and mixed CCDFs, both full (including under threshold) and rectified (with accept reject)
     ccdfs_dsc = zeros(Float64, (N_bin,N_ast,N_anc)) # no rectifying
@@ -773,16 +775,14 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
         argmax_xclent = argmax(extreme_conditional_entropy[:,i_anc])
         argmin_xclent = argmin(extreme_conditional_entropy[:,i_anc])
         argmax_xclent_later = argmax(extreme_conditional_entropy[1:argmin_xclent,i_anc])
-        idx_moctail_coast[i_anc] = argmax_xclent
-        # TODO set a different rule for idx_poptail_coast
-        idx_poptail_coast[i_anc] = idx_moctail_coast[i_anc]
+        idx_coast[i_anc] = argmax_xclent
         # 
         # ---------------------------------------------------------
     end
     # Now mix stuff together 
 
     # Uniform AST
-    ccdfs_poptail_astunif = sum(ccdfs_dsc[i_bin_thresh:end,:,:].*insertdims(anc_has_tail; dims=1); dims=(2,3))
+    ccdfs_poptail_astunif = sum(ccdfs_dsc[i_bin_thresh:end,:,:].*insertdims(anc_has_tail; dims=1); dims=3)
     ccdfs_poptail_astunif ./= ccdfs_poptail_astunif[1:1,:,:]
     ccdfs_moctail_astunif = sum(
                                 ccdfs_ctail 
@@ -790,58 +790,53 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
                                               anc_has_tail./sum(anc_has_tail; dims=2);
                                               dims=1
                                              );
-                                dims=2
+                                dims=3
                                )
     # COAST 
     ccdf_moctail_coast,ccdf_poptail_coast = ntuple(_->zeros(Float64, (N_bin_over)), 2)
     for i_anc = 1:N_anc
-        if anc_has_tail[idx_moctail_coast[i_anc],i_anc]
-            ccdf_moctail_coast .+= ccdfs_ctail[:,idx_moctail_coast[i_anc],i_anc] 
-            ccdf_poptail_coast .+= ccdfs_dsc[i_bin_thresh:end,idx_poptail_coast[i_anc],i_anc] #
+        if anc_has_tail[idx_coast[i_anc],i_anc]
+            ccdf_moctail_coast .+= ccdfs_ctail[:,idx_coast[i_anc],i_anc] 
+            ccdf_poptail_coast .+= ccdfs_dsc[i_bin_thresh:end,idx_coast[i_anc],i_anc] #
             anc_counts_moctail_coast += 1
         end
     end
     ccdf_poptail_coast ./= ccdf_poptail_coast[1]
 
-    # ------------------- Bootstrap resampling of indices -----------------
-    Ns_anc_boot = 2 .^ floor.(Int64, 0, range(log2(N_anc); step=1))
+    # ------------------- Bootstrap resampling  -----------------
+    Ns_anc_boot = 2 .^ floor.(Int64, range(0, log2(N_anc); step=1))
     N_boot_sizes = length(Ns_anc_boot)
     N_boot_resamps = 20
     ccdfs_moctail_astunif_boot,ccdfs_poptail_astunif_boot = ntuple(_->zeros(Float64, (N_bin_over,N_ast,N_boot_resamps,N_boot_sizes)), 2)
-    ccdf_moctail_coast_boot,ccdf_poptail_coast_boot = ntuple(_->zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes)), 2)
+    ccdfs_moctail_coast_boot,ccdfs_poptail_coast_boot = ntuple(_->zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes)), 2)
+    ccdfs_anconly_boot,ccdfs_valid_boot = ntuple(_->zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes)), 2)
+    rng = MersenneTwister(rngseed_boot)
     for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot)
         for i_boot_resamp = 1:N_boot_resamps
             ancs_boot = rand(rng, 1:N_anc, N_anc_boot)
             anc_mults = sum(1:N_anc .== ancs_boot'; dims=2)[:,1]
             # uniform AST 
-            anc_weights = anc_has_tail .* insertdims(anc_mults; dims=1)
+            anc_weights = 1.0 .* anc_has_tail .* insertdims(anc_mults; dims=1)
             anc_weights ./= sum(anc_weights; dims=2)
             ccdfs_moctail_astunif_boot[:,:,i_boot_resamp,i_boot_size] .= sum(ccdfs_ctail .* insertdims(anc_weights; dims=1); dims=3)
-            ccdfs_poptail_astunif_boot[:,:,i_boot_resamp,i_boot_size] .= sum(ccdfs_dscs[i_bin_thresh:en
-
-    # Make a matrix of resampling multiplicities, anc_mults of size (N_anc, N_boot_ancs, N_boot_sizes). For each (j,k), the sum over i of anc_mults[i,j,k] will be N_boot_sizes[k]. 
-    anc_mults = zeros(Int64, (N_anc, N_boot_resamps, N_boot_sizes))
-    anc_mults_valid = zeros(Int64, (N_anc_valid, N_boot_resamps, N_boot_sizes))
-    anc_weights = zeros(Float64, (N_anc, N_boot_resamps, N_boot_sizes))
-    anc_weights_valid = zeros(Float64, (N_anc_valid, N_boot_resamps, N_boot_sizes))
-    for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot)
-        ancs_boot = rand(rng, 1:N_anc, (N_anc_boot,N_boot_resamps))
-        ancs_boot_valid = rand(rng, 1:N_anc_valid, (N_anc_boot,N_boot_resamps))
-        for i_anc = 1:N_anc
-            anc_mults[i_anc,:,i_boot_size] .= sum(ancs_boot[:,i_boot_size] .== i_anc)
+            ccdfs_poptail_astunif_boot[:,:,i_boot_resamp,i_boot_size] .= sum(ccdfs_dsc[i_bin_thresh:end,:,:] .* insertdims(anc_weights; dims=1); dims=3)
+            ccdfs_poptail_astunif_boot[:,:,i_boot_resamp,i_boot_size] ./= ccdfs_poptail_astunif_boot[1:1,:,i_boot_resamp,i_boot_size]
+            # COAST
+            coast_total_weight = 0.0
+            for i_anc = 1:N_anc
+                anc_weight = anc_weights[idx_coast[i_anc],i_anc]
+                coast_total_weight += anc_weight
+                ccdfs_moctail_coast_boot[:,i_boot_resamp,i_boot_size] .+= ccdfs_ctail[:,idx_coast[i_anc],i_anc] * anc_weight
+                ccdfs_poptail_coast_boot[:,i_boot_resamp,i_boot_size] .+= ccdfs_dsc[i_bin_thresh:end,idx_coast[i_anc],i_anc] * anc_weight
+            end
+            ccdfs_moctail_coast_boot ./= coast_total_weight
+            ccdfs_poptail_coast_boot[:,i_boot_resamp,i_boot_size] ./= ccdfs_poptail_coast_boot[1,i_boot_resamp,i_boot_size]
+            # Ancestors only 
+            ccdfs_anconly_boot[:,i_boot_resamp,i_boot_size] .+= compute_empirical_ccdf(Rs_peak_anc[ancs_boot], bin_lower_edges[i_bin_thresh:end]) ./ N_anc_boot
+            ancs_boot_valid = rand(rng, 1:N_anc_valid, N_anc_boot)
+            ccdfs_valid_boot[:,i_boot_resamp,i_boot_size] .+= compute_empirical_ccdf(Rs_peak_valid[ancs_boot_valid], bin_lower_edges[i_bin_thresh:end]) ./ N_anc_boot
         end
-        anc_weights[:,:,i_boot_size] .= anc_mults[:,:,i_boot_size] .* anc_has_tail
-        anc_weights[:,:,i_boot_size] ./= sum(anc_weights[:,:,i_boot_size]; dims=1)
-        for i_anc = 1:N_anc_valid
-            anc_mults_valid[i_anc,:,i_boot_size] .= sum(ancs_boot_valid[:,i_boot_size] .== i_anc)
-        end
-        anc_weights_valid[:,:,i_boot_size] .= anc_mults_valid[:,:,i_boot_size] 
-        anc_weights_valid[:,:,i_boot_size] ./= sum(anc_weights_valid[:,:,i_boot_size]; dims=2)
     end
-    # ----------------------------------------------------------------------
-    # ----------- Bootstrap-resample ccdfs ----------
-    for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot)
-
 
     # compute losses: with respect to the whole truth if it is available, but otherwise the ground truth 
     ccdf_peak_truth = (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth)
@@ -857,38 +852,50 @@ function mix_conditional_tails(datadir::String, asts::Vector{Int64}, N_dsc::Int6
         losses_astunif_kldiv[i_ast] = kldiv(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
         # TODO compute losses by KL divergence 
     end
-    @infiltrate
-    println("asts, losses_astunif_hell")
-    display(hcat(asts, losses_astunif_hell))
-    println("asts, losses_astunif_chi2")
-    display(hcat(asts, losses_astunif_chi2))
-    println("asts, losses_astunif_wass")
-    display(hcat(asts, losses_astunif_wass))
-    println("asts, losses_astunif_kldiv")
-    display(hcat(asts, losses_astunif_kldiv))
+
+    losses_moctail_coast_kldiv_boot,losses_poptail_coast_kldiv_boot = ntuple(_->zeros(Float64, (N_boot_resamps, N_boot_sizes)), 2)
+    losses_moctail_astunif_kldiv_boot,losses_poptail_astunif_kldiv_boot = ntuple(_->zeros(Float64, (N_ast,N_boot_resamps,N_boot_sizes)), 2)
+    losses_anconly_kldiv_boot,losses_valid_kldiv_boot = ntuple(_->zeros(Float64,(N_boot_resamps,N_boot_sizes)), 2)
+    for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot)
+        for i_boot_resamp = 1:N_boot_resamps
+            losses_anconly_kldiv_boot[i_boot_resamp,i_boot_size] = kldiv(ccdf_peak_truth, ccdfs_anconly_boot[:,i_boot_resamp,i_boot_size])
+            losses_valid_kldiv_boot[i_boot_resamp,i_boot_size] = kldiv(ccdf_peak_truth, ccdfs_valid_boot[:,i_boot_resamp,i_boot_size])
+        end
+    end
 
     # Save results to file 
 
-    jldopen(joinpath(datadir,"boost_stats.jld2"), "w") do f
-        f["ccdf_peak_anc"] = ccdf_peak_anc
-        f["ccdf_peak_valid"] = ccdf_peak_valid
-        f["Rs_peak_dsc"] = Rs_peak_dsc
-        f["idx_moctail_coast"] = idx_moctail_coast
-        f["ccdfs_dsc"] = ccdfs_dsc
-        f["ccdfs_moctail_astunif"] = ccdfs_moctail_astunif
-        f["ccdf_moctail_coast"] = ccdf_moctail_coast
-        f["losses_astunif_hell"] = losses_astunif_hell
-        f["losses_astunif_chi2"] = losses_astunif_chi2
-        f["losses_astunif_wass"] = losses_astunif_wass
-        f["losses_astunif_kldiv"] = losses_astunif_kldiv
-        f["loss_coast_hell"] = loss_coast_hell
-        f["loss_coast_chi2"] = loss_coast_chi2
-        f["loss_coast_wass"] = loss_coast_wass
-        f["loss_coast_kldiv"] = loss_coast_kldiv
-        f["thresholded_entropy"] = thresholded_entropy
-        f["extreme_conditional_entropy"] = extreme_conditional_entropy
-        f["total_entropy"] = total_entropy
-    end
+    jldsave(joinpath(datadir,"boost_stats.jld2");
+            (;
+             ccdf_peak_anc,
+             ccdf_peak_valid,
+             Rs_peak_dsc,
+             idx_coast,
+             ccdfs_dsc,
+             ccdfs_moctail_astunif,
+             ccdf_moctail_coast,
+             losses_astunif_hell,
+             losses_astunif_chi2,
+             losses_astunif_wass,
+             losses_astunif_kldiv,
+             loss_coast_hell,
+             loss_coast_chi2,
+             loss_coast_wass,
+             loss_coast_kldiv,
+             thresholded_entropy,
+             extreme_conditional_entropy,
+             total_entropy,
+             # bootstraps
+             ccdfs_moctail_astunif_boot,
+             ccdfs_moctail_coast_boot,
+             ccdfs_anconly_boot,
+             ccdfs_valid_boot,
+             losses_moctail_astunif_kldiv_boot,
+             losses_moctail_coast_kldiv_boot,
+             losses_anconly_kldiv_boot,
+             losses_valid_kldiv_boot,
+            )...
+           )
     return
 end
 

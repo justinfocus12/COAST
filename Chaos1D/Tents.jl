@@ -111,7 +111,7 @@ function main(bpar_adj)
     bpar = (; bpar_default..., bpar_adj...)
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-07/2",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-10/1",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
@@ -170,7 +170,8 @@ function main(bpar_adj)
         boost_peaks(simulate, bpar.latentize, conjugate_fwd, conjugate_bwd, threshold, bpar.perturbation_neglog, asts, bpar.bst, bpar.bit_precision, bpar.num_descendants, seed_boost, datadir, "ancgen"; overwrite_boosts=overwrite_boosts)
     end
     if todo["mix_conditional_tails"]
-        mix_conditional_tails(datadir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, ; ccdf_peak_wholetruth=ccdf_peak_wholetruth)
+        rngseed_boot = 3900
+        mix_conditional_tails(datadir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, rngseed_boot; ccdf_peak_wholetruth=ccdf_peak_wholetruth)
     end
     if todo["plot_boosts"]
         plot_boosts(datadir, figdir, asts, bpar.bst, bpar.num_descendants, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog)
