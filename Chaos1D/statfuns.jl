@@ -1,3 +1,6 @@
+function ispos(x)
+    return isfinite(x) && (x > 0)
+end
 
 function van_der_corput(N)
     # Generate the first N points of the van der corput sequence 

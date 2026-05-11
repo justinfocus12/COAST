@@ -1,7 +1,7 @@
 import Random
 import StatsBase as SB
 using Printf: @sprintf
-using JLD2: jldopen, jldsave
+using JLD2: jldopen
 using CairoMakie
 
 include("./MapsOneDim.jl")
@@ -100,7 +100,7 @@ function main(bpar_adj)
                              "analyze_peaks_valid" =>      0,
                              "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
-                             "mix_conditional_tails" =>    1,
+                             "mix_conditional_tails" =>    0,
                              "plot_boosts" =>              0,
                              "plot_moctails" =>            1,
                             )
@@ -111,7 +111,7 @@ function main(bpar_adj)
     bpar = (; bpar_default..., bpar_adj...)
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-10/1",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-11/1",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)

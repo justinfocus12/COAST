@@ -16,6 +16,18 @@ function powerofhalfstring(k::Int64)
     return "(½)^$(k)"
 end
 
+function supscr(k::Int64)
+    sss_onedigit = ["⁰","¹","²","³","⁴","⁵","⁶","⁷","⁸","⁹"]
+    kdigs = reverse(digits(abs(k)))
+    ss = join([sss_onedigit[kd+1] for kd=kdigs])
+    if k < 0
+        ss = "⁻" * ss
+    end
+    return ss
+end
+
+    
+
 function hatickvals(ylo,yhi)
     nlg_first = ceil(Int, nlg1m(ylo))
     nlg_last = floor(Int, nlg1m(yhi))
