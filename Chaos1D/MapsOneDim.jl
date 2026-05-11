@@ -376,21 +376,26 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
         end
        )
     # ---------- convergence with N -----------
-    fig = Figure(size=(400,300))
-    lout = fig[1,1] = GridLayout()
-    xtickvalues = unique(2 .^ floor.(Int, range(0, log2(Ns_anc_boot[end]); step=1)))
-    xticklabels = (N->@sprintf("%d",N)).(xtickvalues)
-    ax = Axis(lout[1,1], xlabel="𝑁", ylabel="KL", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=identity, limits=((1,Ns_anc_boot[end]), (0,maximum(filter(isfinite, losses_moctail_coast_kldiv_boot)))), xticks=(xtickvalues,xticklabels))
-    abest = perturbation_neglog - threshold_neglog
-    scatterlines!(ax, Ns_anc_boot, mean(losses_moctail_astunif_kldiv_boot[abest,:,:]; dims=1)[1,:]; color=:purple, label="𝐴[U]", linewidth=3)
-    scatterlines!(ax, Ns_anc_boot, mean(losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:]; color=:red, label="𝐴[XclEnt]", linewidth=1)
-    for q = [0.25,0.75]
-        lines!(ax, Ns_anc_boot, mapslices(x->quantile(x,q), losses_moctail_astunif_kldiv_boot[abest,:,:]; dims=1)[1,:]; color=:purple, linestyle=(:dash,:dense), linewidth=3)
-        lines!(ax, Ns_anc_boot, mapslices(x->quantile(x,q), losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:]; color=:red, linestyle=(:dash,:dense))
+    if true
+        fig = Figure(size=(400,300))
+        lout = fig[1,1] = GridLayout()
+        xtickvalues = unique(2 .^ floor.(Int, range(0, log2(Ns_anc_boot[end]); step=1)))
+        xticklabels = (N->@sprintf("%d",N)).(xtickvalues)
+        ax = Axis(lout[1,1], xlabel="𝑁", ylabel="KL", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=identity, limits=((1,Ns_anc_boot[end]), (0,maximum(filter(isfinite, losses_moctail_coast_kldiv_boot)))), xticks=(xtickvalues,xticklabels))
+        abest = perturbation_neglog - threshold_neglog
+        for q = [0.25,0.5,0.75]
+            linestyle = (q==0.5 ? :solid : (:dash,:dense))
+            
+            quantfun(x) = quantile(filter(isfinite,x),q)
+            loss_astunif = mapslices(quantfun, losses_moctail_astunif_kldiv_boot[abest,:,:]; dims=1)[1,:]
+            loss_coast = mapslices(quantfun, losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:]
+            @infiltrate
+            lines!(ax, Ns_anc_boot, loss_astunif; color=:purple, linestyle=linestyle, linewidth=3)
+            lines!(ax, Ns_anc_boot, loss_coast; color=:firebrick, linestyle=linestyle, linewidth=1)
+        end
+        save(joinpath(figdir, "KL_vs_N.png"), fig)
     end
-    leg = Legend(lout[1,2], ax)
-    colsize!(lout, 1, Relative(5/6))
-    save(joinpath(figdir, "KL_vs_N.png"), fig)
+
     # -----------------------------------------
     ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_ancgen.jld2"), "r") do f
         return f["ts"], f["xs"]
@@ -507,8 +512,9 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                   limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])), (ylo,yhi)),
                   yticks=(yticks,yticklabels),
                  )
-        scatterlines!(ax, -asts, losses_moctail_astunif; color=:black)
-        hlines!(ax, loss_moctail_coast; color=:black, linestyle=(:dash,:dense))
+        scatterlines!(ax, -asts, losses_moctail_astunif; color=:purple)
+        hlines!(ax, loss_moctail_coast; color=:firebrick, linestyle=:solid)
+        hlines!(ax, 0; color=:black, linestyle=(:dash,:dense))
     end
 
     for row = [1,4] # make the PMF rows bigger
@@ -843,23 +849,22 @@ function mix_conditional_tails(
             ancs_boot = rand(rng, 1:N_anc, N_anc_boot)
             anc_mults = sum(1:N_anc .== ancs_boot'; dims=2)[:,1]
             # uniform AST 
-            anc_weights = 1.0 .* anc_has_tail .* insertdims(anc_mults; dims=1)
-            anc_weights ./= sum(anc_weights; dims=2)
-            ccdfs_moctail_astunif_boot[:,:,i_boot_resamp,i_boot_size] .= sum(ccdfs_ctail .* insertdims(anc_weights; dims=1); dims=3)
-            ccdfs_poptail_astunif_boot[:,:,i_boot_resamp,i_boot_size] .= sum(ccdfs_dsc[i_bin_thresh:end,:,:] .* insertdims(anc_weights; dims=1); dims=3)
+            anc_weights_astunif = 1.0 .* anc_has_tail .* insertdims(anc_mults; dims=1)
+            anc_weights_astunif ./= sum(anc_weights_astunif; dims=2)
+            ccdfs_moctail_astunif_boot[:,:,i_boot_resamp,i_boot_size] .= sum(ccdfs_ctail .* insertdims(anc_weights_astunif; dims=1); dims=3)
+            ccdfs_poptail_astunif_boot[:,:,i_boot_resamp,i_boot_size] .= sum(ccdfs_dsc[i_bin_thresh:end,:,:] .* insertdims(anc_weights_astunif; dims=1); dims=3)
             ccdfs_poptail_astunif_boot[:,:,i_boot_resamp,i_boot_size] ./= ccdfs_poptail_astunif_boot[1:1,:,i_boot_resamp,i_boot_size]
             # COAST
             coast_total_weight = 0.0
             for i_anc = 1:N_anc
-                anc_weight = anc_weights[idx_coast[i_anc],i_anc]
-                coast_total_weight += anc_weight
-                ccdfs_moctail_coast_boot[:,i_boot_resamp,i_boot_size] .+= ccdfs_ctail[:,idx_coast[i_anc],i_anc] * anc_weight
-                ccdfs_poptail_coast_boot[:,i_boot_resamp,i_boot_size] .+= ccdfs_dsc[i_bin_thresh:end,idx_coast[i_anc],i_anc] * anc_weight
+                anc_mult = anc_mults[i_anc] * anc_has_tail[idx_coast[i_anc],i_anc]
+                coast_total_weight += anc_mult
+                ccdfs_moctail_coast_boot[:,i_boot_resamp,i_boot_size] .+= ccdfs_ctail[:,idx_coast[i_anc],i_anc] * anc_mult
+                ccdfs_poptail_coast_boot[:,i_boot_resamp,i_boot_size] .+= ccdfs_dsc[i_bin_thresh:end,idx_coast[i_anc],i_anc] * anc_mult
             end
-            ccdfs_moctail_coast_boot ./= coast_total_weight
+            ccdfs_moctail_coast_boot[:,i_boot_resamp,i_boot_size] ./= coast_total_weight
             ccdfs_poptail_coast_boot[:,i_boot_resamp,i_boot_size] ./= ccdfs_poptail_coast_boot[1,i_boot_resamp,i_boot_size]
             # Ancestors only 
-            ceccdf = compute_empirical_ccdf(Rs_peak_anc[ancs_boot], bin_lower_edges[i_bin_thresh:end])
             ccdfs_anconly_boot[:,i_boot_resamp,i_boot_size] .= compute_empirical_ccdf(Rs_peak_anc[ancs_boot], bin_lower_edges[i_bin_thresh:end])
             ancs_boot_valid = rand(rng, 1:N_anc_valid, N_anc_boot)
             ccdfs_valid_boot[:,i_boot_resamp,i_boot_size] .= compute_empirical_ccdf(Rs_peak_valid[ancs_boot_valid], bin_lower_edges[i_bin_thresh:end]) 
