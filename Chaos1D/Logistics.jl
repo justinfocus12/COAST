@@ -22,7 +22,7 @@ function BoostParams()
             ast_min = 1,
             ast_max = 12,
             bst = 2,
-            num_descendants = 31,
+            num_descendants = 63,
             latentize = false,# Do we transform to Z space? 
             latentize_bins = true,
             bin_width_neglog = 14,

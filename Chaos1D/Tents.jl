@@ -1,7 +1,7 @@
 import Random
 import StatsBase as SB
 using Printf: @sprintf
-using JLD2: jldopen
+using JLD2: jldopen, jldsave
 using CairoMakie
 
 include("./MapsOneDim.jl")
@@ -23,7 +23,7 @@ function BoostParams()
             ast_min = 1,
             ast_max = 12,
             bst = 2, # how long to run each descendant past the ancestor's peak 
-            num_descendants = 31,
+            num_descendants = 63,
             latentize = true, # but this is trivial for the tent map 
             bin_width_neglog = 14,
            )
@@ -92,17 +92,17 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           0,
-                             "run_dns_valid" =>            0,
-                             "plot_dns_valid" =>           0,
-                             "run_dns_ancgen" =>           0,
-                             "plot_dns_ancgen" =>          0,
-                             "analyze_peaks_valid" =>      0,
-                             "analyze_peaks_ancgen" =>     0,
-                             "boost_peaks" =>              0,
+                             "illustrate_map" =>           1,
+                             "run_dns_valid" =>            1,
+                             "plot_dns_valid" =>           1,
+                             "run_dns_ancgen" =>           1,
+                             "plot_dns_ancgen" =>          1,
+                             "analyze_peaks_valid" =>      1,
+                             "analyze_peaks_ancgen" =>     1,
+                             "boost_peaks" =>              1,
                              "mix_conditional_tails" =>    1,
-                             "plot_boosts" =>              1,
                              "plot_moctails" =>            1,
+                             "plot_boosts" =>              1,
                             )
 
     overwrite_boosts = true
@@ -181,8 +181,8 @@ function main(bpar_adj)
     end
 end
 
-for perturbation_neglog = [14, 16, 18][2:2]
-    for threshold_neglog = [8, 10, 12][1:1]
+for perturbation_neglog = [14, 16, 18]
+    for threshold_neglog = [8, 10, 12]
         bpar_adj = (; threshold_neglog, perturbation_neglog)
         main(bpar_adj)
     end

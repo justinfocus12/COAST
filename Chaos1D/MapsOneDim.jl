@@ -1,6 +1,7 @@
 
 using Random: MersenneTwister
 import StatsBase as SB
+using Statistics: mean, quantile
 using Printf: @sprintf
 using JLD2: jldopen
 using Infiltrator: @infiltrate
@@ -329,17 +330,22 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
      ccdfs_dsc,
      ccdfs_moctail_astunif,
      ccdf_moctail_coast,
-     losses_astunif_hell,
-     losses_astunif_chi2,
-     losses_astunif_wass,
-     losses_astunif_kldiv,
-     loss_coast_hell,
-     loss_coast_chi2,
-     loss_coast_wass,
-     loss_coast_kldiv,
+     losses_moctail_astunif_hell,
+     losses_moctail_astunif_chi2,
+     losses_moctail_astunif_wass,
+     losses_moctail_astunif_kldiv,
+     loss_moctail_coast_hell,
+     loss_moctail_coast_chi2,
+     loss_moctail_coast_wass,
+     loss_moctail_coast_kldiv,
      thresholded_entropy,
      extreme_conditional_entropy,
      total_entropy,
+     Ns_anc_boot,
+     losses_moctail_astunif_kldiv_boot,
+     losses_moctail_coast_kldiv_boot,
+     losses_anconly_kldiv_boot,
+     losses_valid_kldiv_boot,
     ) = (
          jldopen(joinpath(datadir,"boost_stats.jld2"), "r") do f
              return (
@@ -350,20 +356,42 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                      f["ccdfs_dsc"], 
                      f["ccdfs_moctail_astunif"], 
                      f["ccdf_moctail_coast"], 
-                     f["losses_astunif_hell"], 
-                     f["losses_astunif_chi2"], 
-                     f["losses_astunif_wass"], 
-                     f["losses_astunif_kldiv"], 
-                     f["loss_coast_hell"], 
-                     f["loss_coast_chi2"], 
-                     f["loss_coast_wass"],
-                     f["loss_coast_kldiv"],
+                     f["losses_moctail_astunif_hell"], 
+                     f["losses_moctail_astunif_chi2"], 
+                     f["losses_moctail_astunif_wass"], 
+                     f["losses_moctail_astunif_kldiv"], 
+                     f["loss_moctail_coast_hell"], 
+                     f["loss_moctail_coast_chi2"], 
+                     f["loss_moctail_coast_wass"],
+                     f["loss_moctail_coast_kldiv"],
                      f["thresholded_entropy"],
                      f["extreme_conditional_entropy"],
                      f["total_entropy"],
+                     f["Ns_anc_boot"],
+                     f["losses_moctail_astunif_kldiv_boot"],
+                     f["losses_moctail_coast_kldiv_boot"],
+                     f["losses_anconly_kldiv_boot"],
+                     f["losses_valid_kldiv_boot"],
                     )
         end
        )
+    # ---------- convergence with N -----------
+    fig = Figure(size=(400,300))
+    lout = fig[1,1] = GridLayout()
+    xtickvalues = unique(2 .^ floor.(Int, range(0, log2(Ns_anc_boot[end]); step=1)))
+    xticklabels = (N->@sprintf("%d",N)).(xtickvalues)
+    ax = Axis(lout[1,1], xlabel="𝑁", ylabel="KL", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=identity, limits=((1,Ns_anc_boot[end]), (0,maximum(filter(isfinite, losses_moctail_coast_kldiv_boot)))), xticks=(xtickvalues,xticklabels))
+    abest = perturbation_neglog - threshold_neglog
+    scatterlines!(ax, Ns_anc_boot, mean(losses_moctail_astunif_kldiv_boot[abest,:,:]; dims=1)[1,:]; color=:purple, label="𝐴[U]", linewidth=3)
+    scatterlines!(ax, Ns_anc_boot, mean(losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:]; color=:red, label="𝐴[XclEnt]", linewidth=1)
+    for q = [0.25,0.75]
+        lines!(ax, Ns_anc_boot, mapslices(x->quantile(x,q), losses_moctail_astunif_kldiv_boot[abest,:,:]; dims=1)[1,:]; color=:purple, linestyle=(:dash,:dense), linewidth=3)
+        lines!(ax, Ns_anc_boot, mapslices(x->quantile(x,q), losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:]; color=:red, linestyle=(:dash,:dense))
+    end
+    leg = Legend(lout[1,2], ax)
+    colsize!(lout, 1, Relative(5/6))
+    save(joinpath(figdir, "KL_vs_N.png"), fig)
+    # -----------------------------------------
     ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_ancgen.jld2"), "r") do f
         return f["ts"], f["xs"]
     end
@@ -461,17 +489,15 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     end
 
     # ------------ Rows 5-7:  various divergences ------
-    for (i_row,losses_astunif,loss_coast,divname) = zip(
+    for (i_row,losses_moctail_astunif,loss_moctail_coast,divname) = zip(
                                                              5:8,
-                                                             (losses_astunif_hell,losses_astunif_chi2,losses_astunif_wass,losses_astunif_kldiv),
-                                                             (loss_coast_hell,loss_coast_chi2,loss_coast_wass,loss_coast_kldiv),
+                                                             (losses_moctail_astunif_hell,losses_moctail_astunif_chi2,losses_moctail_astunif_wass,losses_moctail_astunif_kldiv),
+                                                             (loss_moctail_coast_hell,loss_moctail_coast_chi2,loss_moctail_coast_wass,loss_moctail_coast_kldiv),
                                                              ("Hellinger\nDistance","χ² Divergence","𝐿¹ Distance","KL Divergence")
                                                             )
         # compute y-axis limits 
-        ylo,yhi = (0.0, 1.15) .* (
-                                  min(minimum(filter(isfinite,losses_astunif)),loss_coast),
-                                  max(maximum(filter(isfinite,losses_astunif)),loss_coast),
-                                 )
+        yhi = 1.15 .* max(maximum(filter(isfinite,losses_moctail_astunif)),loss_moctail_coast)
+        ylo = -0.1 * yhi
         yticks = [ylo,(ylo+yhi)/2,yhi]
         yticklabels = (y->@sprintf("%.0E",y)).(yticks)
         ax = Axis(lout[i_row,1:N_ast]; 
@@ -481,8 +507,8 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                   limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])), (ylo,yhi)),
                   yticks=(yticks,yticklabels),
                  )
-        scatterlines!(ax, -asts, losses_astunif; color=:black)
-        hlines!(ax, loss_coast; color=:black, linestyle=(:dash,:dense))
+        scatterlines!(ax, -asts, losses_moctail_astunif; color=:black)
+        hlines!(ax, loss_moctail_coast; color=:black, linestyle=(:dash,:dense))
     end
 
     for row = [1,4] # make the PMF rows bigger
@@ -802,11 +828,12 @@ function mix_conditional_tails(
         end
     end
     ccdf_poptail_coast ./= ccdf_poptail_coast[1]
+    ccdf_moctail_coast ./= anc_counts_moctail_coast
 
     # ------------------- Bootstrap resampling  -----------------
-    Ns_anc_boot = 2 .^ floor.(Int64, range(0, log2(N_anc); step=1))
+    Ns_anc_boot = unique(floor.(Int64, 2 .^ range(0, log2(N_anc); step=0.25)))
     N_boot_sizes = length(Ns_anc_boot)
-    N_boot_resamps = 20
+    N_boot_resamps = 200
     ccdfs_moctail_astunif_boot,ccdfs_poptail_astunif_boot = ntuple(_->zeros(Float64, (N_bin_over,N_ast,N_boot_resamps,N_boot_sizes)), 2)
     ccdfs_moctail_coast_boot,ccdfs_poptail_coast_boot = ntuple(_->zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes)), 2)
     ccdfs_anconly_boot,ccdfs_valid_boot = ntuple(_->zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes)), 2)
@@ -832,24 +859,25 @@ function mix_conditional_tails(
             ccdfs_moctail_coast_boot ./= coast_total_weight
             ccdfs_poptail_coast_boot[:,i_boot_resamp,i_boot_size] ./= ccdfs_poptail_coast_boot[1,i_boot_resamp,i_boot_size]
             # Ancestors only 
-            ccdfs_anconly_boot[:,i_boot_resamp,i_boot_size] .+= compute_empirical_ccdf(Rs_peak_anc[ancs_boot], bin_lower_edges[i_bin_thresh:end]) ./ N_anc_boot
+            ceccdf = compute_empirical_ccdf(Rs_peak_anc[ancs_boot], bin_lower_edges[i_bin_thresh:end])
+            ccdfs_anconly_boot[:,i_boot_resamp,i_boot_size] .= compute_empirical_ccdf(Rs_peak_anc[ancs_boot], bin_lower_edges[i_bin_thresh:end])
             ancs_boot_valid = rand(rng, 1:N_anc_valid, N_anc_boot)
-            ccdfs_valid_boot[:,i_boot_resamp,i_boot_size] .+= compute_empirical_ccdf(Rs_peak_valid[ancs_boot_valid], bin_lower_edges[i_bin_thresh:end]) ./ N_anc_boot
+            ccdfs_valid_boot[:,i_boot_resamp,i_boot_size] .= compute_empirical_ccdf(Rs_peak_valid[ancs_boot_valid], bin_lower_edges[i_bin_thresh:end]) 
         end
     end
 
     # compute losses: with respect to the whole truth if it is available, but otherwise the ground truth 
     ccdf_peak_truth = (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth)
-    losses_astunif_hell,losses_astunif_chi2,losses_astunif_wass,losses_astunif_kldiv = (zeros(Float64, N_ast) for _=1:4)
-    loss_coast_hell = hellingerdist(ccdf_peak_truth, ccdf_moctail_coast)
-    loss_coast_chi2 = chi2div(ccdf_peak_truth, ccdf_moctail_coast)
-    loss_coast_wass = wassersteindist(ccdf_peak_truth, ccdf_moctail_coast)
-    loss_coast_kldiv = kldiv(ccdf_peak_truth, ccdf_moctail_coast)
+    losses_moctail_astunif_hell,losses_moctail_astunif_chi2,losses_moctail_astunif_wass,losses_moctail_astunif_kldiv = (zeros(Float64, N_ast) for _=1:4)
+    loss_moctail_coast_hell = hellingerdist(ccdf_peak_truth, ccdf_moctail_coast)
+    loss_moctail_coast_chi2 = chi2div(ccdf_peak_truth, ccdf_moctail_coast)
+    loss_moctail_coast_wass = wassersteindist(ccdf_peak_truth, ccdf_moctail_coast)
+    loss_moctail_coast_kldiv = kldiv(ccdf_peak_truth, ccdf_moctail_coast)
     for i_ast = 1:N_ast
-        losses_astunif_hell[i_ast] = hellingerdist(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
-        losses_astunif_chi2[i_ast] = chi2div(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
-        losses_astunif_wass[i_ast] = wassersteindist(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
-        losses_astunif_kldiv[i_ast] = kldiv(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
+        losses_moctail_astunif_hell[i_ast] = hellingerdist(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
+        losses_moctail_astunif_chi2[i_ast] = chi2div(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
+        losses_moctail_astunif_wass[i_ast] = wassersteindist(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
+        losses_moctail_astunif_kldiv[i_ast] = kldiv(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
         # TODO compute losses by KL divergence 
     end
 
@@ -858,6 +886,12 @@ function mix_conditional_tails(
     losses_anconly_kldiv_boot,losses_valid_kldiv_boot = ntuple(_->zeros(Float64,(N_boot_resamps,N_boot_sizes)), 2)
     for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot)
         for i_boot_resamp = 1:N_boot_resamps
+            for i_ast = 1:N_ast
+                losses_moctail_astunif_kldiv_boot[i_ast,i_boot_resamp,i_boot_size] = kldiv(ccdf_peak_truth, ccdfs_moctail_astunif_boot[:,i_ast,i_boot_resamp,i_boot_size])
+                losses_poptail_astunif_kldiv_boot[i_ast,i_boot_resamp,i_boot_size] = kldiv(ccdf_peak_truth, ccdfs_poptail_astunif_boot[:,i_ast,i_boot_resamp,i_boot_size])
+            end
+            losses_moctail_coast_kldiv_boot[i_boot_resamp,i_boot_size] = kldiv(ccdf_peak_truth, ccdfs_moctail_coast_boot[:,i_boot_resamp,i_boot_size])
+            losses_poptail_coast_kldiv_boot[i_boot_resamp,i_boot_size] = kldiv(ccdf_peak_truth, ccdfs_poptail_coast_boot[:,i_boot_resamp,i_boot_size])
             losses_anconly_kldiv_boot[i_boot_resamp,i_boot_size] = kldiv(ccdf_peak_truth, ccdfs_anconly_boot[:,i_boot_resamp,i_boot_size])
             losses_valid_kldiv_boot[i_boot_resamp,i_boot_size] = kldiv(ccdf_peak_truth, ccdfs_valid_boot[:,i_boot_resamp,i_boot_size])
         end
@@ -874,18 +908,19 @@ function mix_conditional_tails(
              ccdfs_dsc,
              ccdfs_moctail_astunif,
              ccdf_moctail_coast,
-             losses_astunif_hell,
-             losses_astunif_chi2,
-             losses_astunif_wass,
-             losses_astunif_kldiv,
-             loss_coast_hell,
-             loss_coast_chi2,
-             loss_coast_wass,
-             loss_coast_kldiv,
+             losses_moctail_astunif_hell,
+             losses_moctail_astunif_chi2,
+             losses_moctail_astunif_wass,
+             losses_moctail_astunif_kldiv,
+             loss_moctail_coast_hell,
+             loss_moctail_coast_chi2,
+             loss_moctail_coast_wass,
+             loss_moctail_coast_kldiv,
              thresholded_entropy,
              extreme_conditional_entropy,
              total_entropy,
              # bootstraps
+             Ns_anc_boot,
              ccdfs_moctail_astunif_boot,
              ccdfs_moctail_coast_boot,
              ccdfs_anconly_boot,
