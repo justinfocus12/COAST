@@ -287,17 +287,17 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
             end
         end
         title4 = (
-                  rich("TotEnt", color=:steelblue, font=:bold)
+                  rich("TotEnt", color=:goldenrod, font=:bold)
                   * "\n" * 
-                  rich("ThrEnt", color=:red)
+                  rich("ThrEnt", color=:orangered)
                  )
-        title5 = rich("XclEnt", color=:purple, font=:bold)
+        title5 = rich("XclEnt", color=:royalblue, font=:bold)
         ax4 = Axis(lout[:,4]; title=title4, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,max(maximum(thresholded_entropy),maximum(total_entropy))*1.1),(-asts[end]-1/2,1/2)))
         ax5 = Axis(lout[:,5]; title=title5, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,maximum(extreme_conditional_entropy)*1.1),(-asts[end]-1/2,1/2)))
-        scatterlines!(ax4, total_entropy[:,i_anc], -asts; color=:steelblue, linewidth=4, label="ToE")
-        scatterlines!(ax4, thresholded_entropy[:,i_anc], -asts, color=:red, label="ThE")
+        scatterlines!(ax4, total_entropy[:,i_anc], -asts; color=:goldenrod, linewidth=4, label="ToE")
+        scatterlines!(ax4, thresholded_entropy[:,i_anc], -asts, color=:orangered, label="ThE")
         ylims!(ax4, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
-        scatterlines!(ax5, extreme_conditional_entropy[:,i_anc], -asts, color=:purple, label="CoEP")
+        scatterlines!(ax5, extreme_conditional_entropy[:,i_anc], -asts, color=:royalblue, label="XclEnt")
         ylims!(ax5, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
         for i_ast = 1:N_ast-1
             rowgap!(lout, i_ast, 0)
@@ -440,73 +440,48 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     xlimits = [minimum(filter(ispos, isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth))/2, 1]
     i_coast_mean = round(Int64,mean(idx_coast))
     for i_ast = 1:N_ast
-        ax = Axis(lout[1,N_ast-i_ast+1]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), ylabel="Tail CCDFs,\nUniform AST", ylabelrotation=0)
-        scatterlines!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=:gray79, label="Ancestors only")
-        scatterlines!(ax, ccdf_peak_valid, bin_edges[i_bin_thresh:N_bin]; color=:black, label="Long DNS")
-        if !isnothing(ccdf_peak_wholetruth)
-            lines!(ax, ccdf_peak_wholetruth, bin_edges[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
-        end
-        scatterlines!(ax, ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:N_bin]; color=:firebrick)
+        i_col = N_ast-i_ast+1
+        ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), title="Tail CCDFs",  yticklabelsvisible=(i_col==1), xlabel="Exceedance probability", ylabel="Severity 𝑅*")
+        lines!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=:gray79, linewidth=4, label="Ancestors only")
+        (!isnothing(ccdf_peak_wholetruth)) && lines!(ax, ccdf_peak_wholetruth, bin_edges[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Whole truth", linewidth=2)
+        lines!(ax, ccdf_peak_valid, bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=4, linestyle=(:dash,:dense), label="Ground truth")
+        lines!(ax, ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:N_bin]; color=:firebrick, linewidth=3)
         if i_ast == i_coast_mean
-            lines!(ax, ccdf_moctail_coast, bin_edges[i_bin_thresh:N_bin]; color=:steelblue, linewidth=0.75)
+            lines!(ax, ccdf_moctail_coast, bin_edges[i_bin_thresh:N_bin]; color=:royalblue, linewidth=1.0, label="COAST")
             log2xlims = [ceil(Int64,log2(xlimits[1])),floor(Int64,log2(xlimits[2]))]
-            ax.xticks = (2.0 .^ log2xlims, (lol->@sprintf("2%s",supscr(lol))).(log2xlims))
-            ax.xticklabelsvisible = true
+            log2xtickvals = [log2xlims[1],round(Int,sqrt(log2xlims[1]*log2xlims[2])),log2xlims[2]]
+            ax.xticks = (2.0 .^ log2xtickvals, (lol->@sprintf("2%s",supscr(lol))).(log2xtickvals))
+            ax.xticklabelsvisible = ax.xlabelvisible = ax.titlevisible = true
+            Legend(lout[1,N_ast+1], ax; framevisible=false)
+        else
+            ax.xticklabelsvisible = ax.xlabelvisible = false
         end
+        i_ast>1 && colgap!(lout, i_col, 0)
+        ax.ylabelvisible = (i_col==1)
     end
-    for i_ast = 1:N_ast
-        xlims!(contents(lout[1,i_ast])[1], tuple(xlimits...))
-    end
-    # Overlay the COAST CCDF
 
     # ----------- Rows 2-3: thrent and COAST frequency ------------
-    ax = Axis(lout[2,1:N_ast]; xlabel="−AST", ylabel="XclEnt", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),extrema(filter(ispos,extreme_conditional_entropy))), xlabelvisible=false, xticklabelsvisible=false)
+    ax = Axis(lout[2,1:N_ast]; xlabel="−AST", title="Extreme-conditional entropy (XclEnt)", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),extrema(filter(ispos,extreme_conditional_entropy))), xlabelvisible=false, xticklabelsvisible=false)
     xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
     for i_anc = 1:N_anc
-        scatterlines!(ax, -asts, extreme_conditional_entropy[:,i_anc]; color=:gray79)
+        scatterlines!(ax, -asts, extreme_conditional_entropy[:,i_anc]; color=:skyblue1, label="Single families")
     end
-    scatterlines!(ax, -asts, mean(extreme_conditional_entropy; dims=2)[:,1]; color=:steelblue)
-    ax = Axis(lout[3,1:N_ast]; xlabel="−AST", ylabel="COAST\nfrequency", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=true, xticklabelsvisible=true, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,1)))
+    scatterlines!(ax, -asts, mean(extreme_conditional_entropy; dims=2)[:,1]; color=:royalblue, label="Mean over families")
+    ax = Axis(lout[3,1:N_ast]; xlabel="−AST", title="COAST frequency", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=true, xticklabelsvisible=true, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(-0.01*N_anc,1.01*N_anc)))
     coast_freq = zeros(Int64, N_ast)
     for i_ast = 1:N_ast
         coast_freq[i_ast] += sum(idx_coast.==i_ast)
     end
-    stairs!(ax, -asts, coast_freq, color=:black, linewidth=3, step=:center)
+    stairs!(ax, -asts, coast_freq, color=:royalblue, linewidth=3, step=:center)
     #scatter!(ax, -threshold_neglog, 0.5; marker=:star6, color=:cyan, markersize=18, label=@sprintf("𝑀=%d",threshold_neglog))
     #scatter!(ax, -perturbation_neglog, 0.5; marker=:star6, color=:orange, markersize=18, label=@sprintf("𝐾=%d",perturbation_neglog))
     scatter!(ax, -(perturbation_neglog-threshold_neglog), 0.5*N_anc; marker=:star6, color=:firebrick, markersize=18, label=@sprintf("𝐾−𝑀\n=%d−%d\n=%d",perturbation_neglog,threshold_neglog,perturbation_neglog-threshold_neglog))
-    ylims!(ax, -0.01, 1.01)
-
-    # --------- Row 4: the xclent-based mixture --------------
-    i_coast_mean = round(Int, mean(idx_coast)) # Put it horizontally at the mean COAST position 
-    ax = Axis(lout[4,N_ast-i_coast_mean+1]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), ylabel="AST = argmax(XclEent)", ylabelrotation=0)
-    scatter!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=:gray79, label="Ancestors only")
-    scatter!(ax, ccdf_peak_valid, bin_edges[i_bin_thresh:N_bin],;  color=:black, label="Long DNS", )
-    if !isnothing(ccdf_peak_wholetruth)
-        lines!(ax, ccdf_peak_wholetruth, bin_edges[i_bin_thresh:N_bin], ; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=2)
-    end
-    scatter!(ax, ccdf_moctail_coast, bin_edges[i_bin_thresh:N_bin], ; color=:steelblue)
-    if i_coast_mean < N_ast; ax.ylabelvisible = ax.yticklabelsvisible = false; end
-    # Stick in a legend 
-    leg = Legend(lout[4,1:2], content(lout[3,1:N_ast]), fontsize=8)
-
-    # Tidy up format for rows 1-4
-    for i_col = 1:N_ast
-        for i_row = [1,4]
-            if length(contents(lout[i_row,i_col])) == 0; continue; end
-            if (i_col==1 && i_row==4); continue; end
-            ax = content(lout[i_row,i_col])
-            if i_col < N_ast; colgap!(lout, i_col, 0); end
-            if i_col > 1; ax.ylabelvisible = ax.yticklabelsvisible = false; end
-            ax.xlabelvisible = ax.xticklabelsvisible = false
-            #xlims!(ax, minimum(filter(c->c>0, ccdf_peak_valid))/16, 1.0)
-            #ylims!(ax, 1.1*threshold-0.1*1, 1)
-        end
-    end
+    Legend(lout[3,N_ast+1], ax)
+    #leg = Legend(lout[4,1:2], content(lout[3,1:N_ast]), fontsize=8)
 
     # ------------ Rows 5-7:  various divergences ------
     for (i_row,losses_moctail_astunif,loss_moctail_coast,divname) = zip(
-                                                             5:5,
+                                                             4:4,
                                                              (losses_moctail_astunif_hell,losses_moctail_astunif_chi2,losses_moctail_astunif_wass,losses_moctail_astunif_kldiv)[4:4],
                                                              (loss_moctail_coast_hell,loss_moctail_coast_chi2,loss_moctail_coast_wass,loss_moctail_coast_kldiv)[4:4],
                                                              ("Hellinger\nDistance","χ² Divergence","𝐿¹ Distance","KL Divergence")[4:4]
@@ -524,13 +499,12 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                   limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])), (ylo,yhi)),
                   yticks=(ytickvalues,yticklabels),
                  )
-        scatterlines!(ax, -asts, losses_moctail_astunif; color=:purple)
-        loss_moctail_coast>0 && hlines!(ax, loss_moctail_coast; color=:firebrick, linestyle=:solid)
+        scatterlines!(ax, -asts, losses_moctail_astunif; color=:firebrick, label="Uniform AST")
+        # TODO keep labeling
+        loss_moctail_coast>0 && hlines!(ax, loss_moctail_coast; color=:royalblue, linestyle=:solid)
     end
 
-    for row = [1,4] # make the PMF rows bigger
-        rowsize!(lout, row, Relative(3/11))
-    end
+    colsize!(lout, N_ast+1, Relative(1/13))
     
     save(joinpath(figdir, "ccdfs_moctail.png"), fig)
 
