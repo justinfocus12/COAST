@@ -1,4 +1,13 @@
 
+function astcolors()
+    return Dict(
+                "TotEnt" => :goldenrod,
+                "ThrEnt" => :orangered,
+                "XclEnt" => :dodgerblue2,
+                "XclEntOne" => :skyblue2,
+                "astunif" => :firebrick,
+               )
+end
 
 function poweroftwostring(k::Int64)
     symbols = ["2⁰","2¹","2²","2³","2⁴","2⁵","2⁶","2⁷","2⁸","2⁹","2¹⁰","2¹¹","2¹²","2¹³","2¹⁴","2¹⁵","2¹⁶","2¹⁷","2¹⁸"]

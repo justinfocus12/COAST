@@ -208,6 +208,7 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
     end
 
     theme_ax = (xticklabelsize=16, yticklabelsize=16, xlabelsize=20, ylabelsize=20, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=20)
+    astcols = astcolors()
 
     N_anc = length(Rs_peak)
     N_anc2plot = min(2,N_anc)
@@ -286,17 +287,17 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
             end
         end
         title4 = (
-                  rich("TotEnt", color=:goldenrod, font=:bold)
+                  rich("TotEnt", color=astcols["TotEnt"], font=:bold)
                   * "\n" * 
-                  rich("ThrEnt", color=:orangered)
+                  rich("ThrEnt", color=astcols["ThrEnt"])
                  )
-        title5 = rich("XclEnt", color=:royalblue, font=:bold)
+        title5 = rich("XclEnt", color=astcols["XclEnt"], font=:bold)
         ax4 = Axis(lout[:,4]; title=title4, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,max(maximum(thresholded_entropy),maximum(total_entropy))*1.1),(-asts[end]-1/2,1/2)))
         ax5 = Axis(lout[:,5]; title=title5, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,maximum(extreme_conditional_entropy)*1.1),(-asts[end]-1/2,1/2)))
-        scatterlines!(ax4, total_entropy[:,i_anc], -asts; color=:goldenrod, linewidth=4, label="ToE")
-        scatterlines!(ax4, thresholded_entropy[:,i_anc], -asts, color=:orangered, label="ThE")
+        scatterlines!(ax4, total_entropy[:,i_anc], -asts; color=astcols["TotEnt"], linewidth=4, label="TotEnt")
+        scatterlines!(ax4, thresholded_entropy[:,i_anc], -asts, color=astcols["ThrEnt"], label="ThrEnt")
         ylims!(ax4, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
-        scatterlines!(ax5, extreme_conditional_entropy[:,i_anc], -asts, color=:royalblue, label="XclEnt")
+        scatterlines!(ax5, extreme_conditional_entropy[:,i_anc], -asts, color=astcols["XclEnt"], label="XclEnt")
         ylims!(ax5, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
         for i_ast = 1:N_ast-1
             rowgap!(lout, i_ast, 0)
@@ -433,26 +434,35 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
 
     fig = Figure(size=(80*(N_ast+1), 800))
     theme_ax = (xticklabelsize=12, yticklabelsize=12, xlabelsize=16, ylabelsize=16, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=16)
+    astcols = astcolors()
 
     # ---------- Row 1: CCDFs at each AST separately ----------
     lout = fig[1,1] = GridLayout()
     xlimits = [minimum(filter(ispos, isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth))/2, 1]
-    i_coast_mean = mean(idx_coast))
+    i_coast_mean = round(Int64,mean(idx_coast))
     # TODO fix
-    log1pytickvalues = round(Int64,log1p(-round.(Int64, range(-threshold_neglog, -threshold_neglog-6; length=3))
-    ytickvalues = -expm1.(log1pytickvalues .* log(2))
-    yticklabels = (lol->@sprintf("1−2%s", supscr(lol))).(log1pytickvalues)
+    ytickvalues,yticklabels = let
+        lol1 = round(Int64, -log1p(-bin_edges[i_bin_thresh])/log(2))
+        lol2 = lol1 + 1
+        @show lol1,lol2
+        ytickvalues = vcat(-expm1.([-lol1, -lol2].*log(2)), 1.0)
+        yticklabels = vcat((lol->@sprintf("1−2%s", supscr(-lol))).([lol1,lol2]), "1")
+        (ytickvalues,yticklabels)
+    end
     for i_ast = 1:N_ast
         i_col = N_ast-i_ast+1
-        ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), title="Tail CCDFs", titlevisible=false, yticklabelsvisible=(i_col==1), ylabelvisible=(i_col==1), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, xlabel="Exceedance probability", ylabel="Severity 𝑅*")
-        lines!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=:gray79, linewidth=4, label="Ancestors only")
-        (!isnothing(ccdf_peak_wholetruth)) && lines!(ax, ccdf_peak_wholetruth, bin_edges[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Whole truth", linewidth=2)
-        lines!(ax, ccdf_peak_valid, bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=4, linestyle=(:dash,:dense), label="Ground truth")
-        lines!(ax, ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:N_bin]; color=:firebrick, linewidth=3)
+        ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), title="Tail CCDFs", titlevisible=false, yticklabelsvisible=(i_col==1), ylabelvisible=(i_col==1), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, ylabel="Severity 𝑅*")
+        lines!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=:gray79, linewidth=5, label="Ancestors only")
+        if isnothing(ccdf_peak_wholetruth)
+            lines!(ax, ccdf_peak_valid, bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=4, linestyle=(:dash,:dense), label="Ground truth")
+        else
+            lines!(ax, ccdf_peak_wholetruth, bin_edges[i_bin_thresh:N_bin]; color=:black, linestyle=(:dash,:dense), label="Whole truth", linewidth=4)
+        end
+        lines!(ax, ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:N_bin]; color=astcols["astunif"], linewidth=3)
         if i_ast == i_coast_mean
-            lines!(ax, ccdf_moctail_coast, bin_edges[i_bin_thresh:N_bin]; color=:royalblue, linewidth=2.0, label="COAST")
+            lines!(ax, ccdf_moctail_coast, bin_edges[i_bin_thresh:N_bin]; color=astcols["XclEnt"], linewidth=2.0, label="XclEnt-COAST")
             log2xlims = [ceil(Int64,log2(xlimits[1])),floor(Int64,log2(xlimits[2]))]
-            log2xtickvals = [log2xlims[1],round(Int,sqrt(log2xlims[1]*log2xlims[2])),log2xlims[2]]
+            log2xtickvals = [log2xlims[1],div(log2xlims[1]+log2xlims[2],2),log2xlims[2]]
             ax.xticks = (2.0 .^ log2xtickvals, (lol->@sprintf("2%s",supscr(lol))).(log2xtickvals))
             ax.xticklabelsvisible = ax.xlabelvisible = ax.titlevisible = true
             Legend(lout[1,N_ast+1], ax; framevisible=false)
@@ -463,42 +473,44 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     end
 
     # ----------- Rows 2-3: thrent and COAST frequency ------------
-    ax = Axis(lout[2,1:N_ast]; xlabel="−AST", title="Extreme-conditional entropy (XclEnt)", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),extrema(filter(ispos,extreme_conditional_entropy))), xlabelvisible=false, xticklabelsvisible=false)
+    ax = Axis(lout[2,1:N_ast]; theme_ax..., xlabel="−AST", title="Extreme-conditional entropy (XclEnt)", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),extrema(filter(ispos,extreme_conditional_entropy))), xlabelvisible=false, xticklabelsvisible=false)
     xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
     for i_anc = 1:N_anc
-        scatterlines!(ax, -asts, extreme_conditional_entropy[:,i_anc]; color=:skyblue1, label="Single families")
+        scatterlines!(ax, -asts, extreme_conditional_entropy[:,i_anc]; color=astcols["XclEntOne"], label=(i_anc==1 ? "Single\nfamilies" : nothing))
     end
-    scatterlines!(ax, -asts, mean(extreme_conditional_entropy; dims=2)[:,1]; color=:royalblue, label="Mean over families")
-    ax = Axis(lout[3,1:N_ast]; xlabel="−AST", title="COAST frequency", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=true, xticklabelsvisible=true, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(-0.01*N_anc,1.01*N_anc)))
+    scatterlines!(ax, -asts, mean(extreme_conditional_entropy; dims=2)[:,1]; color=astcols["XclEnt"], linewidth=3, label="Mean over\nfamilies")
+    Legend(lout[2,N_ast+1], ax; framevisible=false)
+
+    ax = Axis(lout[3,1:N_ast]; theme_ax..., xlabel="−AST", title="XclEnt-COAST frequency", ylabelrotation=0, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=false, xticklabelsvisible=false, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(-0.01*N_anc,1.01*N_anc)))
     coast_freq = zeros(Int64, N_ast)
     for i_ast = 1:N_ast
         coast_freq[i_ast] += sum(idx_coast.==i_ast)
     end
-    stairs!(ax, -asts, coast_freq, color=:royalblue, linewidth=3, step=:center)
-    #scatter!(ax, -threshold_neglog, 0.5; marker=:star6, color=:cyan, markersize=18, label=@sprintf("𝑀=%d",threshold_neglog))
-    #scatter!(ax, -perturbation_neglog, 0.5; marker=:star6, color=:orange, markersize=18, label=@sprintf("𝐾=%d",perturbation_neglog))
-    scatter!(ax, -(perturbation_neglog-threshold_neglog), 0.5*N_anc; marker=:star6, color=:firebrick, markersize=18, label=@sprintf("𝐾−𝑀\n=%d−%d\n=%d",perturbation_neglog,threshold_neglog,perturbation_neglog-threshold_neglog))
-    Legend(lout[3,N_ast+1], ax)
-    #leg = Legend(lout[4,1:2], content(lout[3,1:N_ast]), fontsize=8)
+    stairs!(ax, -asts, coast_freq, color=astcols["XclEnt"], linewidth=3, step=:center)
+    scatter!(ax, -(perturbation_neglog-threshold_neglog), 0.5*N_anc; marker=:star6, color=astcols["astunif"], markersize=18, label=@sprintf(" 𝐾−𝑀\n=%d−%d\n=%d",perturbation_neglog,threshold_neglog,perturbation_neglog-threshold_neglog))
+    Legend(lout[3,N_ast+1], ax; framevisible=false)
 
-    # ------------ Rows 5-7:  various divergences ------
+    # ------------ Row 4:  KL divergence ------
     # compute y-axis limits 
     loss_min_astunif,loss_max_astunif = (func(filter(ispos,losses_moctail_astunif_kldiv)) for func=(minimum,maximum))
     yhi = 2.0 * maximum(filter(ispos, [loss_max_astunif, loss_moctail_coast_kldiv]))
     ylo = 0.5 * minimum(filter(ispos, [loss_min_astunif, loss_moctail_coast_kldiv]))
     ytickvalues = [ylo,sqrt(ylo*yhi),yhi]
     yticklabels = (y->@sprintf("%.0E",y)).(ytickvalues)
-    ax = Axis(lout[4,1:N_ast]; 
-              xlabel="−AST", ylabel="KL(Q̂||Q)", yscale=log2,
-              ylabelrotation=0, xgridvisible=false, ygridvisible=false, 
+    ax = Axis(lout[4,1:N_ast]; theme_ax..., 
+              xlabel="−AST", title="KL divergence", yscale=log2,
+              ylabelrotation=pi/2, xgridvisible=false, ygridvisible=false, 
               xticks=(-asts, string.(-asts)), 
               limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])), (ylo,yhi)),
               yticks=(ytickvalues,yticklabels),
              )
-    scatterlines!(ax, -asts, losses_moctail_astunif_kldiv; color=:firebrick, label="Uniform AST")
-    # TODO keep labeling
-    loss_moctail_coast_kldiv>0 && hlines!(ax, loss_moctail_coast_kldiv; color=:royalblue, linestyle=:solid)
+    scatterlines!(ax, -asts, losses_moctail_astunif_kldiv; color=astcols["astunif"], label="Uniform AST")
+    loss_moctail_coast_kldiv>0 && hlines!(ax, loss_moctail_coast_kldiv; color=astcols["XclEnt"], linestyle=:solid, label="XclEnt-COAST")
+    Legend(lout[4,N_ast+1], ax; framevisible=false)
 
+    rowgap!(lout, 1, 0)
+    rowgap!(lout, 2, 0)
+    rowgap!(lout, 3, 0)
     colsize!(lout, N_ast+1, Relative(1/(N_ast-4)))
     
     save(joinpath(figdir, "ccdfs_moctail.png"), fig)
