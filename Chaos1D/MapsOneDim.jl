@@ -218,7 +218,6 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
     xs_init = zeros(Float64, (1, N_dsc, N_ast, N_anc))
     xs_dsc = [zeros(Float64, (1, ast+bst, N_dsc, N_anc)) for ast=asts] # will have some filler values
     ts_init = zeros(Int64, (N_dsc, N_ast, N_anc))
-    # TODO keep initializing the necessary arrays to load all the data to, opening-and-shutting the file before plotting
     jldopen(joinpath(datadir,"xs_dscs.jld2"), "r") do f
         for i_anc = 1:N_anc
             for i_ast = 1:N_ast
@@ -432,32 +431,35 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     bin_edges = vcat(bin_lower_edges, 1.0)
 
 
-    fig = Figure(size=(80*N_ast, 850))
+    fig = Figure(size=(80*(N_ast+1), 800))
     theme_ax = (xticklabelsize=12, yticklabelsize=12, xlabelsize=16, ylabelsize=16, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=16)
 
     # ---------- Row 1: CCDFs at each AST separately ----------
     lout = fig[1,1] = GridLayout()
     xlimits = [minimum(filter(ispos, isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth))/2, 1]
-    i_coast_mean = round(Int64,mean(idx_coast))
+    i_coast_mean = mean(idx_coast))
+    # TODO fix
+    log1pytickvalues = round(Int64,log1p(-round.(Int64, range(-threshold_neglog, -threshold_neglog-6; length=3))
+    ytickvalues = -expm1.(log1pytickvalues .* log(2))
+    yticklabels = (lol->@sprintf("1−2%s", supscr(lol))).(log1pytickvalues)
     for i_ast = 1:N_ast
         i_col = N_ast-i_ast+1
-        ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), title="Tail CCDFs",  yticklabelsvisible=(i_col==1), xlabel="Exceedance probability", ylabel="Severity 𝑅*")
+        ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), title="Tail CCDFs", titlevisible=false, yticklabelsvisible=(i_col==1), ylabelvisible=(i_col==1), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, xlabel="Exceedance probability", ylabel="Severity 𝑅*")
         lines!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=:gray79, linewidth=4, label="Ancestors only")
         (!isnothing(ccdf_peak_wholetruth)) && lines!(ax, ccdf_peak_wholetruth, bin_edges[i_bin_thresh:N_bin]; color=:black, linestyle=:solid, label="Whole truth", linewidth=2)
         lines!(ax, ccdf_peak_valid, bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=4, linestyle=(:dash,:dense), label="Ground truth")
         lines!(ax, ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:N_bin]; color=:firebrick, linewidth=3)
         if i_ast == i_coast_mean
-            lines!(ax, ccdf_moctail_coast, bin_edges[i_bin_thresh:N_bin]; color=:royalblue, linewidth=1.0, label="COAST")
+            lines!(ax, ccdf_moctail_coast, bin_edges[i_bin_thresh:N_bin]; color=:royalblue, linewidth=2.0, label="COAST")
             log2xlims = [ceil(Int64,log2(xlimits[1])),floor(Int64,log2(xlimits[2]))]
             log2xtickvals = [log2xlims[1],round(Int,sqrt(log2xlims[1]*log2xlims[2])),log2xlims[2]]
             ax.xticks = (2.0 .^ log2xtickvals, (lol->@sprintf("2%s",supscr(lol))).(log2xtickvals))
             ax.xticklabelsvisible = ax.xlabelvisible = ax.titlevisible = true
             Legend(lout[1,N_ast+1], ax; framevisible=false)
         else
-            ax.xticklabelsvisible = ax.xlabelvisible = false
+            ax.xticklabelsvisible = ax.xlabelvisible = ax.titlevisible = false
         end
         i_ast>1 && colgap!(lout, i_col, 0)
-        ax.ylabelvisible = (i_col==1)
     end
 
     # ----------- Rows 2-3: thrent and COAST frequency ------------
@@ -480,31 +482,24 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     #leg = Legend(lout[4,1:2], content(lout[3,1:N_ast]), fontsize=8)
 
     # ------------ Rows 5-7:  various divergences ------
-    for (i_row,losses_moctail_astunif,loss_moctail_coast,divname) = zip(
-                                                             4:4,
-                                                             (losses_moctail_astunif_hell,losses_moctail_astunif_chi2,losses_moctail_astunif_wass,losses_moctail_astunif_kldiv)[4:4],
-                                                             (loss_moctail_coast_hell,loss_moctail_coast_chi2,loss_moctail_coast_wass,loss_moctail_coast_kldiv)[4:4],
-                                                             ("Hellinger\nDistance","χ² Divergence","𝐿¹ Distance","KL Divergence")[4:4]
-                                                            )
-        # compute y-axis limits 
-        loss_min_astunif,loss_max_astunif = (func(filter(ispos,losses_moctail_astunif)) for func=(minimum,maximum))
-        yhi = 2.0 * maximum(filter(ispos, [loss_max_astunif, loss_moctail_coast]))
-        ylo = 0.5 * minimum(filter(ispos, [loss_min_astunif, loss_moctail_coast]))
-        ytickvalues = [ylo,sqrt(ylo*yhi),yhi]
-        yticklabels = (y->@sprintf("%.0E",y)).(ytickvalues)
-        ax = Axis(lout[i_row,1:N_ast]; 
-                  xlabel="−AST", ylabel=divname, yscale=log2,
-                  ylabelrotation=0, xgridvisible=false, ygridvisible=false, 
-                  xticks=(-asts, string.(-asts)), 
-                  limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])), (ylo,yhi)),
-                  yticks=(ytickvalues,yticklabels),
-                 )
-        scatterlines!(ax, -asts, losses_moctail_astunif; color=:firebrick, label="Uniform AST")
-        # TODO keep labeling
-        loss_moctail_coast>0 && hlines!(ax, loss_moctail_coast; color=:royalblue, linestyle=:solid)
-    end
+    # compute y-axis limits 
+    loss_min_astunif,loss_max_astunif = (func(filter(ispos,losses_moctail_astunif_kldiv)) for func=(minimum,maximum))
+    yhi = 2.0 * maximum(filter(ispos, [loss_max_astunif, loss_moctail_coast_kldiv]))
+    ylo = 0.5 * minimum(filter(ispos, [loss_min_astunif, loss_moctail_coast_kldiv]))
+    ytickvalues = [ylo,sqrt(ylo*yhi),yhi]
+    yticklabels = (y->@sprintf("%.0E",y)).(ytickvalues)
+    ax = Axis(lout[4,1:N_ast]; 
+              xlabel="−AST", ylabel="KL(Q̂||Q)", yscale=log2,
+              ylabelrotation=0, xgridvisible=false, ygridvisible=false, 
+              xticks=(-asts, string.(-asts)), 
+              limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])), (ylo,yhi)),
+              yticks=(ytickvalues,yticklabels),
+             )
+    scatterlines!(ax, -asts, losses_moctail_astunif_kldiv; color=:firebrick, label="Uniform AST")
+    # TODO keep labeling
+    loss_moctail_coast_kldiv>0 && hlines!(ax, loss_moctail_coast_kldiv; color=:royalblue, linestyle=:solid)
 
-    colsize!(lout, N_ast+1, Relative(1/13))
+    colsize!(lout, N_ast+1, Relative(1/(N_ast-4)))
     
     save(joinpath(figdir, "ccdfs_moctail.png"), fig)
 
