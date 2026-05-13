@@ -41,11 +41,8 @@ function compute_extreme_conditional_entropy(xs::Vector{Float64}, bin_lower_edge
 end
 
 function compute_thresholded_entropy(xs::Vector{Float64}, bin_lower_edges::Vector{Float64})
-    pmf = compute_empirical_ccdf(xs, bin_lower_edges) #sum(Float64, xs .> bin_lower_edges'; dims=1)[1,:]
-    pmf[1:end-1] .-= pmf[2:end]
-    if length(xs) > 0
-        pmf ./= length(xs)
-    end
+    ccdf = compute_empirical_ccdf(xs, bin_lower_edges) #sum(Float64, xs .> bin_lower_edges'; dims=1)[1,:]
+    pmf = vcat(-diff(ccdf), ccdf[end])
     entropy = -sum(xlog2x.(pmf))
     return entropy
 end

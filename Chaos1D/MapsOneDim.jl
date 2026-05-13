@@ -282,50 +282,62 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
         yticklabels_ax2 = scinot2near1.(ytickvalues_ax2)
         xtickvalues_ax2 = [-1,0,1]./2^perturbation_neglog
         xticklabels_ax2 = scinot2.(xtickvalues_ax2)
+        asttickvalues = [-asts[end], -asts[div(N_ast,2)], 0]
+        astticklabels = (A->@sprintf("%d",A)).(asttickvalues)
         for i_ast = 1:N_ast
-            ax1 = Axis(lout[i_ast,1]; xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), title="𝑅(𝑥(𝑡))", titlevisible=(i_ast==1), theme_ax..., limits=((-asts[end]-1, bst+1),(0,1)), yticks=([0,1],["0","1"]), yticklabelsvisible=(i_ast==1))
-            ax2 = Axis(lout[i_ast,2]; yticklabelsvisible=(i_ast==1), xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), xlabel="Pert. δ𝑥", title="𝑅*", titlevisible=(i_ast==1), theme_ax..., xticks=(xtickvalues_ax2,xticklabels_ax2), xticklabelrotation=-pi/2, limits=((-1/2^perturbation_neglog,1/2^perturbation_neglog),(2*threshold-1,1)), yticks=(ytickvalues_ax2,yticklabels_ax2))
-            text!(ax1, -asts[div(N_ast,2)]-1.0, 0.0; text=@sprintf("AST = %d", asts[i_ast]), font="Menlo", fontsize=14, align=(:center,:bottom))
+            ast = asts[i_ast]
+            ax1 = Axis(lout[i_ast,1]; xlabel=@sprintf("𝑡−𝑡*"), xticks=(asttickvalues,astticklabels), xticklabelrotation=0, xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), title="𝑅(𝑥(𝑡))", titlevisible=(i_ast==1), theme_ax..., limits=((-asts[end]-1/4, bst+1),(0,1)), yticks=([0,1/2,1],["0","½","1"]), yticklabelsvisible=(i_ast==1))
+            ax2 = Axis(lout[i_ast,2]; yticklabelsvisible=(i_ast==1), xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), xlabel="Pert. δ𝑥 at 𝑡*−𝐴", title="Peak 𝑅* = 𝑅(𝑥(𝑡*))", titlevisible=(i_ast==1), theme_ax..., xticks=(xtickvalues_ax2,xticklabels_ax2), xticklabelrotation=0, limits=(1.25/2^perturbation_neglog.*(-1,1),(2*threshold-1,1)), yticks=(ytickvalues_ax2,yticklabels_ax2))
+            vlines!(ax2, [-1,1]./(2^perturbation_neglog); color=:black, linestyle=(:dash,:dense))
+            vlines!(ax1, -asts[i_ast]; color=:red)
+            vlines!(ax1, 0; color=:black, linestyle=:solid)
+            text!(ax1, -asts[end], 0; text=@sprintf("𝐴=%d", asts[i_ast]), font="Menlo", fontsize=14, align=(:left,:bottom))
             # Plot the ancestor
             tidx_anc = ts_peak[i_anc]-ts_anc[1]+1 .+ (-asts[end]:bst)
-            lines!(ax1, ts_anc[tidx_anc].-ts_peak[i_anc], xs_anc[1,tidx_anc]; color=:black, linewidth=2, linestyle=(:dash,:dense))
             for i_dsc = 1:N_dsc
                 x_init = xs_init[:,i_dsc, i_ast, i_anc]
                 x_dsc = xs_dsc[i_ast][:,:,i_dsc,i_anc]
                 t_init = ts_init[i_dsc,i_ast,i_anc]
                 Nt = size(x_dsc,2)
                 ts_dsc = t_init .+ collect(1:Nt)
-                lines!(ax1, ts_dsc.-ts_peak[i_anc], x_dsc[1,:]; color=:red)
+                lines!(ax1, vcat(-ast, ts_dsc.-ts_peak[i_anc]), vcat(x_init[1], x_dsc[1,:]); color=:red)
                 scatter!(ax1, t_init.-ts_peak[i_anc], x_init[1]; color=:red, marker=:cross)
                 #scatter!(ax, ts_dsc.-ts_peak[i_anc], intensity(x_dsc); color=:red)
                 scatter!(ax2, x_init[1]-xs_anc[1,ts_peak[i_anc]-asts[i_ast]-ts_anc[1]+1], Rs_peak_dsc[i_dsc,i_ast,i_anc]; color=:red, marker=:star5)
             end
-            vlines!(ax1, -asts[i_ast]; color=:red)
-            vlines!(ax2, 0; color=:grey79)
+            scatter!(ax2, 0, Rs_peak[i_anc]; color=:black, marker=:star6)
+            lines!(ax1, ts_anc[tidx_anc].-ts_peak[i_anc], xs_anc[1,tidx_anc]; color=:black, linewidth=1, linestyle=(:dash,:dense))
             hlines!(ax1, threshold; color=:grey79)
             hlines!(ax2, threshold; color=:grey79)
-            xlims!(ax1, ts_anc[tidx_anc[1]]-ts_peak[i_anc], ts_anc[tidx_anc[end]]-ts_peak[i_anc])
-            xlims!(ax2, ([-1,1]./(2^perturbation_neglog))...)
         end
-        title3 = (
+        title3 = @sprintf("ℙ{𝑅*>\n%s}", scinot2near1(threshold))
+        title4 = (
                   rich("TotEnt", color=astcols["TotEnt"], font="Menlo")
                   * "\n" * 
                   rich("ThrEnt", color=astcols["ThrEnt"], font="Menlo")
+                  * "\n" * 
+                  rich("XclEnt", color=astcols["XclEnt"], font="Menlo")
                  )
-        title4 = rich("XclEnt", color=astcols["XclEnt"], font="Menlo")
-        ax3 = Axis(lout[:,3]; title=title3, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,max(maximum(thresholded_entropy),maximum(total_entropy))*1.1),(-asts[end]-1/2,1/2)), xticks=([0,maximum(total_entropy)/2], ["0", @sprintf("%s", maximum(total_entropy)/2)]))
-        ax4 = Axis(lout[:,4]; title=title4, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,maximum(extreme_conditional_entropy)*1.1),(-asts[end]-1/2,1/2))), xticks=([0,maximum(extreme_conditional_entropy)/2], ["0", @sprintf("%s", maximum(extreme_conditional_entropy)/2)]))
-        scatterlines!(ax3, total_entropy[:,i_anc], -asts; color=astcols["TotEnt"], linewidth=4, label="TotEnt")
-        scatterlines!(ax3, thresholded_entropy[:,i_anc], -asts, color=astcols["ThrEnt"], label="ThrEnt")
-        ylims!(ax3, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
+
+        xtickvalues_ax4 = round.(Int64, vcat(0,[1/2,1].*log2(N_dsc+1)))
+        xticklabels_ax4 = (ee->@sprintf("%d", ee)).(xtickvalues_ax4)
+        log2xtickvalues_ax3 = round.(Int64,range(-log2(N_dsc), 0, length=3))
+        xtickvalues_ax3 = 2.0 .^ log2xtickvalues_ax3
+        xticklabels_ax3 = scinot2.(xtickvalues_ax3)
+        ax3 = Axis(lout[:,3]; xscale=log2, title=title3, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=0, limits=((xtickvalues_ax3[1]/2,xtickvalues_ax3[end]+1/4),(-asts[end]-1/2,-1/2)), xticks=(xtickvalues_ax3,xticklabels_ax3))
+        ax4 = Axis(lout[:,4]; title=title4, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=0, xlabel="[bits]", limits=((-1,maximum(total_entropy)+1),(-asts[end]-1/2,-1/2)), xticks=(xtickvalues_ax4,xticklabels_ax4))
+        vlines!(ax3, xtickvalues_ax3[[1,end]]; color=:black, linestyle=(:dash,:dense))
+        vlines!(ax4, xtickvalues_ax4[[1,end]]; color=:black, linestyle=(:dash,:dense))
+        scatterlines!(ax3, ccdfs_dsc[i_bin_thresh,:,i_anc], -asts; color=:red)
+        scatterlines!(ax4, total_entropy[:,i_anc], -asts; color=astcols["TotEnt"], linewidth=4, label="TotEnt")
+        scatterlines!(ax4, thresholded_entropy[:,i_anc], -asts, color=astcols["ThrEnt"], label="ThrEnt")
         scatterlines!(ax4, extreme_conditional_entropy[:,i_anc], -asts, color=astcols["XclEnt"], label="XclEnt")
-        ylims!(ax4, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
         for i_ast = 1:N_ast-1
             rowgap!(lout, i_ast, 0)
         end
         colgap!(lout, 1, 10)
         colgap!(lout, 2, 12)
-        colgap!(lout, 3, 0)
+        colgap!(lout, 3, 10)
 
         colsize!(lout, 1, Relative(3/8))
         colsize!(lout, 2, Relative(3/8))
@@ -545,72 +557,6 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     save(joinpath(figdir, "ccdfs_moctail.png"), fig)
 
 
-
-
-    # Plot entropies as functions of AST 
-    fig = Figure(size=(300,150))
-    lout = fig[1,1] = GridLayout()
-    ax = Axis(lout[1,1]; theme_ax..., xlabel="−AST", ylabel="Thresh. Ent.", limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(total_entropy))))
-    for i_anc = 1:N_anc
-        scatterlines!(ax, reverse(-asts), reverse(extreme_conditional_entropy[:,i_anc]), color=:gray79, marker=:circle)
-        i_ast_argmax = idx_coast[i_anc]
-        scatter!(ax, -asts[i_ast_argmax], extreme_conditional_entropy[i_ast_argmax,i_anc]; color=:gray, marker=:star6)
-    end
-    scatterlines!(ax, reverse(-asts), reverse(mean(extreme_conditional_entropy; dims=2))[:,1]; color=:black, label="Mean", marker=:circle)
-    vlines!(ax, -mean(asts[idx_coast]); color=:black, linestyle=(:dash,:dense))
-    ax.xticks = reverse(-asts)
-    #ax.xticklabels = string.(reverse(-asts))
-    save(joinpath(figdir, "thrent_overlay.png"), fig)
-
-    # Plot the descendant peaks as a function of -AST; one row for each ancestor
-    N_anc_plot = min(4, N_anc)
-    fig = Figure(size=(600,60*(N_anc_plot+2)))
-    theme_ax = (; xticklabelsize=8, yticklabelsize=8, xlabelsize=10, ylabelsize=10, xgridvisible=false, ygridvisible=false, titlefont="Courier", xlabelfont=Makie.to_font("Courier"), titlesize=12)
-    lout = fig[1,1] = GridLayout()
-    xtickvals = reverse(-round.(Int, range(asts[1], asts[end]; length=3)))
-    xticks = (xtickvals, string.(xtickvals))
-    for i_anc = 1:N_anc_plot
-        # Left column: maxima due to each AST 
-        asttickvalues = [-asts[end], -asts[div(N_ast,2)], 0]
-        astticklabels = (A->@sprintf("%d",A)).(asttickvalues)
-        ax = Axis(lout[1+i_anc,1]; theme_ax..., xticks=xticks, xticklabelrotation=0, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,1)), xticks=(asttickvalues,astticklabels))
-        hlines!(ax, Rs_peak_anc[i_anc]; color=:steelblue, linestyle=:solid, label="𝑅* (anc.)")
-        for i_ast = 1:N_ast
-            scatter!(ax, -asts[i_ast]*ones(N_dsc), Rs_peak_dsc[:,i_ast,i_anc]; color=:red, marker=:circle, markersize=3, label=(i_ast==1 ? "𝑅* (desc.)" : nothing))
-        end
-        hlines!(ax, bin_lower_edges[i_bin_thresh]; color=:black, linestyle=(:dash,:dense), label="Thresh. 𝜇")
-        # Right column: entropies 
-        ax = Axis(lout[1+i_anc,2]; theme_ax..., xticks=xticks, xticklabelrotation=0, yticklabelsvisible=false, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(total_entropy)),))
-        scatterlines!(ax, -reverse(asts), reverse(total_entropy[:,i_anc]); color=:steelblue, label="ToE", markersize=6, linewidth=3)
-        scatterlines!(ax, -reverse(asts), reverse(extreme_conditional_entropy[:,i_anc]); color=:red, markersize=6, label="ThE", linewidth=1)
-    end
-    Legend(lout[1,1], content(lout[2,1]), "Severities"; framevisible=false, labelsize=10, titlesize=9, titlefont=:regular)
-    Legend(lout[1,2], content(lout[2,2]), "Entropies"; framevisible=false, labelsize=10, titlesize=9, titlefont=:regular, rowgap=2)
-    for i_anc = 1:N_anc_plot
-        ax1,ax2 = [content(lout[1+i_anc,j]) for j=1:2]
-
-        ax1.xticklabelsvisible = ax1.xlabelvisible = (i_anc==N_anc_plot)
-        ax2.xticklabelsvisible = ax1.xlabelvisible = (i_anc==N_anc_plot)
-
-        ax1.ylabel = "Anc. $(i_anc)"
-        ax1.yticklabelsvisible = false
-        ax1.ylabelrotation = 0
-
-        ax2.ylabel = ""
-
-        #if i_anc == 1; ax1.title = "Severities"; ax2.title = "Entropies"; end
-        ylims!(ax1, 2*bin_lower_edges[i_bin_thresh]-1, 1.0)
-    end
-    linkyaxes!((content(lout[1+i_anc,2]) for i_anc=1:N_anc_plot)...)
-    colgap!(lout, 1, 15)
-    rowsize!(lout, 1, Relative(2/(2+N_anc_plot)))
-    colsize!(lout, 2, Relative(1/6))
-    for i_row = 1:N_anc_plot
-        rowgap!(lout, i_row, 3)
-    end
-    content(lout[N_anc_plot+1,1]).xlabel = "−AST"
-    content(lout[N_anc_plot+1,2]).xlabel = "−AST"
-    save(joinpath(figdir, "peaks_dsc_stacked.png"), fig)
     return 
 end
 

@@ -53,7 +53,7 @@ end
 
 function scinot2near1(x::Number)
     x==1 && return "1"
-    x>1 && error() #return @sprintf("1+2%s",supscr(round(Int64,-log1p(-x))))
+    x>1 && return @sprintf("1+2%s",supscr(round(Int64,log2(x-1))))
     x<1 && return @sprintf("1−2%s",supscr(-round(Int64,nlg1m(x))))
 end
     
