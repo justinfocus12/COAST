@@ -9,6 +9,12 @@ function astcolors()
                )
 end
 
+function get_themes()
+    theme_ax = (xticklabelsize=8, yticklabelsize=8, xlabelsize=10, ylabelsize=10, xgridvisible=false, ygridvisible=false, titlefont="Menlo", ylabelfont="Menlo", xlabelfont="Menlo", xticklabelfont="Menlo", yticklabelfont="Menlo", titlesize=10)
+    theme_leg = (labelsize=8, framevisible=true, labelfont="Menlo", titlefont="Menlo")
+    return theme_ax,theme_leg
+end
+
 function poweroftwostring(k::Int64)
     symbols = ["2⁰","2¹","2²","2³","2⁴","2⁵","2⁶","2⁷","2⁸","2⁹","2¹⁰","2¹¹","2¹²","2¹³","2¹⁴","2¹⁵","2¹⁶","2¹⁷","2¹⁸"]
     if 0 <= k <= length(symbols)-1
@@ -25,6 +31,7 @@ function powerofhalfstring(k::Int64)
     return "(½)^$(k)"
 end
 
+
 function supscr(k::Int64)
     sss_onedigit = ["⁰","¹","²","³","⁴","⁵","⁶","⁷","⁸","⁹"]
     kdigs = reverse(digits(abs(k)))
@@ -35,6 +42,11 @@ function supscr(k::Int64)
     return ss
 end
 
+function scinot2(x::Number)
+    powerof2 = floor(Int,log2(x))
+    coeff = round(Int64,x/2^powerof2)
+    return @sprintf("%d×2%s",coeff,supscr(powerof2))
+end
     
 
 function hatickvals(ylo,yhi)

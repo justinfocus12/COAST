@@ -44,9 +44,10 @@ function illustrate_map(z0::Float64, F::Function, conjugate_bwd::Function, mapsy
         x0 = x1
     end
     xlo = -pdflo/10
-    xhi = maximum(pofx)*1.25
-    xtickvalues = unique([xlo, pdflo, xhi])
-    xticklabels = (x->@sprintf("%.1f",x)).(xtickvalues)
+    xmid = 1.0
+    xhi = 2.0 #minimum(pofx)*2
+    xtickvalues = unique([0, 1, 2])
+    xticklabels = (x->@sprintf("%d",x)).(xtickvalues)
     ax = Axis(lout[1,2]; title="PDF", xlabel="𝑝(𝑥)", xgridvisible=false, ygridvisible=false, ylabel="𝑥", titlefont="Menlo", xlabelfont="Menlo", xticklabelfont="Menlo", ylabelfont="Menlo", yticklabelfont="Menlo",  yticklabelsvisible=false, limits=((xlo,xhi),(0,1)), xticks=(xtickvalues,xticklabels))
     vlines!(ax, 0; color=:black, linestyle=(:dash,:dense))
     lines!(ax, pofx, xgrid[2:end-1]; color=:black)
@@ -161,18 +162,20 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
     peaks2plot = 1:length(ts_peak) #findall(ts2plot[1] .<= ts_peak .<= ts2plot[end])
 
     theme_ax,theme_leg = get_themes()
-    fig = Figure(size=(500,400))
+    theme_ax = (theme_ax..., xlabelsize=14, ylabelsize=14, titlesize=14, xticklabelsize=12, yticklabelsize=12)
+    theme_leg = (theme_leg..., labelsize=14, titlesize=14, framevisible=false)
+    fig = Figure(size=(620,300))
     lout = fig[1,1] = GridLayout()
-    ax_Rs = Axis(lout[1,1]; theme_ax..., ylabel="𝑅(𝑋(𝑡))", xlabel="𝑡", limits=(tlimits,(0,1)))
-    ax_peaks = Axis(lout[2,1]; theme_ax..., ylabel="Peaks {𝑅(𝑋(𝑡ₙ*))}", xlabel="𝑡ₙ*", limits=((ts[1],ts[end]),(thresh,1)))
-    ax_waits = Axis(lout[3,1]; theme_ax..., ylabel="𝑡*ₙ₊₁-𝑡*ₙ", xlabel="𝑡ₙ*", limits=((ts[1],ts[end]),nothing))
-    ax_hist_Rs = Axis(lout[1,2]; theme_ax..., xlabel="𝑝(𝑟)", yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,1.25),(0,1)), xticks=([0, 1, 1.25], ["0","1","1.25"]))
+    ax_Rs = Axis(lout[1,1]; theme_ax..., title="𝑅(𝑋(𝑡))", xlabel="𝑡", limits=(tlimits,(0,1)), xlabelvisible=false)
+    ttickvalues = round.(Int64,ts[1].+[1/6,3/6,5/6].*(ts[end]-ts[1]))
+    tticklabels = scinot2.(ttickvalues)
+    ytickvalues = [thresh, (thresh+1)/2, 1]
+    yticklabels = vcat((y->@sprintf("1−2%s",supscr(round(Int64,-nlg1m(y))))).(ytickvalues[1:2]), "1")
+    ax_peaks = Axis(lout[2,1]; theme_ax..., title="Peaks {𝑅(𝑋(𝑡ₙ*))}", xlabel="𝑡ₙ*", limits=((ts[1],ts[end]),(thresh,1)), xticks=(ttickvalues,tticklabels), xlabelvisible=false, yticks=(ytickvalues,yticklabels))
+    ax_hist_Rs = Axis(lout[1,2]; theme_ax..., title="PDF", yticklabelsvisible=false, xticklabelrotation=0, xlabelvisible=false, limits=((0,2),(0,1)), xticks=([0, 1, 2], ["0","1","2"]), yticks=(ytickvalues,yticklabels))
     linkyaxes!(ax_Rs, ax_hist_Rs)
-    ax_hist_peaks = Axis(lout[2,2]; theme_ax..., xlabel="ℙ{𝑅*>𝑟}", xticklabelrotation=-pi/2, limits=((0,1),(thresh,1)))
+    ax_hist_peaks = Axis(lout[2,2]; theme_ax..., title="Peak CCDF", ylabel="𝑅*", xlabelvisible=false, limits=((0,1),(thresh,1)))
     linkyaxes!(ax_peaks, ax_hist_peaks)
-    Nwaits = length(waits)
-    ax_hist_waits = Axis(lout[3,2]; theme_ax..., xlabel="ℙ{τ > 𝑡*ₙ₊₁-𝑡*ₙ}", xticklabelrotation=-pi/2, limits=((1/Nwaits/4,1), (nothing,maximum(waits))), xscale=log2, xticks=([1/2^round(Int,log2(Nwaits)/2), 1], [powerofhalfstring(round(Int,log2(Nwaits)/2)), "1"]))
-    linkyaxes!(ax_waits, ax_hist_waits)
 
 
     # Full timeseries
@@ -186,31 +189,27 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
     log2simlength = round(Int, log2(simlength))
     lines!(ax_hist_Rs, hist_Rs.weights[bins2plot], bin_centers_Rs[bins2plot]; color=:black, label=@sprintf("DNS\n%.1f×%s", simlength/2^log2simlength, poweroftwostring(log2simlength)))
     for ax = (ax_Rs,ax_hist_Rs)
-        hlines!(ax, thresh; color=:black, linewidth=1, linestyle=(:dash,:dense), label=@sprintf("Thresh\n1-%.1E", 1-thresh))
+        hlines!(ax, thresh; color=:black, linewidth=1, linestyle=(:dash,:dense), label=@sprintf("Thresh\n1-2%s", supscr(-round(Int64,nlg1m(thresh)))))
     end
-    leg = Legend(lout[1,3], ax_hist_Rs; labelsize=10, framevisible=true)
+    leg = Legend(lout[1,3], ax_hist_Rs; theme_leg...,)
 
     # Peak timeseries 
     scatter!(ax_peaks, ts_peak, Rs_peak; color=:black, marker=:circle, markersize=3)
     peaks_sorted,ccdf_peaks = empirical_ccdf(Rs_peak)
     if !isnothing(ccdf_peak_wholetruth)
-        lines!(ax_hist_peaks, ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end-1]; color=:gray79, linewidth=3)
+        lines!(ax_hist_peaks, ccdf_peak_wholetruth, bin_edges[i_bin_thresh:end-1]; color=:gray79, linewidth=4)
     end
-    scatterlines!(ax_hist_peaks, ccdf_peaks, peaks_sorted; color=:black, marker=:circle, markersize=2)
+    lines!(ax_hist_peaks, ccdf_peaks, peaks_sorted; color=:black, )
 
     # Wait timeseries
-    scatter!(ax_waits, ts_peak[2:end], waits; color=:black, marker=:circle, markersize=3)
-    scatterlines!(ax_hist_waits, ccdf_waits, waits_sorted; color=:black, marker=:circle, markersize=2)
     #ax_hist_waits.xscale = log2
 
-    for ax = (ax_hist_Rs, ax_hist_peaks, ax_hist_waits)
-        ax.ylabelvisible = ax.yticklabelsvisible=false
+    for ax = (ax_hist_Rs, ax_hist_peaks, )
+        ax.ylabelvisible = ax.yticklabelsvisible = false
     end
 
-    rowgap!(lout, 1, 10)
-    rowgap!(lout, 2, 10)
-    colgap!(lout, 1, 0)
-    colgap!(lout, 2, 0)
+    rowgap!(lout, 1, 0)
+    colgap!(lout, 1, 10)
     colsize!(lout, 1, Relative(3/4))
     colsize!(lout, 2, Relative(1/8))
 
@@ -485,7 +484,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                 xticklabelfont="Menlo", yticklabelfont="Menlo", 
                 titlealign=:left
                )
-    theme_leg = (; labelfont="Menlo")
+    theme_leg = (; labelfont="Menlo",  titlefont="Menlo")
     astcols = astcolors()
 
     # ---------- Row 1: CCDFs at each AST separately ----------

@@ -36,11 +36,6 @@ function strrep(bpar::NamedTuple)
     return s
 end
 
-function get_themes()
-    theme_ax = (xticklabelsize=8, yticklabelsize=8, xlabelsize=10, ylabelsize=10, xgridvisible=false, ygridvisible=false, titlefont=:bold, titlesize=10)
-    theme_leg = (labelsize=8, framevisible=false)
-    return theme_ax,theme_leg
-end
 
 conjugate_fwd(x::Float64) = x
 conjugate_bwd(z::Float64) = z
@@ -127,7 +122,7 @@ function main(bpar_adj)
     @assert i_bin_thresh == argmin(abs.(nlg1m.(bin_lower_edges) .- bpar.threshold_neglog))
 
     asts = collect(range(bpar.ast_min, bpar.ast_max; step=1))
-    duration_plot = 3*2^bpar.threshold_neglog # long enough to capture ~3 peaks 
+    duration_plot = 2^bpar.threshold_neglog # long enough to capture ~1 peaks 
     perturbation_width = 1/(2^bpar.perturbation_neglog)
 
     if todo["illustrate_map"]
