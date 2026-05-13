@@ -276,40 +276,17 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
         end
     end
     for i_anc = 1:N_anc2plot
-        fig = Figure(size=(200*4,75*N_ast))
-        lout = fig[1,1] = GridLayout()
         ytickvalues_ax2 = [2*threshold-1, threshold, 1] 
         yticklabels_ax2 = scinot2near1.(ytickvalues_ax2)
         xtickvalues_ax2 = [-1,0,1]./2^perturbation_neglog
         xticklabels_ax2 = scinot2.(xtickvalues_ax2)
         asttickvalues = [-asts[end], -asts[div(N_ast,2)], 0]
         astticklabels = (A->@sprintf("%d",A)).(asttickvalues)
-        for i_ast = 1:N_ast
-            ast = asts[i_ast]
-            ax1 = Axis(lout[i_ast,1]; xlabel=@sprintf("𝑡−𝑡*"), xticks=(asttickvalues,astticklabels), xticklabelrotation=0, xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), title="𝑅(𝑥(𝑡))", titlevisible=(i_ast==1), theme_ax..., limits=((-asts[end]-1/4, bst+1),(0,1)), yticks=([0,1/2,1],["0","½","1"]), yticklabelsvisible=(i_ast==1))
-            ax2 = Axis(lout[i_ast,2]; yticklabelsvisible=(i_ast==1), xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), xlabel="Pert. δ𝑥 at 𝑡*−𝐴", title="Peak 𝑅* = 𝑅(𝑥(𝑡*))", titlevisible=(i_ast==1), theme_ax..., xticks=(xtickvalues_ax2,xticklabels_ax2), xticklabelrotation=0, limits=(1.25/2^perturbation_neglog.*(-1,1),(2*threshold-1,1)), yticks=(ytickvalues_ax2,yticklabels_ax2))
-            vlines!(ax2, [-1,1]./(2^perturbation_neglog); color=:black, linestyle=(:dash,:dense))
-            vlines!(ax1, -asts[i_ast]; color=:red)
-            vlines!(ax1, 0; color=:black, linestyle=:solid)
-            text!(ax1, -asts[end], 0; text=@sprintf("𝐴=%d", asts[i_ast]), font="Menlo", fontsize=14, align=(:left,:bottom))
-            # Plot the ancestor
-            tidx_anc = ts_peak[i_anc]-ts_anc[1]+1 .+ (-asts[end]:bst)
-            for i_dsc = 1:N_dsc
-                x_init = xs_init[:,i_dsc, i_ast, i_anc]
-                x_dsc = xs_dsc[i_ast][:,:,i_dsc,i_anc]
-                t_init = ts_init[i_dsc,i_ast,i_anc]
-                Nt = size(x_dsc,2)
-                ts_dsc = t_init .+ collect(1:Nt)
-                lines!(ax1, vcat(-ast, ts_dsc.-ts_peak[i_anc]), vcat(x_init[1], x_dsc[1,:]); color=:red)
-                scatter!(ax1, t_init.-ts_peak[i_anc], x_init[1]; color=:red, marker=:cross)
-                #scatter!(ax, ts_dsc.-ts_peak[i_anc], intensity(x_dsc); color=:red)
-                scatter!(ax2, x_init[1]-xs_anc[1,ts_peak[i_anc]-asts[i_ast]-ts_anc[1]+1], Rs_peak_dsc[i_dsc,i_ast,i_anc]; color=:red, marker=:star5)
-            end
-            scatter!(ax2, 0, Rs_peak[i_anc]; color=:black, marker=:star6)
-            lines!(ax1, ts_anc[tidx_anc].-ts_peak[i_anc], xs_anc[1,tidx_anc]; color=:black, linewidth=1, linestyle=(:dash,:dense))
-            hlines!(ax1, threshold; color=:grey79)
-            hlines!(ax2, threshold; color=:grey79)
-        end
+        xtickvalues_ax4 = round.(Int64, vcat(0,[1/2,1].*log2(N_dsc+1)))
+        xticklabels_ax4 = (ee->@sprintf("%d", ee)).(xtickvalues_ax4)
+        log2xtickvalues_ax3 = round.(Int64,range(-log2(N_dsc), 0, length=3))
+        xtickvalues_ax3 = 2.0 .^ log2xtickvalues_ax3
+        xticklabels_ax3 = scinot2.(xtickvalues_ax3)
         title3 = @sprintf("ℙ{𝑅*>\n%s}", scinot2near1(threshold))
         title4 = (
                   rich("TotEnt", color=astcols["TotEnt"], font="Menlo")
@@ -319,15 +296,42 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                   rich("XclEnt", color=astcols["XclEnt"], font="Menlo")
                  )
 
-        xtickvalues_ax4 = round.(Int64, vcat(0,[1/2,1].*log2(N_dsc+1)))
-        xticklabels_ax4 = (ee->@sprintf("%d", ee)).(xtickvalues_ax4)
-        log2xtickvalues_ax3 = round.(Int64,range(-log2(N_dsc), 0, length=3))
-        xtickvalues_ax3 = 2.0 .^ log2xtickvalues_ax3
-        xticklabels_ax3 = scinot2.(xtickvalues_ax3)
+        xs_dsc_mean,xs_dsc_min,xs_dsc_max = ((x_dsc->func(x_dsc[:,:,:,i_anc]; dims=3)[:,:,1]).(xs_dsc)
+                                             for func = (mean,minimum,maximum))
+        xs_dsc_init_mean,xs_dsc_init_min,xs_dsc_init_max = (func(xs_init[:,:,:,i_anc]; dims=2)[:,1,:]
+                                                            for func = (mean,minimum,maximum))
+        fig = Figure(size=(200*4,75*N_ast))
+        lout = fig[1,1] = GridLayout()
+        for i_ast = 1:N_ast
+            ast = asts[i_ast]
+            ax1 = Axis(lout[i_ast,1]; xlabel=@sprintf("𝑡−𝑡*"), xticks=(asttickvalues,astticklabels), xticklabelrotation=0, xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), title="𝑅(𝑥(𝑡))", titlevisible=(i_ast==1), theme_ax..., limits=((-asts[end]-1/4, bst+1),(-0.1,1.1)), yticks=([0,1/2,1],["0","½","1"]), yticklabelsvisible=(i_ast==1))
+            ax2 = Axis(lout[i_ast,2]; yticklabelsvisible=(i_ast==1), xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), xlabel="Pert. δ𝑥 at 𝑡*−𝐴", title="Peak 𝑅* = 𝑅(𝑥(𝑡*))", titlevisible=(i_ast==1), theme_ax..., xticks=(xtickvalues_ax2,xticklabels_ax2), xticklabelrotation=0, limits=(1.25/2^perturbation_neglog.*(-1,1),(2*threshold-1,1)), yticks=(ytickvalues_ax2,yticklabels_ax2))
+            hlines!(ax1, [0,1]; color=:grey79, linestyle=:solid)
+            vlines!(ax2, [-1,1]./(2^perturbation_neglog); color=:grey79, linestyle=:solid)
+            vlines!(ax1, -asts[i_ast]; color=:red)
+            vlines!(ax1, 0; color=:black, linestyle=:solid)
+            text!(ax1, -asts[end], 0; text=@sprintf("𝐴=%d", asts[i_ast]), font="Menlo", fontsize=14, align=(:left,:bottom))
+            # Plot the ancestor
+            tidx_anc = ts_peak[i_anc]-ts_anc[1]+1 .+ (-asts[end]:bst)
+            # Plot descendant ensemble summary stats
+            band!(ax1, -ast:bst, vcat(xs_dsc_init_min[1,i_ast],xs_dsc_min[i_ast][1,:]), vcat(xs_dsc_init_max[1,i_ast],xs_dsc_max[i_ast][1,:]); color=:red, alpha=0.5)
+            lines!(ax1, (-ast):bst, vcat(xs_dsc_init_mean[1,i_ast],xs_dsc_mean[i_ast][1,:]); color=:red)
+            #lines!(ax1, (-ast):bst, vcat(xs_dsc_init_min[1,i_ast],xs_dsc_min[i_ast][1,:]); color=:red)
+            #lines!(ax1, (-ast):bst, vcat(xs_dsc_init_max[1,i_ast],xs_dsc_max[i_ast][1,:]); color=:red)
+            scatter!(ax1, -ast, xs_dsc_init_mean[i_ast];  color=:red, marker=:cross)
+
+            scatter!(ax2, xs_init[1,:,i_ast,i_anc].-xs_anc[1,tidx_anc[1+asts[N_ast]-ast]], Rs_peak_dsc[:,i_ast,i_anc]; color=:red, marker=:star5)
+            scatter!(ax2, 0, Rs_peak[i_anc]; color=:black, marker=:star6)
+
+            lines!(ax1, ts_anc[tidx_anc].-ts_peak[i_anc], xs_anc[1,tidx_anc]; color=:black, linewidth=1, linestyle=(:dash,:dense))
+            hlines!(ax1, threshold; color=:purple, linestyle=(:dash,:dense))
+            hlines!(ax2, threshold; color=:purple, linestyle=(:dash,:dense))
+        end
+
         ax3 = Axis(lout[:,3]; xscale=log2, title=title3, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=0, limits=((xtickvalues_ax3[1]/2,xtickvalues_ax3[end]+1/4),(-asts[end]-1/2,-1/2)), xticks=(xtickvalues_ax3,xticklabels_ax3))
         ax4 = Axis(lout[:,4]; title=title4, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=0, xlabel="[bits]", limits=((-1,maximum(total_entropy)+1),(-asts[end]-1/2,-1/2)), xticks=(xtickvalues_ax4,xticklabels_ax4))
-        vlines!(ax3, xtickvalues_ax3[[1,end]]; color=:black, linestyle=(:dash,:dense))
-        vlines!(ax4, xtickvalues_ax4[[1,end]]; color=:black, linestyle=(:dash,:dense))
+        vlines!(ax3, xtickvalues_ax3[[1,end]]; color=:grey79, linestyle=:solid)
+        vlines!(ax4, xtickvalues_ax4[[1,end]]; color=:grey79, linestyle=:solid)
         scatterlines!(ax3, ccdfs_dsc[i_bin_thresh,:,i_anc], -asts; color=:red)
         scatterlines!(ax4, total_entropy[:,i_anc], -asts; color=astcols["TotEnt"], linewidth=4, label="TotEnt")
         scatterlines!(ax4, thresholded_entropy[:,i_anc], -asts, color=astcols["ThrEnt"], label="ThrEnt")
@@ -468,7 +472,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     fig = Figure(size=(80*(N_ast+1), 800))
     theme_ax = (; 
                 xgridvisible=false, ygridvisible=false, 
-                xticklabelsize=12, yticklabelsize=12, 
+                xticklabelsize=14, yticklabelsize=14, 
                 xlabelsize=16, ylabelsize=16, titlesize=16,
                 xlabelfont="Menlo", ylabelfont="Menlo", titlefont="Menlo",
                 xticklabelfont="Menlo", yticklabelfont="Menlo", 
@@ -482,14 +486,8 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     xlimits = [minimum(filter(ispos, isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth))/2, 1]
     i_coast_mean = round(Int64,mean(idx_coast))
     # TODO fix
-    ytickvalues,yticklabels = let
-        lol1 = round(Int64, -log1p(-bin_edges[i_bin_thresh])/log(2))
-        lol2 = lol1 + 1
-        @show lol1,lol2
-        ytickvalues = vcat(-expm1.([-lol1, -lol2].*log(2)), 1.0)
-        yticklabels = vcat((lol->@sprintf("1−2%s", supscr(-lol))).([lol1,lol2]), "1")
-        (ytickvalues,yticklabels)
-    end
+    ytickvalues = [bin_edges[i_bin_thresh], (1+bin_edges[i_bin_thresh])/2, 1] #,yticklabels = let
+    yticklabels = scinot2near1.(ytickvalues) 
     for i_ast = 1:N_ast
         i_col = N_ast-i_ast+1
         ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), title="Tail CCDFs", titlevisible=false, yticklabelsvisible=(i_col==1), ylabelvisible=(i_col==1), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, ylabel="Severity 𝑅*")
@@ -512,8 +510,8 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     end
 
     # ----------- Rows 2-3: thrent and COAST frequency ------------
-    ax = Axis(lout[2,1:N_ast]; theme_ax..., xlabel="−AST", title="Extreme-conditional entropy (XclEnt)", ylabel="[bits]", ylabelrotation=pi/2, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),extrema(filter(ispos,extreme_conditional_entropy))), xlabelvisible=false, xticklabelsvisible=false)
-    xlims!(ax, -(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2]))
+    ax = Axis(lout[2,1:N_ast]; theme_ax..., xlabel="−AST", title="Extreme-conditional entropy (XclEnt)", ylabel="[bits]", ylabelrotation=pi/2, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), yticks=round.(Int64, [0,1/2,1].*log2(N_dsc)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(-1,round(Int64,log2(N_dsc)+1))), xlabelvisible=false, xticklabelsvisible=false)
+    hlines!(ax, [0,round(Int64,log2(N_dsc))]; color=:grey79)
     for i_anc = 1:N_anc
         scatterlines!(ax, -asts, extreme_conditional_entropy[:,i_anc]; color=astcols["XclEntOne"], label=(i_anc==1 ? "Single-family" : nothing))
     end
@@ -524,7 +522,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     for i_ast = 1:N_ast
         coast_freq[i_ast] += sum(idx_coast.==i_ast)
     end
-    ax = Axis(lout[3,1:N_ast]; theme_ax..., xlabel="−AST", ylabel="Number of families", title="XclEnt-COAST frequency", ylabelrotation=pi/2, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=false, xticklabelsvisible=false, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(-0.01*N_anc,1.35*maximum(coast_freq))))
+    ax = Axis(lout[3,1:N_ast]; theme_ax..., xlabel="−AST", ylabel="Number of\nfamilies", title="XclEnt-COAST frequencies", ylabelrotation=pi/2, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), xlabelvisible=false, xticklabelsvisible=false, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(-0.01*N_anc,1.35*maximum(coast_freq))))
     stairs!(ax, -asts, coast_freq, color=astcols["XclEnt"], linewidth=3, step=:center)
     scatter!(ax, -(perturbation_neglog-threshold_neglog), 1.1*maximum(coast_freq); marker=:star6, color=astcols["astunif"], markersize=18)
     text!(ax, -(perturbation_neglog-threshold_neglog), 1.15*maximum(coast_freq); text=@sprintf("𝐴 = 𝐾 − 𝑀 = %d − %d = %d",perturbation_neglog,threshold_neglog,perturbation_neglog-threshold_neglog), align=(:center,:bottom), font="Menlo")

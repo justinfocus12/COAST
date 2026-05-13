@@ -92,7 +92,7 @@ function main(bpar_adj)
                              "analyze_peaks_valid" =>      0,
                              "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
-                             "mix_conditional_tails" =>    1,
+                             "mix_conditional_tails" =>    0,
                              "plot_boosts" =>              1,
                              "plot_moctails" =>            1,
                             )
