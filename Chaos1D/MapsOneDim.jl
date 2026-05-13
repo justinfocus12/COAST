@@ -250,7 +250,8 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                )
     end
 
-    theme_ax = (xticklabelsize=16, yticklabelsize=16, xlabelsize=20, ylabelsize=20, xgridvisible=false, ygridvisible=false, titlefont=:regular, titlesize=20)
+    theme_ax,theme_leg = get_themes()
+    theme_ax = (; theme_ax..., xticklabelsize=16, yticklabelsize=16, xlabelsize=20, ylabelsize=20, xgridvisible=false, ygridvisible=false, titlesize=20)
     astcols = astcolors()
 
     N_anc = length(Rs_peak)
@@ -277,17 +278,17 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
     for i_anc = 1:N_anc2plot
         fig = Figure(size=(200*4,75*N_ast))
         lout = fig[1,1] = GridLayout()
+        ytickvalues_ax2 = [2*threshold-1, threshold, 1] 
+        yticklabels_ax2 = scinot2near1.(ytickvalues_ax2)
+        xtickvalues_ax2 = [-1,0,1]./2^perturbation_neglog
+        xticklabels_ax2 = scinot2.(xtickvalues_ax2)
         for i_ast = 1:N_ast
-            ax1 = Axis(lout[i_ast,1]; ylabel="$(i_ast==1 ? "AST 𝐴 = " : "")$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, title="𝑅(𝑥(𝑡))", theme_ax..., limits=((-asts[end]-1, bst+1),(0,1)))
-            ax2 = Axis(lout[i_ast,2]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, title=@sprintf("𝑅(𝑡*=%d)", ts_peak[i_anc]), theme_ax..., limits=((-asts[end]-1, bst+1),(2*threshold-1,1)))
-            ax3 = Axis(lout[i_ast,3]; ylabel="AST=$(asts[i_ast])", ylabelrotation=0, yticklabelsvisible=false, xlabel="δ𝑥(𝑡*−𝐴)", title="𝑅(δ𝑥(𝑡*−𝐴))", theme_ax..., xticklabelrotation=-pi/2, limits=((-1/2^perturbation_neglog,1/2^perturbation_neglog),(2*threshold-1,1)))
+            ax1 = Axis(lout[i_ast,1]; xlabel=@sprintf("𝑡−𝑡*"), xticklabelrotation=-pi/2, xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), title="𝑅(𝑥(𝑡))", titlevisible=(i_ast==1), theme_ax..., limits=((-asts[end]-1, bst+1),(0,1)), yticks=([0,1],["0","1"]), yticklabelsvisible=(i_ast==1))
+            ax2 = Axis(lout[i_ast,2]; yticklabelsvisible=(i_ast==1), xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), xlabel="Pert. δ𝑥", title="𝑅*", titlevisible=(i_ast==1), theme_ax..., xticks=(xtickvalues_ax2,xticklabels_ax2), xticklabelrotation=-pi/2, limits=((-1/2^perturbation_neglog,1/2^perturbation_neglog),(2*threshold-1,1)), yticks=(ytickvalues_ax2,yticklabels_ax2))
+            text!(ax1, -asts[div(N_ast,2)]-1.0, 0.0; text=@sprintf("AST = %d", asts[i_ast]), font="Menlo", fontsize=14, align=(:center,:bottom))
             # Plot the ancestor
             tidx_anc = ts_peak[i_anc]-ts_anc[1]+1 .+ (-asts[end]:bst)
             lines!(ax1, ts_anc[tidx_anc].-ts_peak[i_anc], xs_anc[1,tidx_anc]; color=:black, linewidth=2, linestyle=(:dash,:dense))
-            for ax = (ax1,ax2)
-                xlims!(ax, ts_anc[tidx_anc[1]]-ts_peak[i_anc], ts_anc[tidx_anc[end]]-ts_peak[i_anc])
-                ax.xlabelvisible = ax.xticklabelsvisible = (i_ast == N_ast)
-            end
             for i_dsc = 1:N_dsc
                 x_init = xs_init[:,i_dsc, i_ast, i_anc]
                 x_dsc = xs_dsc[i_ast][:,:,i_dsc,i_anc]
@@ -295,64 +296,41 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
                 Nt = size(x_dsc,2)
                 ts_dsc = t_init .+ collect(1:Nt)
                 lines!(ax1, ts_dsc.-ts_peak[i_anc], x_dsc[1,:]; color=:red)
-                for ax = (ax1,ax2)
-                    scatter!(ax, t_init.-ts_peak[i_anc], x_init[1]; color=:red, marker=:star6)
-                    scatter!(ax, ts_dsc.-ts_peak[i_anc], intensity(x_dsc); color=:red)
-                end
-                scatter!(ax3, x_init[1]-xs_anc[1,ts_peak[i_anc]-asts[i_ast]-ts_anc[1]+1], Rs_peak_dsc[i_dsc,i_ast,i_anc]; color=:red, marker=:star5)
+                scatter!(ax1, t_init.-ts_peak[i_anc], x_init[1]; color=:red, marker=:cross)
+                #scatter!(ax, ts_dsc.-ts_peak[i_anc], intensity(x_dsc); color=:red)
+                scatter!(ax2, x_init[1]-xs_anc[1,ts_peak[i_anc]-asts[i_ast]-ts_anc[1]+1], Rs_peak_dsc[i_dsc,i_ast,i_anc]; color=:red, marker=:star5)
             end
-            for ax = (ax2,ax3)
-                vlines!(ax, -asts[i_ast]; color=:red)
-                vlines!(ax, 0; color=:gray)
-            end
-            hlines!(ax1, threshold; color=:gray)
-            hlines!(ax2, threshold; color=:gray)
-            hlines!(ax3, threshold; color=:gray)
-            ylims!(ax1, 0, 1)
-            ylims!(ax2, 3*threshold-2, 1)
-            ylims!(ax3, 3*threshold-2, 1) 
-            for ax = (ax1,ax2)
-                xlims!(ax, ts_anc[tidx_anc[1]]-ts_peak[i_anc], ts_anc[tidx_anc[end]]-ts_peak[i_anc])
-            end
-            xlims!(ax3, ([-1,1]./(2^perturbation_neglog))...)
-            for ax = (ax2,ax3)
-                ax.ylabelvisible = false
-            end
-            if i_ast < N_ast
-                for ax = (ax1,ax2,ax3)
-                    ax.xlabelvisible = ax.xticklabelsvisible = (i_ast == N_ast)
-                end
-            end
-            if i_ast > 1
-                for ax = (ax1,ax2,ax3)
-                    ax.titlevisible = false
-                end
-            end
+            vlines!(ax1, -asts[i_ast]; color=:red)
+            vlines!(ax2, 0; color=:grey79)
+            hlines!(ax1, threshold; color=:grey79)
+            hlines!(ax2, threshold; color=:grey79)
+            xlims!(ax1, ts_anc[tidx_anc[1]]-ts_peak[i_anc], ts_anc[tidx_anc[end]]-ts_peak[i_anc])
+            xlims!(ax2, ([-1,1]./(2^perturbation_neglog))...)
         end
-        title4 = (
-                  rich("TotEnt", color=astcols["TotEnt"], font=:bold)
+        title3 = (
+                  rich("TotEnt", color=astcols["TotEnt"], font="Menlo")
                   * "\n" * 
-                  rich("ThrEnt", color=astcols["ThrEnt"])
+                  rich("ThrEnt", color=astcols["ThrEnt"], font="Menlo")
                  )
-        title5 = rich("XclEnt", color=astcols["XclEnt"], font=:bold)
-        ax4 = Axis(lout[:,4]; title=title4, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,max(maximum(thresholded_entropy),maximum(total_entropy))*1.1),(-asts[end]-1/2,1/2)))
-        ax5 = Axis(lout[:,5]; title=title5, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,maximum(extreme_conditional_entropy)*1.1),(-asts[end]-1/2,1/2)))
-        scatterlines!(ax4, total_entropy[:,i_anc], -asts; color=astcols["TotEnt"], linewidth=4, label="TotEnt")
-        scatterlines!(ax4, thresholded_entropy[:,i_anc], -asts, color=astcols["ThrEnt"], label="ThrEnt")
+        title4 = rich("XclEnt", color=astcols["XclEnt"], font="Menlo")
+        ax3 = Axis(lout[:,3]; title=title3, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,max(maximum(thresholded_entropy),maximum(total_entropy))*1.1),(-asts[end]-1/2,1/2)), xticks=([0,maximum(total_entropy)/2], ["0", @sprintf("%s", maximum(total_entropy)/2)]))
+        ax4 = Axis(lout[:,4]; title=title4, theme_ax..., ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((0,maximum(extreme_conditional_entropy)*1.1),(-asts[end]-1/2,1/2))), xticks=([0,maximum(extreme_conditional_entropy)/2], ["0", @sprintf("%s", maximum(extreme_conditional_entropy)/2)]))
+        scatterlines!(ax3, total_entropy[:,i_anc], -asts; color=astcols["TotEnt"], linewidth=4, label="TotEnt")
+        scatterlines!(ax3, thresholded_entropy[:,i_anc], -asts, color=astcols["ThrEnt"], label="ThrEnt")
+        ylims!(ax3, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
+        scatterlines!(ax4, extreme_conditional_entropy[:,i_anc], -asts, color=astcols["XclEnt"], label="XclEnt")
         ylims!(ax4, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
-        scatterlines!(ax5, extreme_conditional_entropy[:,i_anc], -asts, color=astcols["XclEnt"], label="XclEnt")
-        ylims!(ax5, -1.5*asts[end]+0.5*asts[end-1], -1.5*asts[1]+0.5*asts[2])
         for i_ast = 1:N_ast-1
             rowgap!(lout, i_ast, 0)
         end
-        linkxaxes!((content(lout[i_ast,3]) for i_ast=1:N_ast)...)
         colgap!(lout, 1, 10)
-        colgap!(lout, 2, 10)
+        colgap!(lout, 2, 12)
         colgap!(lout, 3, 0)
-        colgap!(lout, 4, 0)
 
-        colsize!(lout, 4, Relative(1/10))
-        colsize!(lout, 5, Relative(1/10))
+        colsize!(lout, 1, Relative(3/8))
+        colsize!(lout, 2, Relative(3/8))
+        colsize!(lout, 3, Relative(1/8))
+        colsize!(lout, 4, Relative(1/8))
 
         save(joinpath(figdir, "boosts_anc$(i_anc).png"), fig)
         
@@ -593,14 +571,16 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     xticks = (xtickvals, string.(xtickvals))
     for i_anc = 1:N_anc_plot
         # Left column: maxima due to each AST 
-        ax = Axis(lout[1+i_anc,1]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,1)))
+        asttickvalues = [-asts[end], -asts[div(N_ast,2)], 0]
+        astticklabels = (A->@sprintf("%d",A)).(asttickvalues)
+        ax = Axis(lout[1+i_anc,1]; theme_ax..., xticks=xticks, xticklabelrotation=0, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,1)), xticks=(asttickvalues,astticklabels))
         hlines!(ax, Rs_peak_anc[i_anc]; color=:steelblue, linestyle=:solid, label="𝑅* (anc.)")
         for i_ast = 1:N_ast
             scatter!(ax, -asts[i_ast]*ones(N_dsc), Rs_peak_dsc[:,i_ast,i_anc]; color=:red, marker=:circle, markersize=3, label=(i_ast==1 ? "𝑅* (desc.)" : nothing))
         end
         hlines!(ax, bin_lower_edges[i_bin_thresh]; color=:black, linestyle=(:dash,:dense), label="Thresh. 𝜇")
         # Right column: entropies 
-        ax = Axis(lout[1+i_anc,2]; theme_ax..., xticks=xticks, xticklabelrotation=-pi/2, yticklabelsvisible=false, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(total_entropy))))
+        ax = Axis(lout[1+i_anc,2]; theme_ax..., xticks=xticks, xticklabelrotation=0, yticklabelsvisible=false, limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(0,maximum(total_entropy)),))
         scatterlines!(ax, -reverse(asts), reverse(total_entropy[:,i_anc]); color=:steelblue, label="ToE", markersize=6, linewidth=3)
         scatterlines!(ax, -reverse(asts), reverse(extreme_conditional_entropy[:,i_anc]); color=:red, markersize=6, label="ThE", linewidth=1)
     end

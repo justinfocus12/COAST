@@ -43,9 +43,18 @@ function supscr(k::Int64)
 end
 
 function scinot2(x::Number)
-    powerof2 = floor(Int,log2(x))
-    coeff = round(Int64,x/2^powerof2)
-    return @sprintf("%d×2%s",coeff,supscr(powerof2))
+    x==0 && return "0"
+    powerof2 = floor(Int64,log2(abs(x)))
+    coeff = round(Int64,x/(2.0)^powerof2)
+    coeffstr = abs(coeff)==1 ? "" :  @sprintf("%d×",abs(coeff))
+    sign(coeff)==-1 && (coeffstr = "−"*coeffstr)
+    return @sprintf("%s2%s",coeffstr,supscr(powerof2))
+end
+
+function scinot2near1(x::Number)
+    x==1 && return "1"
+    x>1 && error() #return @sprintf("1+2%s",supscr(round(Int64,-log1p(-x))))
+    x<1 && return @sprintf("1−2%s",supscr(-round(Int64,nlg1m(x))))
 end
     
 

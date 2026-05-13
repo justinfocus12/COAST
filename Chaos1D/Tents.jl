@@ -83,7 +83,7 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           1,
+                             "illustrate_map" =>           0,
                              "run_dns_valid" =>            0,
                              "plot_dns_valid" =>           0,
                              "run_dns_ancgen" =>           0,
@@ -92,7 +92,7 @@ function main(bpar_adj)
                              "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
                              "mix_conditional_tails" =>    0,
-                             "plot_boosts" =>              0,
+                             "plot_boosts" =>              1,
                              "plot_moctails" =>            0,
                             )
 
