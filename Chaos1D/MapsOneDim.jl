@@ -13,6 +13,50 @@ include("displayfuns.jl")
 
 ornot(dt::DataType) = Union{Nothing,dt}
 
+function illustrate_map(z0::Float64, F::Function, conjugate_bwd::Function, mapsymbol::String, mapname::String, plotdir::String, outfilename::String)
+    xgrid = collect(range(0, 1; length=65))
+    x0 = conjugate_bwd(z0)
+    T = 12
+    xs = zeros(Float64,T)
+    xs[1] = x0
+    for t = 2:T
+        x1 = F(x0)
+        xs[t] = x1
+        x0 = x1
+    end
+
+    pofx = compute_pdf_wholetruth.(xgrid[2:end-1])
+    pdflo = minimum(pofx)
+    pdfhi = maximum(pofx)
+
+    fig = Figure(size=(600,400))
+    lout = fig[1,1] = GridLayout()
+    ax = Axis(lout[1,1]; xlabel="𝑥", ylabel="$(mapsymbol)(𝑥)", title=mapname, limits=((0,1),(0,1)), titlefont="Menlo",  xticklabelfont="Menlo", yticklabelfont="Menlo", xgridvisible=false, ygridvisible=false)
+    lines!(ax, xgrid, F.(xgrid); color=:black)
+    lines!(ax, xgrid, xgrid; color=:grey79, linewidth=3)
+    scatter!(ax,xs[1],xs[1],color=:goldenrod,marker=:star6,markersize=25)
+    scatter!(ax,xs[T],xs[T],color=:firebrick,marker=:star6,markersize=25)
+    x0 = xs[1]
+    for t = 2:T
+        x1 = xs[t]
+        arrows2d!(ax, [x0], [x0], [0.0], [x1-x0]; lengthscale=1.0, color=:goldenrod, align=:tail, shaftwidth=2, tipwidth=5)
+        arrows2d!(ax, [x0], [x1], [x1-x0], [0.0]; lengthscale=1.0, color=:firebrick, align=:tail, shaftwidth=2, tipwidth=5)
+        x0 = x1
+    end
+    xlo = -pdflo/10
+    xhi = maximum(pofx)*1.25
+    xtickvalues = unique([xlo, pdflo, xhi])
+    xticklabels = (x->@sprintf("%.1f",x)).(xtickvalues)
+    ax = Axis(lout[1,2]; title="PDF", xlabel="𝑝(𝑥)", xgridvisible=false, ygridvisible=false, ylabel="𝑥", titlefont="Menlo", xlabelfont="Menlo", xticklabelfont="Menlo", ylabelfont="Menlo", yticklabelfont="Menlo",  yticklabelsvisible=false, limits=((xlo,xhi),(0,1)), xticks=(xtickvalues,xticklabels))
+    vlines!(ax, 0; color=:black, linestyle=(:dash,:dense))
+    lines!(ax, pofx, xgrid[2:end-1]; color=:black)
+    scatter!(ax, zeros(T), xs; color=:black)
+    colsize!(lout, 2, Relative(1/3))
+    colgap!(lout,1,10)
+    save(joinpath(plotdir, outfilename), fig)
+    return
+end
+
 function intensity(xs::Vector{Float64})
     return xs[1]
 end
