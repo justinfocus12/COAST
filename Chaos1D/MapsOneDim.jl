@@ -379,6 +379,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
      extreme_conditional_entropy,
      total_entropy,
      Ns_anc_boot,
+     Ns_anc_boot_valid,
      losses_moctail_astunif_kldiv_boot,
      losses_moctail_coast_kldiv_boot,
      losses_anconly_kldiv_boot,
@@ -405,6 +406,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                      f["extreme_conditional_entropy"],
                      f["total_entropy"],
                      f["Ns_anc_boot"],
+                     f["Ns_anc_boot_valid"],
                      f["losses_moctail_astunif_kldiv_boot"],
                      f["losses_moctail_coast_kldiv_boot"],
                      f["losses_anconly_kldiv_boot"],
@@ -413,28 +415,40 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
         end
        )
     # ---------- convergence with N -----------
-    abest = perturbation_neglog - threshold_neglog
-    alllosses = vcat(losses_moctail_astunif_kldiv_boot[abest,:,:], losses_moctail_coast_kldiv_boot)
-    ylo,yhi = (func(filter(loss->(isfinite(loss)&(loss>0)),alllosses)) for func=(minimum,maximum))
+    astcols = astcolors()
+    ast1 = 1
+    ast2 = div(uncoast,2)
+    uncoast = perturbation_neglog - threshold_neglog # unconditionally optimal 
+    alllosses = vcat(losses_moctail_astunif_kldiv_boot[uncoast,:,:][:], losses_moctail_coast_kldiv_boot[:], losses_valid_kldiv_boot[:])
+    kllo,yhi = (func(filter(ispos,alllosses)) for func=(minimum,maximum))
+    ylo = 0
+
+    theme_ax,theme_leg = get_themes()
     fig = Figure(size=(500,250))
     lout = fig[1,1] = GridLayout()
-    xtickvalues = unique(2 .^ floor.(Int, range(0, log2(Ns_anc_boot[end]); step=1)))
+    xtickvalues = unique(2 .^ floor.(Int, range(0, log2(Ns_anc_boot_valid[end]); step=1)))
     xticklabels = (N->@sprintf("%d",N)).(xtickvalues)
-    ytickvalues = [ylo,yhi]
+    ytickvalues = [ylo,kllo,yhi]
     yticklabels = (K->@sprintf("%.1E",K)).(ytickvalues)
-    ax = Axis(lout[1,1]; title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="𝑁", ylabel="KL", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=log2, limits=((1,Ns_anc_boot[end]), (ylo,yhi)), xticks=(xtickvalues,xticklabels), yticks=(ytickvalues,yticklabels))
+    ax = Axis(lout[1,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="𝑁", ylabel="KL", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=Makie.Symlog10(2*kllo), limits=((1,Ns_anc_boot_valid[end]), (0,yhi)), xticks=(xtickvalues,xticklabels), yticks=(ytickvalues,yticklabels))
     for q = [0.25,0.5,0.75]
         linestyle = (q==0.5 ? :solid : (:dash,:dense))
         labelargs_astunif = (q==0.5 ? (; label="𝐴[U]") : (;))
         labelargs_coast = (q==0.5 ? (; label="𝐴[XclEnt]") : (;))
+        labelargs_anconly = (q==0.5 ? (; label="𝐴[Anc]") : (;))
+        labelargs_valid = (q==0.5 ? (; label="𝐴[Valid]") : (;))
         
         quantfun(arr) = (arrpos = filter(ispos,arr); length(arrpos) == 0 ? NaN : quantile(arrpos,q))
-        loss_astunif = mapslices(quantfun, losses_moctail_astunif_kldiv_boot[abest,:,:]; dims=1)[1,:]
+        loss_astunif = mapslices(quantfun, losses_moctail_astunif_kldiv_boot[uncoast,:,:]; dims=1)[1,:]
         loss_coast = mapslices(quantfun, losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:]
-        scatterlines!(ax, Ns_anc_boot, loss_astunif; color=:purple, linestyle=linestyle, linewidth=1, labelargs_astunif...)
-        scatterlines!(ax, Ns_anc_boot, loss_coast; color=:firebrick, linestyle=linestyle, linewidth=1, labelargs_coast...)
+        loss_valid = mapslices(quantfun, losses_valid_kldiv_boot[:,:]; dims=1)[1,:]
+        loss_anconly = mapslices(quantfun, losses_anconly_kldiv_boot[:,:]; dims=1)[1,:]
+        scatterlines!(ax, Ns_anc_boot, loss_astunif; color=astcols["astunif"], linestyle=linestyle, linewidth=3, labelargs_astunif...)
+        scatterlines!(ax, Ns_anc_boot, loss_coast; color=astcols["XclEnt"], linestyle=linestyle, linewidth=1.5, labelargs_coast...)
+        scatterlines!(ax, Ns_anc_boot, loss_anconly; color=:grey79, linestyle=linestyle, linewidth=1, labelargs_anconly...)
+        scatterlines!(ax, Ns_anc_boot_valid, loss_valid; color=:black, linestyle=linestyle, linewidth=1, labelargs_valid...)
     end
-    Legend(lout[1,2], ax)
+    Legend(lout[1,2], ax; theme_leg...)
     colsize!(lout, 1, Relative(4/5))
     save(joinpath(figdir, "KL_vs_N.png"), fig)
     
@@ -800,11 +814,14 @@ function mix_conditional_tails(
 
     # ------------------- Bootstrap resampling  -----------------
     Ns_anc_boot = unique(floor.(Int64, 2 .^ range(0, log2(N_anc); step=0.25)))
+    Ns_anc_boot_valid = unique(vcat(Ns_anc_boot, floor.(Int64, 2 .^ range(log2(N_anc)+0.25, log2(N_anc_valid); step=0.25))))
     N_boot_sizes = length(Ns_anc_boot)
-    N_boot_resamps = 200
+    N_boot_sizes_valid = length(Ns_anc_boot_valid)
+    N_boot_resamps = 1000
     ccdfs_moctail_astunif_boot,ccdfs_poptail_astunif_boot = ntuple(_->zeros(Float64, (N_bin_over,N_ast,N_boot_resamps,N_boot_sizes)), 2)
     ccdfs_moctail_coast_boot,ccdfs_poptail_coast_boot = ntuple(_->zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes)), 2)
-    ccdfs_anconly_boot,ccdfs_valid_boot = ntuple(_->zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes)), 2)
+    ccdfs_anconly_boot = zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes))
+    ccdfs_valid_boot = zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes_valid))
     rng = MersenneTwister(rngseed_boot)
     for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot)
         for i_boot_resamp = 1:N_boot_resamps
@@ -828,6 +845,11 @@ function mix_conditional_tails(
             ccdfs_poptail_coast_boot[:,i_boot_resamp,i_boot_size] ./= ccdfs_poptail_coast_boot[1,i_boot_resamp,i_boot_size]
             # Ancestors only 
             ccdfs_anconly_boot[:,i_boot_resamp,i_boot_size] .= compute_empirical_ccdf(Rs_peak_anc[ancs_boot], bin_lower_edges[i_bin_thresh:end])
+        end
+    end
+    # Now bootstrapping on the validation, which can extend to longer N_ancs
+    for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot_valid)
+        for i_boot_resamp = 1:N_boot_resamps
             ancs_boot_valid = rand(rng, 1:N_anc_valid, N_anc_boot)
             ccdfs_valid_boot[:,i_boot_resamp,i_boot_size] .= compute_empirical_ccdf(Rs_peak_valid[ancs_boot_valid], bin_lower_edges[i_bin_thresh:end]) 
         end
@@ -845,12 +867,12 @@ function mix_conditional_tails(
         losses_moctail_astunif_chi2[i_ast] = chi2div(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
         losses_moctail_astunif_wass[i_ast] = wassersteindist(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
         losses_moctail_astunif_kldiv[i_ast] = kldiv(ccdf_peak_truth, ccdfs_moctail_astunif[:,i_ast])
-        # TODO compute losses by KL divergence 
     end
 
     losses_moctail_coast_kldiv_boot,losses_poptail_coast_kldiv_boot = ntuple(_->zeros(Float64, (N_boot_resamps, N_boot_sizes)), 2)
     losses_moctail_astunif_kldiv_boot,losses_poptail_astunif_kldiv_boot = ntuple(_->zeros(Float64, (N_ast,N_boot_resamps,N_boot_sizes)), 2)
-    losses_anconly_kldiv_boot,losses_valid_kldiv_boot = ntuple(_->zeros(Float64,(N_boot_resamps,N_boot_sizes)), 2)
+    losses_anconly_kldiv_boot = zeros(Float64,(N_boot_resamps,N_boot_sizes))
+    losses_valid_kldiv_boot = zeros(Float64,(N_boot_resamps,N_boot_sizes_valid))
     for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot)
         for i_boot_resamp = 1:N_boot_resamps
             for i_ast = 1:N_ast
@@ -860,9 +882,15 @@ function mix_conditional_tails(
             losses_moctail_coast_kldiv_boot[i_boot_resamp,i_boot_size] = kldiv(ccdf_peak_truth, ccdfs_moctail_coast_boot[:,i_boot_resamp,i_boot_size])
             losses_poptail_coast_kldiv_boot[i_boot_resamp,i_boot_size] = kldiv(ccdf_peak_truth, ccdfs_poptail_coast_boot[:,i_boot_resamp,i_boot_size])
             losses_anconly_kldiv_boot[i_boot_resamp,i_boot_size] = kldiv(ccdf_peak_truth, ccdfs_anconly_boot[:,i_boot_resamp,i_boot_size])
+        end
+    end
+    for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot_valid)
+        for i_boot_resamp = 1:N_boot_resamps
             losses_valid_kldiv_boot[i_boot_resamp,i_boot_size] = kldiv(ccdf_peak_truth, ccdfs_valid_boot[:,i_boot_resamp,i_boot_size])
         end
     end
+
+    # TODO compute costs, and make an equal-cost DNS estimator 
 
     # Save results to file 
 
@@ -888,6 +916,7 @@ function mix_conditional_tails(
              total_entropy,
              # bootstraps
              Ns_anc_boot,
+             Ns_anc_boot_valid,
              ccdfs_moctail_astunif_boot,
              ccdfs_moctail_coast_boot,
              ccdfs_anconly_boot,
