@@ -414,46 +414,6 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                     )
         end
        )
-    # ---------- convergence with N -----------
-    astcols = astcolors()
-    ast1 = 1
-    ast2 = div(uncoast,2)
-    uncoast = perturbation_neglog - threshold_neglog # unconditionally optimal 
-    alllosses = vcat(losses_moctail_astunif_kldiv_boot[uncoast,:,:][:], losses_moctail_coast_kldiv_boot[:], losses_valid_kldiv_boot[:])
-    kllo,yhi = (func(filter(ispos,alllosses)) for func=(minimum,maximum))
-    ylo = 0
-
-    theme_ax,theme_leg = get_themes()
-    fig = Figure(size=(500,250))
-    lout = fig[1,1] = GridLayout()
-    xtickvalues = unique(2 .^ floor.(Int, range(0, log2(Ns_anc_boot_valid[end]); step=1)))
-    xticklabels = (N->@sprintf("%d",N)).(xtickvalues)
-    ytickvalues = [ylo,kllo,yhi]
-    yticklabels = (K->@sprintf("%.1E",K)).(ytickvalues)
-    ax = Axis(lout[1,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="𝑁", ylabel="KL", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=Makie.Symlog10(2*kllo), limits=((1,Ns_anc_boot_valid[end]), (0,yhi)), xticks=(xtickvalues,xticklabels), yticks=(ytickvalues,yticklabels))
-    for q = [0.25,0.5,0.75]
-        linestyle = (q==0.5 ? :solid : (:dash,:dense))
-        labelargs_astunif = (q==0.5 ? (; label="𝐴[U]") : (;))
-        labelargs_coast = (q==0.5 ? (; label="𝐴[XclEnt]") : (;))
-        labelargs_anconly = (q==0.5 ? (; label="𝐴[Anc]") : (;))
-        labelargs_valid = (q==0.5 ? (; label="𝐴[Valid]") : (;))
-        
-        quantfun(arr) = (arrpos = filter(ispos,arr); length(arrpos) == 0 ? NaN : quantile(arrpos,q))
-        loss_astunif = mapslices(quantfun, losses_moctail_astunif_kldiv_boot[uncoast,:,:]; dims=1)[1,:]
-        loss_coast = mapslices(quantfun, losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:]
-        loss_valid = mapslices(quantfun, losses_valid_kldiv_boot[:,:]; dims=1)[1,:]
-        loss_anconly = mapslices(quantfun, losses_anconly_kldiv_boot[:,:]; dims=1)[1,:]
-        scatterlines!(ax, Ns_anc_boot, loss_astunif; color=astcols["astunif"], linestyle=linestyle, linewidth=3, labelargs_astunif...)
-        scatterlines!(ax, Ns_anc_boot, loss_coast; color=astcols["XclEnt"], linestyle=linestyle, linewidth=1.5, labelargs_coast...)
-        scatterlines!(ax, Ns_anc_boot, loss_anconly; color=:grey79, linestyle=linestyle, linewidth=1, labelargs_anconly...)
-        scatterlines!(ax, Ns_anc_boot_valid, loss_valid; color=:black, linestyle=linestyle, linewidth=1, labelargs_valid...)
-    end
-    Legend(lout[1,2], ax; theme_leg...)
-    colsize!(lout, 1, Relative(4/5))
-    save(joinpath(figdir, "KL_vs_N.png"), fig)
-    
-
-    # -----------------------------------------
     ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_ancgen.jld2"), "r") do f
         return f["ts"], f["xs"]
     end
@@ -473,12 +433,60 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                 f["cluster_stops"],
                )
     end
+    N_ast = length(asts)
+    N_anc = length(Rs_peak_anc)
+    N_bin = length(bin_lower_edges)
+    N_bin_over = N_bin - i_bin_thresh + 1
+    # ---------- convergence with N -----------
+    astcols = astcolors()
+    uncoast = perturbation_neglog - threshold_neglog # unconditionally optimal 
+    alllosses = vcat(losses_moctail_astunif_kldiv_boot[uncoast,:,:][:], losses_moctail_coast_kldiv_boot[:], losses_valid_kldiv_boot[:])
+    kllo,klhi = (func(filter(ispos,alllosses)) for func=(minimum,maximum))
+    ylo = kllo/2
+    yhi = ceil(Int64,klhi) + 0.5
+
+    theme_ax,theme_leg = get_themes()
+    theme_ax = (; theme_ax..., xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10, titlesize=12)
+    theme_leg = (; theme_leg..., framevisible=false)
+    xtickvalues = unique(2 .^ floor.(Int, range(0, log2(Ns_anc_boot_valid[end]); step=1)))
+    xticklabels = (N->@sprintf("%d",N)).(xtickvalues)
+    ytickvalues = unique(vcat(2.0 .^ round.(Int64, range(log2(ylo), log2(yhi); length=6)), N_bin_over))
+    yticklabels = scinot.(ytickvalues)
+    quantfun(arr,qua) = (arrpos = filter(ispos,arr); length(arrpos) == 0 ? NaN : quantile(arrpos,qua))
+    losses_astunif_midlohi = [
+                              [mapslices(arr->quantfun(arr,qua), losses_moctail_astunif_kldiv_boot[i_ast,:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
+                              for i_ast=1:N_ast
+                             ]
+    losses_coast_midlohi = [mapslices(arr->quantfun(arr,qua), losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
+    losses_anconly_midlohi = [mapslices(arr->quantfun(arr,qua), losses_anconly_kldiv_boot[:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
+    losses_valid_midlohi = [mapslices(arr->quantfun(arr,qua), losses_valid_kldiv_boot[:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
+
+    fig = Figure(size=(600,250))
+    lout = fig[1,1] = GridLayout()
+    ax = Axis(lout[1,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="𝑁", ylabel="KL divergence", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=log10, limits=((1,Ns_anc_boot_valid[end]), (ylo,yhi)), xticks=(xtickvalues,xticklabels), yticks=(ytickvalues,yticklabels))
+    i_uncoast = findfirst(==(uncoast), asts)
+    for (Ns_anc,losses_midlohi,color,label) = (
+         ((Ns_anc_boot,     losses_astunif_midlohi[i_ast],     :lightsalmon, i_ast==1 ? @sprintf("𝐴<%d",uncoast) : nothing) for i_ast=1:i_uncoast-1)...,
+         ((Ns_anc_boot,     losses_astunif_midlohi[i_ast],     :salmon4, i_ast==N_ast ? @sprintf("𝐴>%d",uncoast) : nothing) for i_ast=i_uncoast+1:N_ast)...,
+         (Ns_anc_boot_valid,losses_valid_midlohi,      astcols["valid"],  "Long DNS"),
+         (Ns_anc_boot,      losses_anconly_midlohi,    astcols["anconly"],  "No boosting"),
+         (Ns_anc_boot,      losses_coast_midlohi,    astcols["XclEnt"],"𝐴=argmax(XclEnt)"),
+         (Ns_anc_boot,      losses_astunif_midlohi[uncoast],    astcols["astunif"], @sprintf("𝐴=𝐾−𝑀=%d",uncoast)),
+        )
+        losses_mid,losses_lo,losses_hi = losses_midlohi
+        band!(Ns_anc, losses_lo, losses_hi; color=color, alpha=0.5)
+        scatterlines!(ax, Ns_anc, losses_mid; color=color, label=label, marker=:circle, markersize=1)
+    end
+    Legend(lout[1,2], ax; theme_leg...)
+    colsize!(lout, 1, Relative(4/5))
+    colgap!(lout,1,0)
+    save(joinpath(figdir, "KL_vs_N.png"), fig)
+    
+
+    # -----------------------------------------
 
     Rmax = maximum(Rs_peak_valid)
 
-    N_ast = length(asts)
-    N_bin = length(bin_lower_edges)
-    N_anc = length(Rs_peak_anc)
     bin_centers = vcat((bin_lower_edges[1:N_bin-1] .+ bin_lower_edges[2:N_bin])./2, (bin_lower_edges[N_bin]+1)/2)
     bin_edges = vcat(bin_lower_edges, 1.0)
 
@@ -813,7 +821,7 @@ function mix_conditional_tails(
     ccdf_moctail_coast ./= anc_counts_moctail_coast
 
     # ------------------- Bootstrap resampling  -----------------
-    Ns_anc_boot = unique(floor.(Int64, 2 .^ range(0, log2(N_anc); step=0.25)))
+    Ns_anc_boot = unique(vcat(floor.(Int64, 2 .^ range(0, log2(N_anc); step=0.25)), N_anc))
     Ns_anc_boot_valid = unique(vcat(Ns_anc_boot, floor.(Int64, 2 .^ range(log2(N_anc)+0.25, log2(N_anc_valid); step=0.25))))
     N_boot_sizes = length(Ns_anc_boot)
     N_boot_sizes_valid = length(Ns_anc_boot_valid)

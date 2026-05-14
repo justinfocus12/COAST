@@ -6,7 +6,10 @@ function astcolors()
                 "XclEnt" => :dodgerblue2,
                 "XclEntOne" => :skyblue2,
                 "astunif" => :firebrick,
+                "anconly" => :grey79,
+                "valid" => :black,
                )
+
 end
 
 function get_themes()
@@ -42,13 +45,21 @@ function supscr(k::Int64)
     return ss
 end
 
-function scinot2(x::Number)
+function scinot(x::Number; base::Int64=10)
+    logb = base==10 ? log10 : base==2 ? log2 : y->log(y)/log(base)
     x==0 && return "0"
-    powerof2 = floor(Int64,log2(abs(x)))
-    coeff = round(Int64,x/(2.0)^powerof2)
-    coeffstr = abs(coeff)==1 ? "" :  @sprintf("%d×",abs(coeff))
+    expon = floor(Int64,logb(abs(x)))
+    coeff = round(Int64,x/(1.0*base)^expon)
+    coeffstr = abs(coeff)==1 ? "" :  @sprintf("%d",abs(coeff))
     sign(coeff)==-1 && (coeffstr = "−"*coeffstr)
-    return @sprintf("%s2%s",coeffstr,supscr(powerof2))
+    exponstr = expon==0 ? "" : @sprintf("%d%s",base,supscr(expon))
+    timesstr = (abs(coeff)==1 || expon==0 ? "" : "×")
+    return @sprintf("%s%s%s",coeffstr,timesstr,exponstr)
+end
+
+
+function scinot2(x::Number)
+    return scinot(x; base=2)
 end
 
 function scinot2near1(x::Number)
