@@ -437,8 +437,10 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     N_anc = length(Rs_peak_anc)
     N_bin = length(bin_lower_edges)
     N_bin_over = N_bin - i_bin_thresh + 1
+
     # ---------- convergence with N -----------
     astcols = astcolors()
+    mean_return_period = mean(diff(ts_peak_valid))
     uncoast = perturbation_neglog - threshold_neglog # unconditionally optimal 
     alllosses = vcat(losses_moctail_astunif_kldiv_boot[uncoast,:,:][:], losses_moctail_coast_kldiv_boot[:], losses_valid_kldiv_boot[:])
     kllo,klhi = (func(filter(ispos,alllosses)) for func=(minimum,maximum))
@@ -448,10 +450,6 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     theme_ax,theme_leg = get_themes()
     theme_ax = (; theme_ax..., xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10, titlesize=12)
     theme_leg = (; theme_leg..., framevisible=false)
-    xtickvalues = unique(2 .^ floor.(Int, range(0, log2(Ns_anc_boot_valid[end]); step=1)))
-    xticklabels = (N->@sprintf("%d",N)).(xtickvalues)
-    ytickvalues = unique(vcat(2.0 .^ round.(Int64, range(log2(ylo), log2(yhi); length=6)), N_bin_over))
-    yticklabels = scinot.(ytickvalues)
     quantfun(arr,qua) = (arrpos = filter(ispos,arr); length(arrpos) == 0 ? NaN : quantile(arrpos,qua))
     losses_astunif_midlohi = [
                               [mapslices(arr->quantfun(arr,qua), losses_moctail_astunif_kldiv_boot[i_ast,:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
@@ -460,26 +458,60 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     losses_coast_midlohi = [mapslices(arr->quantfun(arr,qua), losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
     losses_anconly_midlohi = [mapslices(arr->quantfun(arr,qua), losses_anconly_kldiv_boot[:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
     losses_valid_midlohi = [mapslices(arr->quantfun(arr,qua), losses_valid_kldiv_boot[:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
-
-    fig = Figure(size=(600,250))
-    lout = fig[1,1] = GridLayout()
-    ax = Axis(lout[1,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="𝑁", ylabel="KL divergence", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=log10, limits=((1,Ns_anc_boot_valid[end]), (ylo,yhi)), xticks=(xtickvalues,xticklabels), yticks=(ytickvalues,yticklabels))
-    i_uncoast = findfirst(==(uncoast), asts)
-    for (Ns_anc,losses_midlohi,color,label) = (
-         ((Ns_anc_boot,     losses_astunif_midlohi[i_ast],     :lightsalmon, i_ast==1 ? @sprintf("𝐴<%d",uncoast) : nothing) for i_ast=1:i_uncoast-1)...,
-         ((Ns_anc_boot,     losses_astunif_midlohi[i_ast],     :salmon4, i_ast==N_ast ? @sprintf("𝐴>%d",uncoast) : nothing) for i_ast=i_uncoast+1:N_ast)...,
-         (Ns_anc_boot_valid,losses_valid_midlohi,      astcols["valid"],  "Long DNS"),
-         (Ns_anc_boot,      losses_anconly_midlohi,    astcols["anconly"],  "No boosting"),
-         (Ns_anc_boot,      losses_coast_midlohi,    astcols["XclEnt"],"𝐴=argmax(XclEnt)"),
-         (Ns_anc_boot,      losses_astunif_midlohi[uncoast],    astcols["astunif"], @sprintf("𝐴=𝐾−𝑀=%d",uncoast)),
-        )
+    function draw_bands!(ax_Nanc, ax_cost, Ns_anc, cost_per_anc, losses_midlohi, color, label)
         losses_mid,losses_lo,losses_hi = losses_midlohi
-        band!(Ns_anc, losses_lo, losses_hi; color=color, alpha=0.5)
-        scatterlines!(ax, Ns_anc, losses_mid; color=color, label=label, marker=:circle, markersize=1)
+        band!(ax_Nanc, Ns_anc, losses_lo, losses_hi; color=color, alpha=0.5)
+        scatterlines!(ax_Nanc, Ns_anc, losses_mid; color=color, label=label, marker=:circle, markersize=1)
+        band!(ax_cost, Ns_anc.*cost_per_anc, losses_lo, losses_hi; color=color, alpha=0.5)
+        scatterlines!(ax_cost, Ns_anc.*cost_per_anc, losses_mid; color=color, marker=:circle, markersize=1)
     end
-    Legend(lout[1,2], ax; theme_leg...)
+    i_uncoast = findfirst(==(uncoast), asts)
+
+    fig = Figure(size=(600,400))
+    # Top panel: KL vs N 
+    lout = fig[1,1] = GridLayout()
+
+    xtickvalues_N = unique(2 .^ floor.(Int, range(0, log2(Ns_anc_boot_valid[end]); step=1)))
+    xtickvalues_C = xtickvalues_N.*mean_return_period
+    xticklabels_N = scinot2.(xtickvalues_N)
+    xticklabels_C = scinot2.(xtickvalues_C)
+    ytickvalues = unique(vcat(2.0 .^ round.(Int64, range(log2(ylo), log2(yhi); length=6)), N_bin_over))
+    yticklabels = scinot.(ytickvalues)
+
+    ax_N = Axis(lout[1,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="𝑁", ylabel="KL divergence", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=log10, limits=((1,Ns_anc_boot_valid[end]), (ylo,yhi)), xticks=(xtickvalues_N,xticklabels_N), yticks=(ytickvalues,yticklabels))
+    ax_C = Axis(lout[2,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="Cost", ylabel="KL divergence", xscale=log2, yscale=log10, limits=((1,Ns_anc_boot_valid[end]).*mean_return_period, (ylo,yhi)), yticks=(ytickvalues,yticklabels), xticks=(xtickvalues_C,xticklabels_C))
+
+    # all non-optimal uniform ASTs 
+    for i_ast = 1:N_ast
+        (asts[i_ast] == uncoast) && continue
+        draw_bands!(ax_N, ax_C, 
+                    Ns_anc_boot, mean_return_period+N_dsc*asts[i_ast], 
+                    losses_astunif_midlohi[i_ast],     
+                    i_ast<i_uncoast ? :lightsalmon : :salmon4, 
+                    i_ast==N_ast ? @sprintf("𝐴>%d",uncoast) : i_ast==1 ? @sprintf("𝐴<%d",uncoast) : nothing)
+    end
+    # Optimal unconditional advance split time (un-COAST)
+    draw_bands!(ax_N, ax_C, 
+                Ns_anc_boot, mean_return_period+N_dsc*uncoast,
+                losses_astunif_midlohi[i_uncoast],     
+                astcols["astunif"], @sprintf("𝐴=𝐾−𝑀=%d", perturbation_neglog-threshold_neglog))
+    # Validation 
+    draw_bands!(ax_N, ax_C, 
+                Ns_anc_boot_valid, mean_return_period, 
+                losses_valid_midlohi, astcols["valid"],  "Long DNS")
+    # Ancestors only 
+    draw_bands!(ax_N, ax_C,
+               Ns_anc_boot, mean_return_period,
+               losses_anconly_midlohi, astcols["anconly"],  "No boosting")
+    # XclEnt
+    draw_bands!(ax_N, ax_C,
+                Ns_anc_boot, mean_return_period + N_dsc*uncoast, 
+                losses_coast_midlohi, astcols["XclEnt"], "𝐴=argmax(XclEnt)")
+    Legend(lout[2,2], ax_N; theme_leg...)
+
     colsize!(lout, 1, Relative(4/5))
     colgap!(lout,1,0)
+    rowgap!(lout,1,15)
     save(joinpath(figdir, "KL_vs_N.png"), fig)
     
 

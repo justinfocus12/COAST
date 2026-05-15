@@ -6,7 +6,7 @@ function astcolors()
                 "XclEnt" => :dodgerblue2,
                 "XclEntOne" => :skyblue2,
                 "astunif" => :firebrick,
-                "anconly" => :grey79,
+                "anconly" => :teal,
                 "valid" => :black,
                )
 

@@ -1,8 +1,12 @@
+module Logistics
+
 import Random
 import StatsBase as SB
 using Printf: @sprintf
 using JLD2: jldopen
 using CairoMakie
+
+export pert_thresh_loop
 
 include("./MapsOneDim.jl")
 
@@ -176,9 +180,15 @@ function main(bpar_adj)
     end
 end
 
-for perturbation_neglog = [14, 16, 18][1:1]
-    for threshold_neglog = [8, 10, 12][1:1]
-        bpar_adj = (; threshold_neglog, perturbation_neglog)
-        main(bpar_adj)
+function thresh_pert_loop()
+    for perturbation_neglog = [14, 16, 18][1:1]
+        for threshold_neglog = [8, 10, 12][1:1]
+            bpar_adj = (; threshold_neglog, perturbation_neglog)
+            main(bpar_adj)
+        end
     end
 end
+
+end # module Logistics
+
+
