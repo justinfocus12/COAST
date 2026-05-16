@@ -6,7 +6,7 @@ using Printf: @sprintf
 using JLD2: jldopen
 using CairoMakie
 
-export pert_thresh_loop
+export pert_thresh_loop, illustrate_map
 
 include("./MapsOneDim.jl")
 
@@ -96,8 +96,8 @@ function main(bpar_adj)
                              "analyze_peaks_valid" =>      0,
                              "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
-                             "mix_conditional_tails" =>    1,
-                             "plot_boosts" =>              1,
+                             "mix_conditional_tails" =>    0,
+                             "plot_boosts" =>              0,
                              "plot_moctails" =>            1,
                             )
 

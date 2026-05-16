@@ -6,6 +6,8 @@ using Printf: @sprintf
 using JLD2: jldopen
 using CairoMakie
 
+export pert_thresh_loop, illustrate_map
+
 include("./MapsOneDim.jl")
 
 
@@ -85,7 +87,7 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           0,
+                             "illustrate_map" =>           1,
                              "run_dns_valid" =>            0,
                              "plot_dns_valid" =>           0,
                              "run_dns_ancgen" =>           0,

@@ -29,7 +29,10 @@ function illustrate_map(z0::Float64, F::Function, conjugate_bwd::Function, mapsy
     pdflo = minimum(pofx)
     pdfhi = maximum(pofx)
 
-    fig = Figure(size=(600,400))
+    theme_ax,theme_leg = get_themes()
+    theme_ax = (theme_ax..., xlabelsize=14, ylabelsize=14, titlesize=14, xticklabelsize=12, yticklabelsize=12)
+
+    fig = Figure(size=(400,300))
     lout = fig[1,1] = GridLayout()
     ax = Axis(lout[1,1]; xlabel="𝑥", ylabel="$(mapsymbol)(𝑥)", title=mapname, limits=((0,1),(0,1)), titlefont="Menlo",  xticklabelfont="Menlo", yticklabelfont="Menlo", xgridvisible=false, ygridvisible=false)
     lines!(ax, xgrid, F.(xgrid); color=:black)
@@ -52,7 +55,7 @@ function illustrate_map(z0::Float64, F::Function, conjugate_bwd::Function, mapsy
     vlines!(ax, 0; color=:black, linestyle=(:dash,:dense))
     lines!(ax, pofx, xgrid[2:end-1]; color=:black)
     scatter!(ax, zeros(T), xs; color=:black)
-    colsize!(lout, 2, Relative(1/3))
+    colsize!(lout, 2, Relative(1/4))
     colgap!(lout,1,10)
     save(joinpath(plotdir, outfilename), fig)
     return
@@ -380,6 +383,10 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
      total_entropy,
      Ns_anc_boot,
      Ns_anc_boot_valid,
+     ccdfs_moctail_astunif_boot,
+     ccdfs_moctail_coast_boot,
+     ccdfs_anconly_boot,
+     ccdfs_valid_boot,
      losses_moctail_astunif_kldiv_boot,
      losses_moctail_coast_kldiv_boot,
      losses_anconly_kldiv_boot,
@@ -407,6 +414,10 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                      f["total_entropy"],
                      f["Ns_anc_boot"],
                      f["Ns_anc_boot_valid"],
+                     f["ccdfs_moctail_astunif_boot"],
+                     f["ccdfs_moctail_coast_boot"],
+                     f["ccdfs_anconly_boot"],
+                     f["ccdfs_valid_boot"],
                      f["losses_moctail_astunif_kldiv_boot"],
                      f["losses_moctail_coast_kldiv_boot"],
                      f["losses_anconly_kldiv_boot"],
@@ -521,9 +532,39 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
 
     bin_centers = vcat((bin_lower_edges[1:N_bin-1] .+ bin_lower_edges[2:N_bin])./2, (bin_lower_edges[N_bin]+1)/2)
     bin_edges = vcat(bin_lower_edges, 1.0)
+    xlimits = [minimum(filter(ispos, isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth))/2, 1]
+    i_coast_mean = round(Int64,mean(idx_coast))
+    # which bootstrap to use
+    confint_width = 0.9
+    i_boot_size = div(length(Ns_anc_boot),4)
+    (ccdfs_anconly_boot_midlohi,
+     ccdfs_moctail_coast_boot_midlohi,
+    ) = map(
+            ccdfs->map(
+                       qq->mapslices(
+                                     cc->quantile(
+                                                  cc,qq
+                                                 ),
+                                     ccdfs[:,:,i_boot_size]; dims=2
+                                    )[:,1],
+                       0.5 .+ confint_width.*[-1/2,0,1/2]
+                      ), 
+            (ccdfs_anconly_boot,ccdfs_moctail_coast_boot)
+           )
+    (ccdfs_moctail_astunif_boot_midlohi
+    ) = map(
+            qq->mapslices(
+                          cc->quantile(
+                                       cc,qq
+                                      ),
+                          ccdfs_moctail_astunif_boot[:,:,:,i_boot_size]; dims=3
+                         )[:,:,1],
+            0.5 .+ confint_width.*[-1/2,0,1/2]
+           )
 
+    ytickvalues = [bin_edges[i_bin_thresh], (1+bin_edges[i_bin_thresh])/2, 1] #,yticklabels = let
+    yticklabels = scinot2near1.(ytickvalues) 
 
-    fig = Figure(size=(80*(N_ast+1), 800))
     theme_ax = (; 
                 xgridvisible=false, ygridvisible=false, 
                 xticklabelsize=14, yticklabelsize=14, 
@@ -535,23 +576,36 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     theme_leg = (; labelfont="Menlo",  titlefont="Menlo")
     astcols = astcolors()
 
+    fig = Figure(size=(80*(N_ast+1), 800))
+
     # ---------- Row 1: CCDFs at each AST separately ----------
     lout = fig[1,1] = GridLayout()
-    xlimits = [minimum(filter(ispos, isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth))/2, 1]
-    i_coast_mean = round(Int64,mean(idx_coast))
-    # TODO fix
-    ytickvalues = [bin_edges[i_bin_thresh], (1+bin_edges[i_bin_thresh])/2, 1] #,yticklabels = let
-    yticklabels = scinot2near1.(ytickvalues) 
     for i_ast = 1:N_ast
         i_col = N_ast-i_ast+1
         ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), title="Tail CCDFs", titlevisible=false, yticklabelsvisible=(i_col==1), ylabelvisible=(i_col==1), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, ylabel="Severity 𝑅*")
-        lines!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=:gray79, linewidth=6, label="Ancestors only")
-        lines!(ax, ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:N_bin]; color=astcols["astunif"], linewidth=3)
-        lines!(ax, (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth), bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=3, linestyle=(:dash,:dense), label=(isnothing(ccdf_peak_wholetruth) ? "Ground truth" : "Whole truth"))
+        lines!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=astcols["anconly"], linewidth=2, label="No boosting")
+        band!(ax, 
+              Point2f.(ccdfs_anconly_boot_midlohi[1], bin_edges[i_bin_thresh:N_bin]), 
+              Point2f.(ccdfs_anconly_boot_midlohi[3], bin_edges[i_bin_thresh:N_bin]), 
+              color=astcols["anconly"], alpha=0.25)
+        #for i_quant = 1:3
+        #    lines!(ax, ccdfs_anconly_boot_midlohi[i_quant], bin_edges[i_bin_thresh:N_bin]; linestyle=(:dot,:dense), color=:gray) #astcols["anconly"])
+        #end
+        lines!(ax, ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:N_bin]; color=astcols["astunif"], linewidth=1)
+        band!(ax,
+              Point2f.(ccdfs_moctail_astunif_boot_midlohi[1][:,i_ast], bin_edges[i_bin_thresh:N_bin]),
+              Point2f.(ccdfs_moctail_astunif_boot_midlohi[3][:,i_ast], bin_edges[i_bin_thresh:N_bin]),
+              color=astcols["astunif"], alpha=0.25)
         if i_ast == i_coast_mean
             lines!(ax, ccdf_moctail_coast, bin_edges[i_bin_thresh:N_bin]; color=astcols["XclEnt"], linewidth=2, label="XclEnt-COAST")
+            band!(ax, 
+                  Point2f.(ccdfs_moctail_coast_boot_midlohi[1], bin_edges[i_bin_thresh:N_bin]), 
+                  Point2f.(ccdfs_moctail_coast_boot_midlohi[3], bin_edges[i_bin_thresh:N_bin]), 
+                  color=astcols["XclEnt"], alpha=0.25
+                 )
             Legend(lout[1,N_ast+1], ax; theme_leg..., framevisible=true)
         end
+        lines!(ax, (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth), bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=3, linestyle=(:dash,:dense), label=(isnothing(ccdf_peak_wholetruth) ? "Ground truth" : "Whole truth"))
         if i_col == 1
             log2xlims = [ceil(Int64,log2(xlimits[1])),floor(Int64,log2(xlimits[2]))]
             log2xtickvals = [log2xlims[1],div(log2xlims[1]+log2xlims[2],2),log2xlims[2]]
