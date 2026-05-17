@@ -536,7 +536,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     i_coast_mean = round(Int64,mean(idx_coast))
     # which bootstrap to use
     confint_width = 0.9
-    i_boot_size = div(length(Ns_anc_boot),2)
+    i_boot_size = 10 #length(Ns_anc_boot) #div(length(Ns_anc_boot),2)
     (ccdfs_anconly_boot_midlohi,
      ccdfs_moctail_coast_boot_midlohi,
     ) = map(
@@ -562,7 +562,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
             0.5 .+ confint_width.*[-1/2,0,1/2]
            )
 
-    ytickvalues = [bin_edges[i_bin_thresh], (1+bin_edges[i_bin_thresh])/2, 1] #,yticklabels = let
+    ytickvalues = bin_edges[[i_bin_thresh, div(i_bin_thresh+N_bin,2), N_bin]] #,yticklabels = let
     yticklabels = scinot2near1.(ytickvalues) 
 
     theme_ax = (; 
@@ -573,7 +573,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                 xticklabelfont="Menlo", yticklabelfont="Menlo", 
                 titlealign=:left
                )
-    theme_leg = (; labelfont="Menlo",  titlefont="Menlo")
+    theme_leg = (; labelfont="Menlo",  titlefont="Menlo", framevisible=false)
     astcols = astcolors()
 
     fig = Figure(size=(80*(N_ast+1), 800))
@@ -582,7 +582,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     lout = fig[1,1] = GridLayout()
     for i_ast = 1:N_ast
         i_col = N_ast-i_ast+1
-        ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), title="Tail CCDFs", titlevisible=false, yticklabelsvisible=(i_col==1), ylabelvisible=(i_col==1), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, ylabel="Severity 𝑅*")
+        ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=nlg1m, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], bin_edges[N_bin])), title="Tail CCDFs", titlevisible=false, yticklabelsvisible=(i_col==1), ylabelvisible=(i_col==1), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, ylabel="Severity 𝑅*")
         lines!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=astcols["anconly"], linewidth=2, label="No boosting")
         finite_idx = findall(isfinite.(ccdfs_anconly_boot_midlohi[1]) .& isfinite.(ccdfs_anconly_boot_midlohi[3]))
         band!(ax, 
@@ -606,7 +606,8 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                   Point2f.(ccdfs_moctail_coast_boot_midlohi[3][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
                   color=astcols["XclEnt"], alpha=0.25
                  )
-            Legend(lout[1,N_ast+1], ax; theme_leg..., framevisible=true)
+            legtitle = @sprintf("𝑁 = %d\nsubset size %d", N_anc, Ns_anc_boot[i_boot_size])
+            Legend(lout[1,N_ast+1], ax, legtitle; theme_leg..., )
         end
         lines!(ax, (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth), bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=3, linestyle=(:dash,:dense), label=(isnothing(ccdf_peak_wholetruth) ? "Ground truth" : "Whole truth"))
         if i_col == 1
@@ -627,7 +628,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
         scatterlines!(ax, -asts, extreme_conditional_entropy[:,i_anc]; color=astcols["XclEntOne"], label=(i_anc==1 ? "Single-family" : nothing))
     end
     scatterlines!(ax, -asts, mean(extreme_conditional_entropy; dims=2)[:,1]; color=astcols["XclEnt"], linewidth=3, label="Multi-family\nmean")
-    Legend(lout[2,N_ast+1], ax; theme_leg..., framevisible=true)
+    Legend(lout[2,N_ast+1], ax; theme_leg...,)
 
     coast_freq = zeros(Int64, N_ast)
     for i_ast = 1:N_ast
@@ -641,9 +642,9 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
 
     # ------------ Row 4:  KL divergence ------
     # compute y-axis limits 
-    loss_min_astunif,loss_max_astunif = (func(filter(isfinite, losses_moctail_astunif_kldiv)) for func=(minimum,maximum))
+    loss_min_astunif,loss_max_astunif = (func(filter(isfinite, losses_moctail_astunif_kldiv_boot[:,:,i_boot_size])) for func=(minimum,maximum))
     yhi = 2.0 * maximum(filter(ispos, [loss_max_astunif, loss_moctail_coast_kldiv]))
-    klposlo = minimum(filter(ispos, vcat(losses_moctail_astunif_kldiv, loss_moctail_coast_kldiv)))
+    klposlo = minimum(filter(ispos, vcat(losses_moctail_astunif_kldiv_boot[:,:,i_boot_size][:], losses_moctail_coast_kldiv_boot[:,i_boot_size])))
     ylo = -klposlo #0.5 * klposlo
     ytickvalues = [0,sqrt(klposlo*yhi),yhi]
     yticklabels = (y->@sprintf("%.0E",y)).(ytickvalues)
@@ -654,16 +655,30 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
               limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])), (ylo,yhi)),
               yticks=(ytickvalues,yticklabels),
              )
-    scatterlines!(ax, -asts, losses_moctail_astunif_kldiv; color=astcols["astunif"], label=@sprintf("Uniform AST\nKL ≥ %.1E",loss_min_astunif))
-    hlines!(ax, loss_moctail_coast_kldiv; color=astcols["XclEnt"], linestyle=:solid, linewidth=2, label=@sprintf("XclEnt-COAST\nKL = %.1E", loss_moctail_coast_kldiv))
-    Legend(lout[4,N_ast+1], ax; theme_leg..., framevisible=true)
+    klunif_midlohi = map(
+                         qq->mapslices(
+                                       klarr->quantile(filter(ispos,klarr), qq),
+                                       losses_moctail_astunif_kldiv_boot[:,:,i_boot_size];
+                                       dims=2
+                                      )[:,1],
+                         1/2 .+ confint_width.*[-1/2,0,1/2]
+                        )
+    klcoast_midlohi = map(
+                          qq->quantile(filter(ispos,losses_moctail_coast_kldiv_boot[:,i_boot_size]), qq), 
+                          1/2 .+ confint_width.*[-1/2,0,1/2]
+                         )
+    band!(ax, -asts, klunif_midlohi[[1,3]]...; color=astcols["astunif"], alpha=0.25)
+    scatterlines!(ax, -asts, klunif_midlohi[2]; color=astcols["astunif"], label=@sprintf("Uniform AST\nKL ≥ %.1E",minimum(klunif_midlohi[2])))
+    band!(ax, -asts, (klcoast_midlohi[i_qq].*ones(N_ast) for i_qq=[1,3])...; color=astcols["XclEnt"], alpha=0.25)
+    lines!(ax, -asts, klcoast_midlohi[2].*ones(N_ast), color=astcols["XclEnt"], linestyle=:solid, linewidth=2, label=@sprintf("XclEnt-COAST\nKL = %.1E", klcoast_midlohi[2])) #loss_moctail_coast_kldiv))
+    Legend(lout[4,N_ast+1], ax; theme_leg...,)
 
     rowgap!(lout, 1, 0)
     rowgap!(lout, 2, 0)
     rowgap!(lout, 3, 0)
     colsize!(lout, N_ast+1, Relative(1/5))
     
-    save(joinpath(figdir, "ccdfs_moctail.png"), fig)
+    save(joinpath(figdir, "ccdfs_moctail_N$(Ns_anc_boot[i_boot_size]).png"), fig)
 
 
     return 
