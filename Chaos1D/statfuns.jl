@@ -2,6 +2,10 @@ function ispos(x)
     return isfinite(x) && (x > 0)
 end
 
+function finitequantile(x,q)
+    return any(isfinite.(x)) ? quantile(x,q) : NaN
+end
+
 function van_der_corput(N)
     # Generate the first N points of the van der corput sequence 
     max_bit_length = floor(Int, 1+log2(N))

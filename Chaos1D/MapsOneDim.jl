@@ -536,15 +536,15 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     i_coast_mean = round(Int64,mean(idx_coast))
     # which bootstrap to use
     confint_width = 0.9
-    i_boot_size = div(length(Ns_anc_boot),4)
+    i_boot_size = div(length(Ns_anc_boot),2)
     (ccdfs_anconly_boot_midlohi,
      ccdfs_moctail_coast_boot_midlohi,
     ) = map(
             ccdfs->map(
                        qq->mapslices(
-                                     cc->quantile(
-                                                  cc,qq
-                                                 ),
+                                     cc->finitequantile(
+                                                        filter(isfinite,cc),qq
+                                                       ),
                                      ccdfs[:,:,i_boot_size]; dims=2
                                     )[:,1],
                        0.5 .+ confint_width.*[-1/2,0,1/2]
@@ -554,9 +554,9 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     (ccdfs_moctail_astunif_boot_midlohi
     ) = map(
             qq->mapslices(
-                          cc->quantile(
-                                       cc,qq
-                                      ),
+                          cc->finitequantile(
+                                             filter(isfinite,cc),qq
+                                            ),
                           ccdfs_moctail_astunif_boot[:,:,:,i_boot_size]; dims=3
                          )[:,:,1],
             0.5 .+ confint_width.*[-1/2,0,1/2]
@@ -584,23 +584,26 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
         i_col = N_ast-i_ast+1
         ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=identity, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], 1)), title="Tail CCDFs", titlevisible=false, yticklabelsvisible=(i_col==1), ylabelvisible=(i_col==1), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, ylabel="Severity 𝑅*")
         lines!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=astcols["anconly"], linewidth=2, label="No boosting")
+        finite_idx = findall(isfinite.(ccdfs_anconly_boot_midlohi[1]) .& isfinite.(ccdfs_anconly_boot_midlohi[3]))
         band!(ax, 
-              Point2f.(ccdfs_anconly_boot_midlohi[1], bin_edges[i_bin_thresh:N_bin]), 
-              Point2f.(ccdfs_anconly_boot_midlohi[3], bin_edges[i_bin_thresh:N_bin]), 
+              Point2f.(ccdfs_anconly_boot_midlohi[1][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
+              Point2f.(ccdfs_anconly_boot_midlohi[3][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
               color=astcols["anconly"], alpha=0.25)
         #for i_quant = 1:3
         #    lines!(ax, ccdfs_anconly_boot_midlohi[i_quant], bin_edges[i_bin_thresh:N_bin]; linestyle=(:dot,:dense), color=:gray) #astcols["anconly"])
         #end
         lines!(ax, ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:N_bin]; color=astcols["astunif"], linewidth=1)
+        finite_idx = findall(isfinite.(ccdfs_moctail_astunif_boot_midlohi[1][:,i_ast]) .& isfinite.(ccdfs_moctail_astunif_boot_midlohi[3][:,i_ast]))
         band!(ax,
-              Point2f.(ccdfs_moctail_astunif_boot_midlohi[1][:,i_ast], bin_edges[i_bin_thresh:N_bin]),
-              Point2f.(ccdfs_moctail_astunif_boot_midlohi[3][:,i_ast], bin_edges[i_bin_thresh:N_bin]),
+              Point2f.(ccdfs_moctail_astunif_boot_midlohi[1][finite_idx,i_ast], bin_edges[i_bin_thresh:N_bin][finite_idx]),
+              Point2f.(ccdfs_moctail_astunif_boot_midlohi[3][finite_idx,i_ast], bin_edges[i_bin_thresh:N_bin][finite_idx]),
               color=astcols["astunif"], alpha=0.25)
         if i_ast == i_coast_mean
             lines!(ax, ccdf_moctail_coast, bin_edges[i_bin_thresh:N_bin]; color=astcols["XclEnt"], linewidth=2, label="XclEnt-COAST")
+            finite_idx = findall(isfinite.(ccdfs_moctail_coast_boot_midlohi[1]) .& isfinite.(ccdfs_moctail_coast_boot_midlohi[3]))
             band!(ax, 
-                  Point2f.(ccdfs_moctail_coast_boot_midlohi[1], bin_edges[i_bin_thresh:N_bin]), 
-                  Point2f.(ccdfs_moctail_coast_boot_midlohi[3], bin_edges[i_bin_thresh:N_bin]), 
+                  Point2f.(ccdfs_moctail_coast_boot_midlohi[1][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
+                  Point2f.(ccdfs_moctail_coast_boot_midlohi[3][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
                   color=astcols["XclEnt"], alpha=0.25
                  )
             Legend(lout[1,N_ast+1], ax; theme_leg..., framevisible=true)
