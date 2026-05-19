@@ -13,7 +13,7 @@ include("displayfuns.jl")
 
 ornot(dt::DataType) = Union{Nothing,dt}
 
-function illustrate_map(z0::Float64, F::Function, conjugate_bwd::Function, mapsymbol::String, mapname::String, plotdir::String, outfilename::String)
+function illustrate_map(z0::Float64, F::Function, conjugate_bwd::Function, mapsymbol::String, statesymbol::String, mapname::String, plotdir::String, outfilename::String)
     xgrid = collect(range(0, 1; length=65))
     x0 = conjugate_bwd(z0)
     T = 12
@@ -34,7 +34,7 @@ function illustrate_map(z0::Float64, F::Function, conjugate_bwd::Function, mapsy
 
     fig = Figure(size=(400,300))
     lout = fig[1,1] = GridLayout()
-    ax = Axis(lout[1,1]; xlabel="𝑥", ylabel="$(mapsymbol)(𝑥)", title=mapname, limits=((0,1),(0,1)), titlefont="Menlo",  xticklabelfont="Menlo", yticklabelfont="Menlo", xgridvisible=false, ygridvisible=false)
+    ax = Axis(lout[1,1]; xlabel=statesymbol, ylabel="$(mapsymbol)($(statesymbol))", title=mapname, limits=((0,1),(0,1)), titlefont="Menlo",  xticklabelfont="Menlo", yticklabelfont="Menlo", xgridvisible=false, ygridvisible=false)
     lines!(ax, xgrid, F.(xgrid); color=:black)
     lines!(ax, xgrid, xgrid; color=:grey79, linewidth=3)
     scatter!(ax,xs[1],xs[1],color=:goldenrod,marker=:star6,markersize=25)
@@ -51,7 +51,7 @@ function illustrate_map(z0::Float64, F::Function, conjugate_bwd::Function, mapsy
     xhi = 2.0 #minimum(pofx)*2
     xtickvalues = unique([0, 1, 2])
     xticklabels = (x->@sprintf("%d",x)).(xtickvalues)
-    ax = Axis(lout[1,2]; title="PDF", xlabel="𝑝(𝑥)", xgridvisible=false, ygridvisible=false, ylabel="𝑥", titlefont="Menlo", xlabelfont="Menlo", xticklabelfont="Menlo", ylabelfont="Menlo", yticklabelfont="Menlo",  yticklabelsvisible=false, limits=((xlo,xhi),(0,1)), xticks=(xtickvalues,xticklabels))
+    ax = Axis(lout[1,2]; title="PDF", xlabel="𝑝($(statesymbol))", xgridvisible=false, ygridvisible=false, ylabel=statesymbol, titlefont="Menlo", xlabelfont="Menlo", xticklabelfont="Menlo", ylabelfont="Menlo", yticklabelfont="Menlo",  yticklabelsvisible=false, limits=((xlo,xhi),(0,1)), xticks=(xtickvalues,xticklabels))
     vlines!(ax, 0; color=:black, linestyle=(:dash,:dense))
     lines!(ax, pofx, xgrid[2:end-1]; color=:black)
     scatter!(ax, zeros(T), xs; color=:black)
@@ -138,7 +138,7 @@ function boost_peaks(
     return
 end
 
-function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, duration_plot::Int64, datadir::String, figdir::String, file_suffix::String; bin_edges::ornot(Vector{Float64})=nothing, i_bin_thresh::ornot(Int64)=nothing, ccdf_peak_wholetruth::ornot(Vector{Float64})=nothing, pdf_wholetruth::ornot(Vector{Float64})=nothing, return_time_wholetruth::ornot(Float64)=nothing, nlg2_thresh::ornot(Float64)=nothing)
+function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, duration_plot::Int64, datadir::String, figdir::String, file_suffix::String; bin_edges::ornot(Vector{Float64})=nothing, i_bin_thresh::ornot(Int64)=nothing, ccdf_peak_wholetruth::ornot(Vector{Float64})=nothing, pdf_wholetruth::ornot(Vector{Float64})=nothing, return_time_wholetruth::ornot(Float64)=nothing, nlg2_thresh::ornot(Float64)=nothing, statesymbol::String="𝑥")
 
     ts, xs = jldopen(joinpath(datadir, "dns_$(file_suffix).jld2"), "r") do f
         return f["ts"], f["xs"]
@@ -169,15 +169,15 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
     theme_leg = (theme_leg..., labelsize=14, titlesize=14, framevisible=false)
     fig = Figure(size=(620,300))
     lout = fig[1,1] = GridLayout()
-    ax_Rs = Axis(lout[1,1]; theme_ax..., title="𝑅(𝑋(𝑡))", xlabel="𝑡", limits=(tlimits,(0,1)), xlabelvisible=false)
+    ax_Rs = Axis(lout[1,1]; theme_ax..., title="$(statesymbol)(𝑡)", xlabel="𝑡", limits=(tlimits,(0,1)), xlabelvisible=false)
     ttickvalues = round.(Int64,ts[1].+[1/6,3/6,5/6].*(ts[end]-ts[1]))
     tticklabels = scinot2.(ttickvalues)
     ytickvalues = [thresh, (thresh+1)/2, 1]
     yticklabels = vcat((y->@sprintf("1−2%s",supscr(round(Int64,-nlg1m(y))))).(ytickvalues[1:2]), "1")
-    ax_peaks = Axis(lout[2,1]; theme_ax..., title="Peaks {𝑅(𝑋(𝑡ₙ*))}", xlabel="𝑡ₙ*", limits=((ts[1],ts[end]),(thresh,1)), xticks=(ttickvalues,tticklabels), xlabelvisible=false, yticks=(ytickvalues,yticklabels))
+    ax_peaks = Axis(lout[2,1]; theme_ax..., title="Peaks {$(statesymbol)ₙ*=$(statesymbol)(𝑡ₙ*)}", xlabel="𝑡ₙ*", limits=((ts[1],ts[end]),(thresh,1)), xticks=(ttickvalues,tticklabels), xlabelvisible=false, yticks=(ytickvalues,yticklabels))
     ax_hist_Rs = Axis(lout[1,2]; theme_ax..., title="PDF", yticklabelsvisible=false, xticklabelrotation=0, xlabelvisible=false, limits=((0,2),(0,1)), xticks=([0, 1, 2], ["0","1","2"]), yticks=(ytickvalues,yticklabels))
     linkyaxes!(ax_Rs, ax_hist_Rs)
-    ax_hist_peaks = Axis(lout[2,2]; theme_ax..., title="Peak CCDF", ylabel="𝑅*", xlabelvisible=false, limits=((0,1),(thresh,1)))
+    ax_hist_peaks = Axis(lout[2,2]; theme_ax..., title="Peak CCDF", ylabel="$(statesymbol)*", xlabelvisible=false, limits=((0,1),(thresh,1)))
     linkyaxes!(ax_peaks, ax_hist_peaks)
 
 
@@ -224,7 +224,7 @@ end
 
 
 
-function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::Int64, N_dsc::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64) 
+function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::Int64, N_dsc::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64; statesymbol::String="𝑥") 
     ts_anc, xs_anc = jldopen(joinpath(datadir, "dns_ancgen.jld2"), "r") do f
         return f["ts"], f["xs"]
     end
@@ -290,7 +290,7 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
         log2xtickvalues_ax3 = round.(Int64,range(-log2(N_dsc), 0, length=3))
         xtickvalues_ax3 = 2.0 .^ log2xtickvalues_ax3
         xticklabels_ax3 = scinot2.(xtickvalues_ax3)
-        title3 = @sprintf("ℙ{𝑅*>\n%s}", scinot2near1(threshold))
+        title3 = @sprintf("ℙ{%s* >\n%s}", statesymbol, scinot2near1(threshold))
         title4 = (
                   rich("TotEnt", color=astcols["TotEnt"], font="Menlo")
                   * "\n" * 
@@ -307,8 +307,8 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
         lout = fig[1,1] = GridLayout()
         for i_ast = 1:N_ast
             ast = asts[i_ast]
-            ax1 = Axis(lout[i_ast,1]; xlabel=@sprintf("𝑡−𝑡*"), xticks=(asttickvalues,astticklabels), xticklabelrotation=0, xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), title="𝑅(𝑥(𝑡))", titlevisible=(i_ast==1), theme_ax..., limits=((-asts[end]-1/4, bst+1),(-0.1,1.1)), yticks=([0,1/2,1],["0","½","1"]), yticklabelsvisible=(i_ast==1))
-            ax2 = Axis(lout[i_ast,2]; yticklabelsvisible=(i_ast==1), xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), xlabel="Pert. δ𝑥 at 𝑡*−𝐴", title="Peak 𝑅* = 𝑅(𝑥(𝑡*))", titlevisible=(i_ast==1), theme_ax..., xticks=(xtickvalues_ax2,xticklabels_ax2), xticklabelrotation=0, limits=(1.25/2^perturbation_neglog.*(-1,1),(2*threshold-1,1)), yticks=(ytickvalues_ax2,yticklabels_ax2))
+            ax1 = Axis(lout[i_ast,1]; xlabel=@sprintf("𝑡−𝑡*"), xticks=(asttickvalues,astticklabels), xticklabelrotation=0, xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), title="$statesymbol(𝑡)", titlevisible=(i_ast==1), theme_ax..., limits=((-asts[end]-1/4, bst+1),(-0.1,1.1)), yticks=([0,1/2,1],["0","½","1"]), yticklabelsvisible=(i_ast==1))
+            ax2 = Axis(lout[i_ast,2]; yticklabelsvisible=(i_ast==1), xlabelvisible=(i_ast==N_ast), xticklabelsvisible=(i_ast==N_ast), xlabel="Pert. δ$(statesymbol) at 𝑡*−𝐴", title="Peak $(statesymbol)* = $(statesymbol)(𝑡*)", titlevisible=(i_ast==1), theme_ax..., xticks=(xtickvalues_ax2,xticklabels_ax2), xticklabelrotation=0, limits=(1.25/2^perturbation_neglog.*(-1,1),(2*threshold-1,1)), yticks=(ytickvalues_ax2,yticklabels_ax2))
             hlines!(ax1, [0,1]; color=:grey79, linestyle=:solid)
             vlines!(ax2, [-1,1]./(2^perturbation_neglog); color=:grey79, linestyle=:solid)
             vlines!(ax1, -asts[i_ast]; color=:red)
@@ -357,7 +357,7 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
 end
 
 
-function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64, threshold_neglog::Int64; ccdf_peak_wholetruth::ornot(Vector{Float64})=nothing)
+function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64, threshold_neglog::Int64; ccdf_peak_wholetruth::ornot(Vector{Float64})=nothing, statesymbol::String="𝑥")
 
     # ----------------------------------------------------
     # Plotting 
@@ -448,6 +448,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     N_anc = length(Rs_peak_anc)
     N_bin = length(bin_lower_edges)
     N_bin_over = N_bin - i_bin_thresh + 1
+    confint_width = 0.9
 
     # ---------- convergence with N -----------
     astcols = astcolors()
@@ -466,9 +467,9 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                               [mapslices(arr->quantfun(arr,qua), losses_moctail_astunif_kldiv_boot[i_ast,:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
                               for i_ast=1:N_ast
                              ]
-    losses_coast_midlohi = [mapslices(arr->quantfun(arr,qua), losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
-    losses_anconly_midlohi = [mapslices(arr->quantfun(arr,qua), losses_anconly_kldiv_boot[:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
-    losses_valid_midlohi = [mapslices(arr->quantfun(arr,qua), losses_valid_kldiv_boot[:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
+    losses_coast_midlohi = [mapslices(arr->quantfun(arr,qua), losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2,0,1/2]]
+    losses_anconly_midlohi = [mapslices(arr->quantfun(arr,qua), losses_anconly_kldiv_boot[:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2,0,1/2]]
+    losses_valid_midlohi = [mapslices(arr->quantfun(arr,qua), losses_valid_kldiv_boot[:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2,0,1/2]]
     function draw_bands!(ax_Nanc, ax_cost, Ns_anc, cost_per_anc, losses_midlohi, color, label)
         losses_mid,losses_lo,losses_hi = losses_midlohi
         band!(ax_Nanc, Ns_anc, losses_lo, losses_hi; color=color, alpha=0.5)
@@ -535,8 +536,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     xlimits = [minimum(filter(ispos, isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth))/2, 1]
     i_coast_mean = round(Int64,mean(idx_coast))
     # which bootstrap to use
-    confint_width = 0.9
-    i_boot_size = 10 #length(Ns_anc_boot) #div(length(Ns_anc_boot),2)
+    i_boot_size = div(length(Ns_anc_boot),2)
     (ccdfs_anconly_boot_midlohi,
      ccdfs_moctail_coast_boot_midlohi,
     ) = map(
@@ -582,17 +582,14 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     lout = fig[1,1] = GridLayout()
     for i_ast = 1:N_ast
         i_col = N_ast-i_ast+1
-        ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=nlg1m, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], bin_edges[N_bin])), title="Tail CCDFs", titlevisible=false, yticklabelsvisible=(i_col==1), ylabelvisible=(i_col==1), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, ylabel="Severity 𝑅*")
+        ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=nlg1m, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], bin_edges[N_bin])), title="Tail CCDFs", titlevisible=false, yticklabelsvisible=(i_col==1), ylabelvisible=(i_col==1), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, ylabel="Peak $(statesymbol)*")
         lines!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=astcols["anconly"], linewidth=2, label="No boosting")
         finite_idx = findall(isfinite.(ccdfs_anconly_boot_midlohi[1]) .& isfinite.(ccdfs_anconly_boot_midlohi[3]))
         band!(ax, 
               Point2f.(ccdfs_anconly_boot_midlohi[1][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
               Point2f.(ccdfs_anconly_boot_midlohi[3][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
               color=astcols["anconly"], alpha=0.25)
-        #for i_quant = 1:3
-        #    lines!(ax, ccdfs_anconly_boot_midlohi[i_quant], bin_edges[i_bin_thresh:N_bin]; linestyle=(:dot,:dense), color=:gray) #astcols["anconly"])
-        #end
-        lines!(ax, ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:N_bin]; color=astcols["astunif"], linewidth=1)
+        lines!(ax, ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:N_bin]; color=astcols["astunif"], linewidth=1, label="Uniform-AST")
         finite_idx = findall(isfinite.(ccdfs_moctail_astunif_boot_midlohi[1][:,i_ast]) .& isfinite.(ccdfs_moctail_astunif_boot_midlohi[3][:,i_ast]))
         band!(ax,
               Point2f.(ccdfs_moctail_astunif_boot_midlohi[1][finite_idx,i_ast], bin_edges[i_bin_thresh:N_bin][finite_idx]),
@@ -606,10 +603,12 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                   Point2f.(ccdfs_moctail_coast_boot_midlohi[3][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
                   color=astcols["XclEnt"], alpha=0.25
                  )
-            legtitle = @sprintf("𝑁 = %d\nsubset size %d", N_anc, Ns_anc_boot[i_boot_size])
-            Legend(lout[1,N_ast+1], ax, legtitle; theme_leg..., )
         end
         lines!(ax, (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth), bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=3, linestyle=(:dash,:dense), label=(isnothing(ccdf_peak_wholetruth) ? "Ground truth" : "Whole truth"))
+        if i_ast == i_coast_mean
+            legtitle = @sprintf("𝑁 = %d ancestors\nmedians & %d%% CIs\n(%d-member bootstraps)", N_anc, round(Int,confint_width*100), Ns_anc_boot[i_boot_size], )
+            Legend(lout[1,N_ast+1], ax, legtitle; theme_leg..., )
+        end
         if i_col == 1
             log2xlims = [ceil(Int64,log2(xlimits[1])),floor(Int64,log2(xlimits[2]))]
             log2xtickvals = [log2xlims[1],div(log2xlims[1]+log2xlims[2],2),log2xlims[2]]
@@ -657,14 +656,14 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
              )
     klunif_midlohi = map(
                          qq->mapslices(
-                                       klarr->quantile(filter(ispos,klarr), qq),
+                                       klarr->finitequantile(filter(ispos,klarr), qq),
                                        losses_moctail_astunif_kldiv_boot[:,:,i_boot_size];
                                        dims=2
                                       )[:,1],
                          1/2 .+ confint_width.*[-1/2,0,1/2]
                         )
     klcoast_midlohi = map(
-                          qq->quantile(filter(ispos,losses_moctail_coast_kldiv_boot[:,i_boot_size]), qq), 
+                          qq->finitequantile(filter(ispos,losses_moctail_coast_kldiv_boot[:,i_boot_size]), qq), 
                           1/2 .+ confint_width.*[-1/2,0,1/2]
                          )
     band!(ax, -asts, klunif_midlohi[[1,3]]...; color=astcols["astunif"], alpha=0.25)
@@ -767,10 +766,10 @@ function plot_dns(duration_spinup::Int64, duration_spinon::Int64, datadir::Strin
     fig = Figure(size=(600,150))
     lout = fig[1,1] = GridLayout()
     theme_ax,theme_leg = get_themes()
-    ax_ts = Axis(lout[1,1]; xlabel="𝑡", ylabel="𝑥") #, theme_ax...)
+    ax_ts = Axis(lout[1,1]; xlabel="𝑡", ylabel=statesymbol) #, theme_ax...)
     #scatterlines!(ax_ts, 0:0.1:2pi, sin.(0:0.1:2pi); color="black")
     ylims!(ax_ts, -1, 1)
-    ax_hist = Axis(lout[1,2]; xlabel="𝑝(𝑥)", ylabel="𝑥", ylabelvisible=false, yticklabelsvisible=false, theme_ax...)
+    ax_hist = Axis(lout[1,2]; xlabel="𝑝($statesymbol)", ylabel=statesymbol, ylabelvisible=false, yticklabelsvisible=false, theme_ax...)
 
     scatterlines!(ax_ts, ts[t0:t0+Nt2plot], xs[1,t0:t0+Nt2plot]; color=:black)
     xlims!(ax_ts, ts[t0], ts[t0+Nt2plot])

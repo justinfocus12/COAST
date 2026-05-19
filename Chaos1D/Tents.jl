@@ -54,7 +54,7 @@ tentmap(x::Float64) = clamp(2*(x < 0.5 ? x : 1-x), 0, 1)
 
 function illustrate_map(plotdir::String)
     z0 = 0.26
-    illustrate_map(z0, tentmap, conjugate_bwd, "𝑇", "Tent map", plotdir, "tentmap.png")
+    illustrate_map(z0, tentmap, conjugate_bwd, "𝑇", "𝑧", "Tent map", plotdir, "tentmap.png")
     return
 end
 
@@ -87,15 +87,15 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           1,
-                             "run_dns_valid" =>            1,
-                             "plot_dns_valid" =>           1,
-                             "run_dns_ancgen" =>           1,
-                             "plot_dns_ancgen" =>          1,
+                             "illustrate_map" =>           0,
+                             "run_dns_valid" =>            0,
+                             "plot_dns_valid" =>           0,
+                             "run_dns_ancgen" =>           0,
+                             "plot_dns_ancgen" =>          0,
                              "analyze_peaks_valid" =>      1,
-                             "analyze_peaks_ancgen" =>     1,
-                             "boost_peaks" =>              1,
-                             "mix_conditional_tails" =>    1,
+                             "analyze_peaks_ancgen" =>     0,
+                             "boost_peaks" =>              0,
+                             "mix_conditional_tails" =>    0,
                              "plot_moctails" =>            1,
                              "plot_boosts" =>              1,
                             )
@@ -154,11 +154,11 @@ function main(bpar_adj)
     end
     if todo["analyze_peaks_valid"]
         find_peaks_over_threshold(threshold, bpar.duration_spinup, bpar.duration_valid, bpar.min_cluster_gap, datadir, "valid")
-        plot_peaks_over_threshold(threshold, bpar.duration_spinup, duration_plot, datadir, figdir, "valid"; bin_edges=bin_edges, i_bin_thresh=i_bin_thresh, ccdf_peak_wholetruth=ccdf_peak_wholetruth, pdf_wholetruth=pdf_wholetruth)
+        plot_peaks_over_threshold(threshold, bpar.duration_spinup, duration_plot, datadir, figdir, "valid"; bin_edges=bin_edges, i_bin_thresh=i_bin_thresh, ccdf_peak_wholetruth=ccdf_peak_wholetruth, pdf_wholetruth=pdf_wholetruth, statesymbol="𝑧")
     end
     if todo["analyze_peaks_ancgen"]
         find_peaks_over_threshold(threshold, bpar.duration_spinup, bpar.duration_ancgen, bpar.min_cluster_gap, datadir, "ancgen")
-        plot_peaks_over_threshold(threshold, bpar.duration_spinup, duration_plot, datadir, figdir, "ancgen"; bin_edges=bin_edges, i_bin_thresh=i_bin_thresh, ccdf_peak_wholetruth=ccdf_peak_wholetruth, pdf_wholetruth=pdf_wholetruth)
+        plot_peaks_over_threshold(threshold, bpar.duration_spinup, duration_plot, datadir, figdir, "ancgen"; bin_edges=bin_edges, i_bin_thresh=i_bin_thresh, ccdf_peak_wholetruth=ccdf_peak_wholetruth, pdf_wholetruth=pdf_wholetruth, statesymbol="𝑧")
     end
     if todo["boost_peaks"]
         seed_boost = 8086
@@ -169,10 +169,10 @@ function main(bpar_adj)
         mix_conditional_tails(datadir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, rngseed_boot; ccdf_peak_wholetruth=ccdf_peak_wholetruth)
     end
     if todo["plot_boosts"]
-        plot_boosts(datadir, figdir, asts, bpar.bst, bpar.num_descendants, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog)
+        plot_boosts(datadir, figdir, asts, bpar.bst, bpar.num_descendants, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog; statesymbol="𝑧")
     end
     if todo["plot_moctails"]
-        plot_moctails(datadir, figdir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog, bpar.threshold_neglog; ccdf_peak_wholetruth=ccdf_peak_wholetruth)
+        plot_moctails(datadir, figdir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog, bpar.threshold_neglog; ccdf_peak_wholetruth=ccdf_peak_wholetruth,statesymbol="𝑧")
     end
 end
 
