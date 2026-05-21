@@ -17,7 +17,7 @@ end
 function BoostParams()
     return (
             duration_valid = 2^18,
-            duration_ancgen = 2^14,  
+            duration_ancgen = 2^16,  
             duration_spinup = 2^4,
             threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
             perturbation_neglog = 9,  # how many bits to keep when doing the perturbation 
@@ -26,10 +26,10 @@ function BoostParams()
             ast_min = 1,
             ast_max = 12,
             bst = 2,
-            num_descendants = 63,
+            num_descendants = 127,
             latentize = false,# Do we transform to Z space? 
             latentize_bins = true,
-            bin_width_neglog = 14,
+            bin_width_neglog = 13,
            )
 end
 
@@ -89,14 +89,14 @@ end
 function main(bpar_adj)
     todo = Dict{String,Bool}(
                              "illustrate_map" =>           1,
-                             "run_dns_valid" =>            0,
-                             "plot_dns_valid" =>           0,
-                             "run_dns_ancgen" =>           0,
-                             "plot_dns_ancgen" =>          0,
-                             "analyze_peaks_valid" =>      0,
-                             "analyze_peaks_ancgen" =>     0,
-                             "boost_peaks" =>              0,
-                             "mix_conditional_tails" =>    0,
+                             "run_dns_valid" =>            1,
+                             "plot_dns_valid" =>           1,
+                             "run_dns_ancgen" =>           1,
+                             "plot_dns_ancgen" =>          1,
+                             "analyze_peaks_valid" =>      1,
+                             "analyze_peaks_ancgen" =>     1,
+                             "boost_peaks" =>              1,
+                             "mix_conditional_tails" =>    1,
                              "plot_boosts" =>              1,
                              "plot_moctails" =>            1,
                             )
@@ -108,7 +108,7 @@ function main(bpar_adj)
     
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-11/1",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-21/2",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)

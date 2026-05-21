@@ -455,14 +455,14 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     mean_return_period = mean(diff(ts_peak_valid))
     uncoast = perturbation_neglog - threshold_neglog # unconditionally optimal 
     alllosses = vcat(losses_moctail_astunif_kldiv_boot[uncoast,:,:][:], losses_moctail_coast_kldiv_boot[:], losses_valid_kldiv_boot[:])
-    kllo,klhi = (func(filter(ispos,alllosses)) for func=(minimum,maximum))
+    kllo,klhi = (func(filter(isnonneg,alllosses)) for func=(minimum,maximum))
     ylo = kllo/2
     yhi = ceil(Int64,klhi) + 0.5
 
     theme_ax,theme_leg = get_themes()
     theme_ax = (; theme_ax..., xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10, titlesize=12)
     theme_leg = (; theme_leg..., framevisible=false)
-    quantfun(arr,qua) = (arrpos = filter(ispos,arr); length(arrpos) == 0 ? NaN : quantile(arrpos,qua))
+    quantfun(arr,qua) = (arrpos = filter(isnonneg,arr); length(arrpos) == 0 ? NaN : quantile(arrpos,qua))
     losses_astunif_midlohi = [
                               [mapslices(arr->quantfun(arr,qua), losses_moctail_astunif_kldiv_boot[i_ast,:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
                               for i_ast=1:N_ast
@@ -642,8 +642,8 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     # ------------ Row 4:  KL divergence ------
     # compute y-axis limits 
     loss_min_astunif,loss_max_astunif = (func(filter(isfinite, losses_moctail_astunif_kldiv_boot[:,:,i_boot_size])) for func=(minimum,maximum))
-    yhi = 2.0 * maximum(filter(ispos, [loss_max_astunif, loss_moctail_coast_kldiv]))
-    klposlo = minimum(filter(ispos, vcat(losses_moctail_astunif_kldiv_boot[:,:,i_boot_size][:], losses_moctail_coast_kldiv_boot[:,i_boot_size])))
+    yhi = 2.0 * maximum(filter(isnonneg, [loss_max_astunif, loss_moctail_coast_kldiv]))
+    klposlo = minimum(filter(isnonneg, vcat(losses_moctail_astunif_kldiv_boot[:,:,i_boot_size][:], losses_moctail_coast_kldiv_boot[:,i_boot_size])))
     ylo = -klposlo #0.5 * klposlo
     ytickvalues = [0,sqrt(klposlo*yhi),yhi]
     yticklabels = (y->@sprintf("%.0E",y)).(ytickvalues)
@@ -656,14 +656,14 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
              )
     klunif_midlohi = map(
                          qq->mapslices(
-                                       klarr->finitequantile(filter(ispos,klarr), qq),
+                                       klarr->finitequantile(filter(isnonneg,klarr), qq),
                                        losses_moctail_astunif_kldiv_boot[:,:,i_boot_size];
                                        dims=2
                                       )[:,1],
                          1/2 .+ confint_width.*[-1/2,0,1/2]
                         )
     klcoast_midlohi = map(
-                          qq->finitequantile(filter(ispos,losses_moctail_coast_kldiv_boot[:,i_boot_size]), qq), 
+                          qq->finitequantile(filter(isnonneg,losses_moctail_coast_kldiv_boot[:,i_boot_size]), qq), 
                           1/2 .+ confint_width.*[-1/2,0,1/2]
                          )
     band!(ax, -asts, klunif_midlohi[[1,3]]...; color=astcols["astunif"], alpha=0.25)
@@ -750,7 +750,7 @@ function find_peaks_over_threshold(
 end
 
 
-function plot_dns(duration_spinup::Int64, duration_spinon::Int64, datadir::String, figdir::String, outfile_suffix::String; edges::ornot(Vector{Float64})=nothing, pdf_wholetruth::ornot(Vector{Float64})=nothing)
+function plot_dns(duration_spinup::Int64, duration_spinon::Int64, datadir::String, figdir::String, outfile_suffix::String; edges::ornot(Vector{Float64})=nothing, pdf_wholetruth::ornot(Vector{Float64})=nothing, statesymbol::String="𝑥")
     xs,ts = jldopen(joinpath(datadir, "dns_$(outfile_suffix).jld2"), "r") do f
         return f["xs"],f["ts"]
     end
@@ -830,6 +830,7 @@ function mix_conditional_tails(
     ccdf_peak_valid = compute_empirical_ccdf(Rs_peak_valid, bin_lower_edges[i_bin_thresh:N_bin])
 
     Rs_peak_dsc = zeros(Float64, (N_dsc, N_ast, N_anc))
+    println("About to open xs_dsc for reading...")
     jldopen(joinpath(datadir,"xs_dscs.jld2"), "r") do f
         for i_anc = 1:N_anc
             for i_ast = 1:N_ast
@@ -841,14 +842,14 @@ function mix_conditional_tails(
                     end
                     Rs_dsc = intensity(f[joinpath("ianc$(i_anc)", "iast$(i_ast)", "idsc$(i_dsc)","xs")])
                     # full maximum
-                    Rs_peak_dsc[i_dsc,i_ast,i_anc] = maximum(Rs_dsc)
+                    #Rs_peak_dsc[i_dsc,i_ast,i_anc] = maximum(Rs_dsc)
                     # at same point 
                     Rs_peak_dsc[i_dsc,i_ast,i_anc] = Rs_dsc[asts[i_ast]]
-                    
                 end
             end
         end
     end
+    println("...finished reading xs_dscs")
 
 
     # Keep track of which AST is best for each ancestor, according to XclEnt 
@@ -867,13 +868,13 @@ function mix_conditional_tails(
     anc_counts_moctail_coast = 0
     ccdfs_dsc_tail_noaccrej = zeros(Float64,N_bin_over) # scratch space
     for i_anc = 1:N_anc
+        @show i_anc,N_anc
         for i_ast = 1:N_ast
             # Stuff not pertainingto tails
             total_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
             ccdfs_dsc[:,i_ast,i_anc] .= compute_empirical_ccdf(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
             # Stuff pertaining to tails
             anc_has_tail[i_ast,i_anc] = (maximum(Rs_peak_dsc[:,i_ast,i_anc]) > bin_lower_edges[i_bin_thresh])
-            @assert (anc_has_tail[i_ast,i_anc] == ((ccdfs_dsc[i_bin_thresh,i_ast,i_anc] > 0)))
 
             ccdfs_dsc_tail_accrej = ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] .+ (1-ccdfs_dsc[i_bin_thresh,i_ast,i_anc]).*(Rs_peak_anc[i_anc] .> bin_lower_edges[i_bin_thresh:N_bin])
             thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end])
@@ -924,17 +925,19 @@ function mix_conditional_tails(
     ccdf_moctail_coast ./= anc_counts_moctail_coast
 
     # ------------------- Bootstrap resampling  -----------------
+    println("About to start bootstrapping")
     Ns_anc_boot = unique(vcat(floor.(Int64, 2 .^ range(0, log2(N_anc); step=0.25)), N_anc))
     Ns_anc_boot_valid = unique(vcat(Ns_anc_boot, floor.(Int64, 2 .^ range(log2(N_anc)+0.25, log2(N_anc_valid); step=0.25))))
     N_boot_sizes = length(Ns_anc_boot)
     N_boot_sizes_valid = length(Ns_anc_boot_valid)
-    N_boot_resamps = 1000
+    N_boot_resamps = 50
     ccdfs_moctail_astunif_boot,ccdfs_poptail_astunif_boot = ntuple(_->zeros(Float64, (N_bin_over,N_ast,N_boot_resamps,N_boot_sizes)), 2)
     ccdfs_moctail_coast_boot,ccdfs_poptail_coast_boot = ntuple(_->zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes)), 2)
     ccdfs_anconly_boot = zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes))
     ccdfs_valid_boot = zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes_valid))
     rng = MersenneTwister(rngseed_boot)
     for (i_boot_size,N_anc_boot) in enumerate(Ns_anc_boot)
+        @show i_boot_size,N_anc_boot
         for i_boot_resamp = 1:N_boot_resamps
             ancs_boot = rand(rng, 1:N_anc, N_anc_boot)
             anc_mults = sum(1:N_anc .== ancs_boot'; dims=2)[:,1]
@@ -1005,6 +1008,7 @@ function mix_conditional_tails(
 
     # Save results to file 
 
+    println("About to save boost_stats")
     jldsave(joinpath(datadir,"boost_stats.jld2");
             (;
              ccdf_peak_anc,

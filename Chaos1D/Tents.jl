@@ -18,7 +18,7 @@ end
 function BoostParams()
     return (;
             duration_valid = 2^18,
-            duration_ancgen = 2^14, 
+            duration_ancgen = 2^16, 
             duration_spinup = 2^4,
             threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
             perturbation_neglog = 9,  # how many bits to keep when doing the perturbation 
@@ -27,9 +27,9 @@ function BoostParams()
             ast_min = 1,
             ast_max = 12,
             bst = 2, # how long to run each descendant past the ancestor's peak 
-            num_descendants = 63,
+            num_descendants = 127,
             latentize = true, # but this is trivial for the tent map 
-            bin_width_neglog = 14,
+            bin_width_neglog = 13,
            )
 end
 
@@ -87,15 +87,15 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           0,
-                             "run_dns_valid" =>            0,
-                             "plot_dns_valid" =>           0,
-                             "run_dns_ancgen" =>           0,
-                             "plot_dns_ancgen" =>          0,
+                             "illustrate_map" =>           1,
+                             "run_dns_valid" =>            1,
+                             "plot_dns_valid" =>           1,
+                             "run_dns_ancgen" =>           1,
+                             "plot_dns_ancgen" =>          1,
                              "analyze_peaks_valid" =>      1,
-                             "analyze_peaks_ancgen" =>     0,
-                             "boost_peaks" =>              0,
-                             "mix_conditional_tails" =>    0,
+                             "analyze_peaks_ancgen" =>     1,
+                             "boost_peaks" =>              1,
+                             "mix_conditional_tails" =>    1,
                              "plot_moctails" =>            1,
                              "plot_boosts" =>              1,
                             )
@@ -106,7 +106,7 @@ function main(bpar_adj)
     bpar = (; bpar_default..., bpar_adj...)
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-11/1",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-21/2",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
@@ -141,7 +141,7 @@ function main(bpar_adj)
         simulate(x0, bpar.duration_spinup+bpar.duration_valid, bpar.bit_precision, rng_dns_valid, datadir, "valid")
     end
     if todo["plot_dns_valid"]
-        plot_dns(bpar.duration_spinup, bpar.duration_valid, datadir, figdir, "valid"; edges=bin_edges, pdf_wholetruth=pdf_wholetruth)
+        plot_dns(bpar.duration_spinup, bpar.duration_valid, datadir, figdir, "valid"; edges=bin_edges, pdf_wholetruth=pdf_wholetruth, statesymbol="𝑧")
     end
     if todo["run_dns_ancgen"]
         seed_dns_ancgen = 3827
@@ -150,7 +150,7 @@ function main(bpar_adj)
         simulate(x0, bpar.duration_spinup+bpar.duration_ancgen, bpar.bit_precision, rng_dns_ancgen, datadir, "ancgen")
     end
     if todo["plot_dns_ancgen"]
-        plot_dns(bpar.duration_spinup, bpar.duration_ancgen, datadir, figdir, "ancgen")
+        plot_dns(bpar.duration_spinup, bpar.duration_ancgen, datadir, figdir, "ancgen", statesymbol="𝑧")
     end
     if todo["analyze_peaks_valid"]
         find_peaks_over_threshold(threshold, bpar.duration_spinup, bpar.duration_valid, bpar.min_cluster_gap, datadir, "valid")

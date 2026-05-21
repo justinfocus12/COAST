@@ -2,6 +2,10 @@ function ispos(x)
     return isfinite(x) && (x > 0)
 end
 
+function isnonneg(x)
+    return isfinite(x) && (x >= 0)
+end
+
 function finitequantile(x,q)
     return any(isfinite.(x)) ? quantile(x,q) : NaN
 end
