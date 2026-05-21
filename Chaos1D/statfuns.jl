@@ -90,7 +90,7 @@ end
 
 function kldiv(ccdf_truth::Vector{Float64}, ccdf_approx::Vector{Float64})
     pmf_truth, pmf_approx = map(ccdf2pmf, (ccdf_truth, ccdf_approx))
-    kl = sum(xlog2y.(pmf_approx, pmf_approx./pmf_truth))
+    kl = sum(xlogx.(pmf_approx) .- xlogy.(pmf_approx, pmf_truth)) / log(2)
     return kl
 end
 function nlg1m(x::Number) 

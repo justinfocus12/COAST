@@ -1,4 +1,3 @@
-
 using Random: MersenneTwister
 import StatsBase as SB
 using Statistics: mean, quantile
@@ -455,23 +454,23 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     mean_return_period = mean(diff(ts_peak_valid))
     uncoast = perturbation_neglog - threshold_neglog # unconditionally optimal 
     alllosses = vcat(losses_moctail_astunif_kldiv_boot[uncoast,:,:][:], losses_moctail_coast_kldiv_boot[:], losses_valid_kldiv_boot[:])
-    kllo,klhi = (func(filter(isnonneg,alllosses)) for func=(minimum,maximum))
-    ylo = kllo/2
+    kllo,klhi = (func(filter(loss->(isfinite(loss)&(loss>1e-10)),alllosses)) for func=(minimum,maximum))
+    ylo = 0
     yhi = ceil(Int64,klhi) + 0.5
 
     theme_ax,theme_leg = get_themes()
     theme_ax = (; theme_ax..., xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10, titlesize=12)
     theme_leg = (; theme_leg..., framevisible=false)
-    quantfun(arr,qua) = (arrpos = filter(isnonneg,arr); length(arrpos) == 0 ? NaN : quantile(arrpos,qua))
-    losses_astunif_midlohi = [
-                              [mapslices(arr->quantfun(arr,qua), losses_moctail_astunif_kldiv_boot[i_ast,:,:]; dims=1)[1,:] for qua=[0.5,0.25,0.75]]
+    quantfun(arr,qua) = (arrpos = filter(ispos,arr); length(arrpos) == 0 ? NaN : quantile(arrpos,qua))
+    losses_astunif_lomidhi = [
+                              [mapslices(arr->quantfun(arr,qua), losses_moctail_astunif_kldiv_boot[i_ast,:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2, 0, 1/2]]
                               for i_ast=1:N_ast
                              ]
-    losses_coast_midlohi = [mapslices(arr->quantfun(arr,qua), losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2,0,1/2]]
-    losses_anconly_midlohi = [mapslices(arr->quantfun(arr,qua), losses_anconly_kldiv_boot[:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2,0,1/2]]
-    losses_valid_midlohi = [mapslices(arr->quantfun(arr,qua), losses_valid_kldiv_boot[:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2,0,1/2]]
-    function draw_bands!(ax_Nanc, ax_cost, Ns_anc, cost_per_anc, losses_midlohi, color, label)
-        losses_mid,losses_lo,losses_hi = losses_midlohi
+    losses_coast_lomidhi = [mapslices(arr->quantfun(arr,qua), losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2,0,1/2]]
+    losses_anconly_lomidhi = [mapslices(arr->quantfun(arr,qua), losses_anconly_kldiv_boot[:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2,0,1/2]]
+    losses_valid_lomidhi = [mapslices(arr->quantfun(arr,qua), losses_valid_kldiv_boot[:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2,0,1/2]]
+    function draw_bands!(ax_Nanc, ax_cost, Ns_anc, cost_per_anc, losses_lomidhi, color, label)
+        losses_lo,losses_mid,losses_hi = losses_lomidhi
         band!(ax_Nanc, Ns_anc, losses_lo, losses_hi; color=color, alpha=0.5)
         scatterlines!(ax_Nanc, Ns_anc, losses_mid; color=color, label=label, marker=:circle, markersize=1)
         band!(ax_cost, Ns_anc.*cost_per_anc, losses_lo, losses_hi; color=color, alpha=0.5)
@@ -487,38 +486,38 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     xtickvalues_C = xtickvalues_N.*mean_return_period
     xticklabels_N = scinot2.(xtickvalues_N)
     xticklabels_C = scinot2.(xtickvalues_C)
-    ytickvalues = unique(vcat(2.0 .^ round.(Int64, range(log2(ylo), log2(yhi); length=6)), N_bin_over))
+    ytickvalues = unique(vcat(0, exp10.(round.(Int64, range(log10(kllo), log10(yhi); length=6))), N_bin_over))
     yticklabels = scinot.(ytickvalues)
 
-    ax_N = Axis(lout[1,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="𝑁", ylabel="KL divergence", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=log10, limits=((1,Ns_anc_boot_valid[end]), (ylo,yhi)), xticks=(xtickvalues_N,xticklabels_N), yticks=(ytickvalues,yticklabels))
-    ax_C = Axis(lout[2,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="Cost", ylabel="KL divergence", xscale=log2, yscale=log10, limits=((1,Ns_anc_boot_valid[end]).*mean_return_period, (ylo,yhi)), yticks=(ytickvalues,yticklabels), xticks=(xtickvalues_C,xticklabels_C))
+    ax_N = Axis(lout[1,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="𝑁", ylabel="KL divergence", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=Makie.Symlog10(2*kllo), limits=((1,Ns_anc_boot_valid[end]), (ylo,yhi)), xticks=(xtickvalues_N,xticklabels_N), yticks=(ytickvalues,yticklabels))
+    ax_C = Axis(lout[2,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="Cost", ylabel="KL divergence", xscale=log2, yscale=Makie.Symlog10(2*kllo), limits=((mean_return_period,max(Ns_anc_boot_valid[end]*mean_return_period, Ns_anc_boot[end]*(mean_return_period+N_dsc*asts[end]))), (ylo,yhi)), yticks=(ytickvalues,yticklabels), xticks=(xtickvalues_C,xticklabels_C))
 
     # all non-optimal uniform ASTs 
     for i_ast = 1:N_ast
         (asts[i_ast] == uncoast) && continue
         draw_bands!(ax_N, ax_C, 
                     Ns_anc_boot, mean_return_period+N_dsc*asts[i_ast], 
-                    losses_astunif_midlohi[i_ast],     
+                    losses_astunif_lomidhi[i_ast],     
                     i_ast<i_uncoast ? :lightsalmon : :salmon4, 
                     i_ast==N_ast ? @sprintf("𝐴>%d",uncoast) : i_ast==1 ? @sprintf("𝐴<%d",uncoast) : nothing)
     end
     # Optimal unconditional advance split time (un-COAST)
     draw_bands!(ax_N, ax_C, 
                 Ns_anc_boot, mean_return_period+N_dsc*uncoast,
-                losses_astunif_midlohi[i_uncoast],     
+                losses_astunif_lomidhi[i_uncoast],     
                 astcols["astunif"], @sprintf("𝐴=𝐾−𝑀=%d", perturbation_neglog-threshold_neglog))
     # Validation 
     draw_bands!(ax_N, ax_C, 
                 Ns_anc_boot_valid, mean_return_period, 
-                losses_valid_midlohi, astcols["valid"],  "Long DNS")
+                losses_valid_lomidhi, astcols["valid"],  "Long DNS")
     # Ancestors only 
     draw_bands!(ax_N, ax_C,
                Ns_anc_boot, mean_return_period,
-               losses_anconly_midlohi, astcols["anconly"],  "No boosting")
+               losses_anconly_lomidhi, astcols["anconly"],  "No boosting")
     # XclEnt
     draw_bands!(ax_N, ax_C,
                 Ns_anc_boot, mean_return_period + N_dsc*uncoast, 
-                losses_coast_midlohi, astcols["XclEnt"], "𝐴=argmax(XclEnt)")
+                losses_coast_lomidhi, astcols["XclEnt"], "𝐴=argmax(XclEnt)")
     Legend(lout[2,2], ax_N; theme_leg...)
 
     colsize!(lout, 1, Relative(4/5))
@@ -537,8 +536,8 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     i_coast_mean = round(Int64,mean(idx_coast))
     # which bootstrap to use
     i_boot_size = div(length(Ns_anc_boot),2)
-    (ccdfs_anconly_boot_midlohi,
-     ccdfs_moctail_coast_boot_midlohi,
+    (ccdfs_anconly_boot_lomidhi,
+     ccdfs_moctail_coast_boot_lomidhi,
     ) = map(
             ccdfs->map(
                        qq->mapslices(
@@ -551,7 +550,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                       ), 
             (ccdfs_anconly_boot,ccdfs_moctail_coast_boot)
            )
-    (ccdfs_moctail_astunif_boot_midlohi
+    (ccdfs_moctail_astunif_boot_lomidhi
     ) = map(
             qq->mapslices(
                           cc->finitequantile(
@@ -564,6 +563,14 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
 
     ytickvalues = bin_edges[[i_bin_thresh, div(i_bin_thresh+N_bin,2), N_bin]] #,yticklabels = let
     yticklabels = scinot2near1.(ytickvalues) 
+    ylimits = let
+        ylohi = bin_edges[[i_bin_thresh,N_bin]]
+        ylohi .= nlg1m.(ylohi)
+        ymid = mean(ylohi)
+        padding = 0.1
+        ylohi .= (1+padding) .* ylohi .- padding*ymid
+        nlg1m_inv.(ylohi)
+    end
 
     theme_ax = (; 
                 xgridvisible=false, ygridvisible=false, 
@@ -576,37 +583,41 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     theme_leg = (; labelfont="Menlo",  titlefont="Menlo", framevisible=false)
     astcols = astcolors()
 
+
     fig = Figure(size=(80*(N_ast+1), 800))
 
     # ---------- Row 1: CCDFs at each AST separately ----------
+
+    ccdf_todivideby = ccdf_peak_wholetruth 
+
     lout = fig[1,1] = GridLayout()
     for i_ast = 1:N_ast
         i_col = N_ast-i_ast+1
-        ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=nlg1m, limits=(tuple(xlimits...), (bin_edges[i_bin_thresh], bin_edges[N_bin])), title="Tail CCDFs", titlevisible=false, yticklabelsvisible=(i_col==1), ylabelvisible=(i_col==1), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, ylabel="Peak $(statesymbol)*")
+        ax = Axis(lout[1,i_col]; theme_ax..., xscale=log10, yscale=nlg1m, limits=(tuple(xlimits...), tuple(ylimits...)), title="Tail CCDFs", titlevisible=false, yticklabelsvisible=(i_col==1), ylabelvisible=(i_col==1), yticks=(ytickvalues,yticklabels), yticklabelrotation=0, ylabel="Peak $(statesymbol)*")
         lines!(ax, ccdf_peak_anc, bin_edges[i_bin_thresh:N_bin]; color=astcols["anconly"], linewidth=2, label="No boosting")
-        finite_idx = findall(isfinite.(ccdfs_anconly_boot_midlohi[1]) .& isfinite.(ccdfs_anconly_boot_midlohi[3]))
+        finite_idx = findall(isfinite.(ccdfs_anconly_boot_lomidhi[1]) .& isfinite.(ccdfs_anconly_boot_lomidhi[3]))
         band!(ax, 
-              Point2f.(ccdfs_anconly_boot_midlohi[1][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
-              Point2f.(ccdfs_anconly_boot_midlohi[3][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
+              Point2f.(ccdfs_anconly_boot_lomidhi[1][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
+              Point2f.(ccdfs_anconly_boot_lomidhi[3][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
               color=astcols["anconly"], alpha=0.25)
         lines!(ax, ccdfs_moctail_astunif[:,i_ast], bin_edges[i_bin_thresh:N_bin]; color=astcols["astunif"], linewidth=1, label="Uniform-AST")
-        finite_idx = findall(isfinite.(ccdfs_moctail_astunif_boot_midlohi[1][:,i_ast]) .& isfinite.(ccdfs_moctail_astunif_boot_midlohi[3][:,i_ast]))
+        finite_idx = findall(isfinite.(ccdfs_moctail_astunif_boot_lomidhi[1][:,i_ast]) .& isfinite.(ccdfs_moctail_astunif_boot_lomidhi[3][:,i_ast]))
         band!(ax,
-              Point2f.(ccdfs_moctail_astunif_boot_midlohi[1][finite_idx,i_ast], bin_edges[i_bin_thresh:N_bin][finite_idx]),
-              Point2f.(ccdfs_moctail_astunif_boot_midlohi[3][finite_idx,i_ast], bin_edges[i_bin_thresh:N_bin][finite_idx]),
+              Point2f.(ccdfs_moctail_astunif_boot_lomidhi[1][finite_idx,i_ast], bin_edges[i_bin_thresh:N_bin][finite_idx]),
+              Point2f.(ccdfs_moctail_astunif_boot_lomidhi[3][finite_idx,i_ast], bin_edges[i_bin_thresh:N_bin][finite_idx]),
               color=astcols["astunif"], alpha=0.25)
         if i_ast == i_coast_mean
             lines!(ax, ccdf_moctail_coast, bin_edges[i_bin_thresh:N_bin]; color=astcols["XclEnt"], linewidth=2, label="XclEnt-COAST")
-            finite_idx = findall(isfinite.(ccdfs_moctail_coast_boot_midlohi[1]) .& isfinite.(ccdfs_moctail_coast_boot_midlohi[3]))
+            finite_idx = findall(isfinite.(ccdfs_moctail_coast_boot_lomidhi[1]) .& isfinite.(ccdfs_moctail_coast_boot_lomidhi[3]))
             band!(ax, 
-                  Point2f.(ccdfs_moctail_coast_boot_midlohi[1][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
-                  Point2f.(ccdfs_moctail_coast_boot_midlohi[3][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
+                  Point2f.(ccdfs_moctail_coast_boot_lomidhi[1][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
+                  Point2f.(ccdfs_moctail_coast_boot_lomidhi[3][finite_idx], bin_edges[i_bin_thresh:N_bin][finite_idx]), 
                   color=astcols["XclEnt"], alpha=0.25
                  )
         end
-        lines!(ax, (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth), bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=3, linestyle=(:dash,:dense), label=(isnothing(ccdf_peak_wholetruth) ? "Ground truth" : "Whole truth"))
+        scatterlines!(ax, (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth), bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=3, linestyle=(:dash,:dense), label=(isnothing(ccdf_peak_wholetruth) ? "Ground truth" : "Whole truth"), marker=:circle, markersize=10)
         if i_ast == i_coast_mean
-            legtitle = @sprintf("𝑁 = %d ancestors\nmedians & %d%% CIs\n(%d-member bootstraps)", N_anc, round(Int,confint_width*100), Ns_anc_boot[i_boot_size], )
+            legtitle = @sprintf("𝑁 = %d ancestors\nmedians & %d%% CIs\n(%d-ancestor bootstraps)", N_anc, round(Int,confint_width*100), Ns_anc_boot[i_boot_size], )
             Legend(lout[1,N_ast+1], ax, legtitle; theme_leg..., )
         end
         if i_col == 1
@@ -643,7 +654,8 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     # compute y-axis limits 
     loss_min_astunif,loss_max_astunif = (func(filter(isfinite, losses_moctail_astunif_kldiv_boot[:,:,i_boot_size])) for func=(minimum,maximum))
     yhi = 2.0 * maximum(filter(isnonneg, [loss_max_astunif, loss_moctail_coast_kldiv]))
-    klposlo = minimum(filter(isnonneg, vcat(losses_moctail_astunif_kldiv_boot[:,:,i_boot_size][:], losses_moctail_coast_kldiv_boot[:,i_boot_size])))
+    klposlo = minimum(filter(ispos, vcat(losses_moctail_astunif_kldiv_boot[:,:,i_boot_size][:], losses_moctail_coast_kldiv_boot[:,i_boot_size])))
+
     ylo = -klposlo #0.5 * klposlo
     ytickvalues = [0,sqrt(klposlo*yhi),yhi]
     yticklabels = (y->@sprintf("%.0E",y)).(ytickvalues)
@@ -654,7 +666,7 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
               limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])), (ylo,yhi)),
               yticks=(ytickvalues,yticklabels),
              )
-    klunif_midlohi = map(
+    klunif_lomidhi = map(
                          qq->mapslices(
                                        klarr->finitequantile(filter(isnonneg,klarr), qq),
                                        losses_moctail_astunif_kldiv_boot[:,:,i_boot_size];
@@ -662,14 +674,15 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
                                       )[:,1],
                          1/2 .+ confint_width.*[-1/2,0,1/2]
                         )
-    klcoast_midlohi = map(
+    klcoast_lomidhi = map(
                           qq->finitequantile(filter(isnonneg,losses_moctail_coast_kldiv_boot[:,i_boot_size]), qq), 
                           1/2 .+ confint_width.*[-1/2,0,1/2]
                          )
-    band!(ax, -asts, klunif_midlohi[[1,3]]...; color=astcols["astunif"], alpha=0.25)
-    scatterlines!(ax, -asts, klunif_midlohi[2]; color=astcols["astunif"], label=@sprintf("Uniform AST\nKL ≥ %.1E",minimum(klunif_midlohi[2])))
-    band!(ax, -asts, (klcoast_midlohi[i_qq].*ones(N_ast) for i_qq=[1,3])...; color=astcols["XclEnt"], alpha=0.25)
-    lines!(ax, -asts, klcoast_midlohi[2].*ones(N_ast), color=astcols["XclEnt"], linestyle=:solid, linewidth=2, label=@sprintf("XclEnt-COAST\nKL = %.1E", klcoast_midlohi[2])) #loss_moctail_coast_kldiv))
+    @infiltrate isnan(klcoast_lomidhi[2])
+    band!(ax, -asts, klunif_lomidhi[[1,3]]...; color=astcols["astunif"], alpha=0.25)
+    scatterlines!(ax, -asts, klunif_lomidhi[2]; color=astcols["astunif"], label=@sprintf("Uniform AST\nKL ≥ %.1E",minimum(klunif_lomidhi[2])))
+    band!(ax, -asts, (klcoast_lomidhi[i_qq].*ones(N_ast) for i_qq=[1,3])...; color=astcols["XclEnt"], alpha=0.25)
+    lines!(ax, -asts, klcoast_lomidhi[2].*ones(N_ast), color=astcols["XclEnt"], linestyle=:solid, linewidth=2, label=@sprintf("XclEnt-COAST\nKL = %.1E", klcoast_lomidhi[2])) #loss_moctail_coast_kldiv))
     Legend(lout[4,N_ast+1], ax; theme_leg...,)
 
     rowgap!(lout, 1, 0)
@@ -829,10 +842,11 @@ function mix_conditional_tails(
     ccdf_peak_anc = compute_empirical_ccdf(Rs_peak_anc, bin_lower_edges[i_bin_thresh:N_bin])
     ccdf_peak_valid = compute_empirical_ccdf(Rs_peak_valid, bin_lower_edges[i_bin_thresh:N_bin])
 
-    Rs_peak_dsc = zeros(Float64, (N_dsc, N_ast, N_anc))
+    Rs_peak_ancanddsc = zeros(Float64, (N_dsc+1, N_ast, N_anc))
     println("About to open xs_dsc for reading...")
     jldopen(joinpath(datadir,"xs_dscs.jld2"), "r") do f
         for i_anc = 1:N_anc
+            Rs_peak_ancanddsc[1,:,:] .= Rs_peak_anc[i_anc]
             for i_ast = 1:N_ast
                 for i_dsc = 1:N_dsc
                     if !("ianc$(i_anc)" in keys(f))
@@ -844,7 +858,7 @@ function mix_conditional_tails(
                     # full maximum
                     #Rs_peak_dsc[i_dsc,i_ast,i_anc] = maximum(Rs_dsc)
                     # at same point 
-                    Rs_peak_dsc[i_dsc,i_ast,i_anc] = Rs_dsc[asts[i_ast]]
+                    Rs_peak_ancanddsc[1+i_dsc,i_ast,i_anc] = Rs_dsc[asts[i_ast]]
                 end
             end
         end
@@ -871,14 +885,14 @@ function mix_conditional_tails(
         @show i_anc,N_anc
         for i_ast = 1:N_ast
             # Stuff not pertainingto tails
-            total_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
-            ccdfs_dsc[:,i_ast,i_anc] .= compute_empirical_ccdf(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges)
+            total_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_ancanddsc[:,i_ast,i_anc], bin_lower_edges)
+            ccdfs_dsc[:,i_ast,i_anc] .= compute_empirical_ccdf(Rs_peak_ancanddsc[:,i_ast,i_anc], bin_lower_edges)
             # Stuff pertaining to tails
-            anc_has_tail[i_ast,i_anc] = (maximum(Rs_peak_dsc[:,i_ast,i_anc]) > bin_lower_edges[i_bin_thresh])
+            anc_has_tail[i_ast,i_anc] = (maximum(Rs_peak_ancanddsc[:,i_ast,i_anc]) > bin_lower_edges[i_bin_thresh])
 
             ccdfs_dsc_tail_accrej = ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] .+ (1-ccdfs_dsc[i_bin_thresh,i_ast,i_anc]).*(Rs_peak_anc[i_anc] .> bin_lower_edges[i_bin_thresh:N_bin])
-            thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end])
-            extreme_conditional_entropy[i_ast, i_anc] = compute_extreme_conditional_entropy(Rs_peak_dsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end]) 
+            thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_ancanddsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end])
+            extreme_conditional_entropy[i_ast, i_anc] = compute_extreme_conditional_entropy(Rs_peak_ancanddsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end]) 
             if anc_has_tail[i_ast,i_anc]
                 ccdfs_dsc_tail_noaccrej .= ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] ./ ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
                 extreme_conditional_entropy[i_ast, i_anc] /= ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
@@ -930,7 +944,7 @@ function mix_conditional_tails(
     Ns_anc_boot_valid = unique(vcat(Ns_anc_boot, floor.(Int64, 2 .^ range(log2(N_anc)+0.25, log2(N_anc_valid); step=0.25))))
     N_boot_sizes = length(Ns_anc_boot)
     N_boot_sizes_valid = length(Ns_anc_boot_valid)
-    N_boot_resamps = 50
+    N_boot_resamps = 500
     ccdfs_moctail_astunif_boot,ccdfs_poptail_astunif_boot = ntuple(_->zeros(Float64, (N_bin_over,N_ast,N_boot_resamps,N_boot_sizes)), 2)
     ccdfs_moctail_coast_boot,ccdfs_poptail_coast_boot = ntuple(_->zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes)), 2)
     ccdfs_anconly_boot = zeros(Float64, (N_bin_over,N_boot_resamps,N_boot_sizes))
@@ -1009,6 +1023,7 @@ function mix_conditional_tails(
     # Save results to file 
 
     println("About to save boost_stats")
+    Rs_peak_dsc = Rs_peak_ancanddsc[2:N_dsc+1,:,:]
     jldsave(joinpath(datadir,"boost_stats.jld2");
             (;
              ccdf_peak_anc,
