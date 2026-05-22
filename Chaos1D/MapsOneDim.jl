@@ -356,7 +356,9 @@ function plot_boosts(datadir::String, figdir::String, asts::Vector{Int64}, bst::
 end
 
 
-function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64, threshold_neglog::Int64; ccdf_peak_wholetruth::ornot(Vector{Float64})=nothing, statesymbol::String="𝑥")
+function plot_moctails(
+        datadir::String, figdir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64, threshold_neglog::Int64, mapfun_derivative::Function; 
+        ccdf_peak_wholetruth::ornot(Vector{Float64})=nothing, statesymbol::String="𝑥")
 
     # ----------------------------------------------------
     # Plotting 
@@ -449,6 +451,67 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     N_bin_over = N_bin - i_bin_thresh + 1
     confint_width = 0.9
 
+    theme_ax,theme_leg = get_themes()
+    theme_ax = (; theme_ax..., xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10, titlesize=12)
+    theme_leg = (; theme_leg..., framevisible=false)
+    # ----------- State-dependence of COAST ----------
+    xs_prepeak_coast = zeros(Float64, N_anc)
+    xs_prepeak_uncoast = zeros(Float64, N_anc)
+    coasts = zeros(Int64, N_anc)
+    ftles_prepeak_uncoast = zeros(Float64, N_anc)
+    ftles_prepeak_coast = zeros(Float64, N_anc)
+    uncoast = perturbation_neglog-threshold_neglog
+    for i_anc = 1:N_anc
+        coasts[i_anc] = asts[idx_coast[i_anc]]
+        xs_prepeak_coast[i_anc] = xs_anc[1,ts_peak[i_anc]-ts_anc[1]+1-coasts[i_anc]]
+        xs_prepeak_uncoast[i_anc] = xs_anc[1,ts_peak[i_anc]-ts_anc[1]+1-uncoast]
+        tidx_coast2peak = ts_peak[i_anc]-ts_anc[1]+1 .+ collect(range(-coasts[i_anc],0;step=1))
+        tidx_uncoast2peak = ts_peak[i_anc]-ts_anc[1]+1 .+ collect(range(-(uncoast),0;step=1))
+        ftles_prepeak_coast[i_anc] = mean(log.(abs.(mapfun_derivative.(xs_anc[1,tidx_coast2peak]))))
+        ftles_prepeak_uncoast[i_anc] = mean(log.(abs.(mapfun_derivative.(xs_anc[1,tidx_uncoast2peak]))))
+    end
+    xlimits = (-0.05,1.05)
+    N_ftle_unif_sample = 5000
+    derivatives_unif_sample = log.(abs.(mapfun_derivative.(xs_anc[1,1:(N_ftle_unif_sample*uncoast)])))
+    ftles_unif_sample = mean(reshape(derivatives_unif_sample, (uncoast,N_ftle_unif_sample)); dims=1)[1,:]
+    ftlelimits = map(qq->quantile(ftles_unif_sample,qq), (0.0,1.0))
+    astlimits = (0,asts[end]+1/2)
+    fig = Figure(size=(400,300))
+    lout = fig[1,1] = GridLayout()
+    ax1 = Axis(lout[1,1]; theme_ax..., xlabel="$(statesymbol)(𝑡*-𝐴ˣᶜ)", ylabel="𝐴ˣᶜ", limits=(xlimits,astlimits))
+    ax2 = Axis(lout[1,2]; theme_ax..., xlabel="FTLE($(statesymbol)(𝑡*-𝐴ᵘᶜ); 𝐴ᵘᶜ)", ylabel="𝐴ˣᶜ", limits=(ftlelimits,astlimits))
+    ax3 = Axis(lout[2,1]; theme_ax..., xlabel="$(statesymbol)(𝑡*-𝐴ˣᶜ)", ylabel="FTLE($(statesymbol)(𝑡*−𝐴ˣᶜ); 𝐴ˣᶜ)", limits=(xlimits,ftlelimits))
+    ax4 = Axis(lout[2,2]; theme_ax..., xlabel="FTLE($(statesymbol)(𝑡*-𝐴ᵘᶜ; 𝐴ᵘᶜ))", ylabel="FTLE($(statesymbol)(𝑡*−𝐴ˣᶜ); 𝐴ˣᶜ)", limits=(ftlelimits,ftlelimits))
+    scatter!(ax1, xs_prepeak_coast, coasts; color=:black, marker=:circle, markersize=3)
+    scatter!(ax2, ftles_prepeak_coast, coasts; color=:black, marker=:circle, markersize=3)
+    scatter!(ax3, xs_prepeak_coast, ftles_prepeak_coast; color=:black, marker=:circle, markersize=3)
+    scatter!(ax3, xs_anc[1,range(1,(N_ftle_unif_sample-1)*uncoast+1;step=uncoast)], ftles_unif_sample; color=:dodgerblue, marker=:xcross, markersize=2)
+    scatter!(ax4, ftles_prepeak_uncoast, ftles_prepeak_coast; color=:black, marker=:circle, markersize=3)
+    for ax=(ax1,ax2)
+        ax.xlabelvisible = ax.xticklabelsvisible = false
+        hlines!(ax,uncoast; color=:black)
+    end
+    for ax=(ax2,ax4)
+        ax.ylabelvisible = ax.yticklabelsvisible = false
+        vlines!(ax,log(2); color=:black)
+        vlines!(ax,0; color=:black,linestyle=(:dash,:dense))
+    end
+    for ax=(ax3,ax4)
+        hlines!(ax,log(2); color=:black)
+        hlines!(ax,0; color=:black,linestyle=(:dash,:dense))
+    end
+    colgap!(lout,1,0)
+    rowgap!(lout,1,0)
+    linkyaxes!(ax1,ax2)
+    linkyaxes!(ax3,ax4)
+    linkxaxes!(ax1,ax3)
+    linkxaxes!(ax2,ax4)
+    save(joinpath(figdir,"coast_state_dependence.png"), fig)
+
+
+
+
+
     # ---------- convergence with N -----------
     astcols = astcolors()
     mean_return_period = mean(diff(ts_peak_valid))
@@ -458,9 +521,6 @@ function plot_moctails(datadir::String, figdir::String, asts::Vector{Int64}, N_d
     ylo = 0
     yhi = ceil(Int64,klhi) + 0.5
 
-    theme_ax,theme_leg = get_themes()
-    theme_ax = (; theme_ax..., xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10, titlesize=12)
-    theme_leg = (; theme_leg..., framevisible=false)
     quantfun(arr,qua) = (arrpos = filter(ispos,arr); length(arrpos) == 0 ? NaN : quantile(arrpos,qua))
     losses_astunif_lomidhi = [
                               [mapslices(arr->quantfun(arr,qua), losses_moctail_astunif_kldiv_boot[i_ast,:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2, 0, 1/2]]

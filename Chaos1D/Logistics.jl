@@ -65,6 +65,7 @@ function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64
 end
 
 logisticmap(x::Float64) = clamp(4*x*(1-x), 0, 1)
+logisticmap_derivative(x::Float64) = 4*(1 - 2*x)
 
 function illustrate_map(plotdir::String)
     z0 = 0.26
@@ -97,8 +98,8 @@ function main(bpar_adj)
                              "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
                              "mix_conditional_tails" =>    0,
-                             "plot_boosts" =>              0,
                              "plot_moctails" =>            1,
+                             "plot_boosts" =>              0,
                             )
 
     overwrite_boosts = true
@@ -176,13 +177,13 @@ function main(bpar_adj)
         plot_boosts(datadir, figdir, asts, bpar.bst, bpar.num_descendants, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog, statesymbol="𝑥")
     end
     if todo["plot_moctails"]
-        plot_moctails(datadir, figdir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog, bpar.threshold_neglog; ccdf_peak_wholetruth=ccdf_peak_wholetruth)
+        plot_moctails(datadir, figdir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog, bpar.threshold_neglog, logisticmap_derivative; ccdf_peak_wholetruth=ccdf_peak_wholetruth)
     end
 end
 
 function thresh_pert_loop()
-    for perturbation_neglog = [14, 16, 18][1:1]
-        for threshold_neglog = [8, 10, 12][1:1]
+    for perturbation_neglog = [14, 16, 18]
+        for threshold_neglog = [8, 10, 12]
             bpar_adj = (; threshold_neglog, perturbation_neglog)
             main(bpar_adj)
         end
