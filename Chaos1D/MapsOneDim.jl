@@ -454,7 +454,23 @@ function plot_moctails(
     theme_ax,theme_leg = get_themes()
     theme_ax = (; theme_ax..., xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10, titlesize=12)
     theme_leg = (; theme_leg..., framevisible=false)
-    # ----------- State-dependence of COAST ----------
+    astcols = astcolors()
+    # ----------- State-dependence of COAST and FTLE ----------
+    #          ----------------------------           
+    #          |             |            |             
+    #    (AXC) |             |            |
+    #          |             |            |             
+    #           --------------------------        
+    #          |             |            |          
+    #Tex2(AXC) |             |            | 
+    #Tex2(AUC) |             |            |         
+    #           --------------------------             
+    #            x(t*-A)        Tex2(AUC)
+    #
+    #
+    #      |   
+    #
+    #
     xs_prepeak_coast = zeros(Float64, N_anc)
     xs_prepeak_uncoast = zeros(Float64, N_anc)
     coasts = zeros(Int64, N_anc)
@@ -470,42 +486,57 @@ function plot_moctails(
         ftles_prepeak_coast[i_anc] = mean(log.(abs.(mapfun_derivative.(xs_anc[1,tidx_coast2peak]))))
         ftles_prepeak_uncoast[i_anc] = mean(log.(abs.(mapfun_derivative.(xs_anc[1,tidx_uncoast2peak]))))
     end
-    xlimits = (-0.05,1.05)
+    edts_prepeak_coast = 1 ./ ftles_prepeak_coast
+    edts_prepeak_uncoast = 1 ./ ftles_prepeak_uncoast
     N_ftle_unif_sample = 5000
-    derivatives_unif_sample = log.(abs.(mapfun_derivative.(xs_anc[1,1:(N_ftle_unif_sample*uncoast)])))
+    xs_unif_sample = xs_anc[1,1:(N_ftle_unif_sample*uncoast)]
+    derivatives_unif_sample = log2.(abs.(mapfun_derivative.(xs_unif_sample)))
     ftles_unif_sample = mean(reshape(derivatives_unif_sample, (uncoast,N_ftle_unif_sample)); dims=1)[1,:]
+    edts_unif_sample = 1 ./ ftles_unif_sample
+    xs_unif_sample_spaced = xs_unif_sample[1:uncoast:end]
+
+    xlimits = (-0.05,1.05)
     ftlelimits = map(qq->quantile(ftles_unif_sample,qq), (0.0,1.0))
     astlimits = (0,asts[end]+1/2)
+    edtlimits = (-asts[end]-1/2,asts[end]+1/2) # error-doubling time limits 
+    scatargs = (; markersize=2)
+
     fig = Figure(size=(400,300))
     lout = fig[1,1] = GridLayout()
-    ax1 = Axis(lout[1,1]; theme_ax..., xlabel="$(statesymbol)(𝑡*-𝐴ˣᶜ)", ylabel="𝐴ˣᶜ", limits=(xlimits,astlimits))
-    ax2 = Axis(lout[1,2]; theme_ax..., xlabel="FTLE($(statesymbol)(𝑡*-𝐴ᵘᶜ); 𝐴ᵘᶜ)", ylabel="𝐴ˣᶜ", limits=(ftlelimits,astlimits))
-    ax3 = Axis(lout[2,1]; theme_ax..., xlabel="$(statesymbol)(𝑡*-𝐴ˣᶜ)", ylabel="FTLE($(statesymbol)(𝑡*−𝐴ˣᶜ); 𝐴ˣᶜ)", limits=(xlimits,ftlelimits))
-    ax4 = Axis(lout[2,2]; theme_ax..., xlabel="FTLE($(statesymbol)(𝑡*-𝐴ᵘᶜ; 𝐴ᵘᶜ))", ylabel="FTLE($(statesymbol)(𝑡*−𝐴ˣᶜ); 𝐴ˣᶜ)", limits=(ftlelimits,ftlelimits))
-    scatter!(ax1, xs_prepeak_coast, coasts; color=:black, marker=:circle, markersize=3)
-    scatter!(ax2, ftles_prepeak_coast, coasts; color=:black, marker=:circle, markersize=3)
-    scatter!(ax3, xs_prepeak_coast, ftles_prepeak_coast; color=:black, marker=:circle, markersize=3)
-    scatter!(ax3, xs_anc[1,range(1,(N_ftle_unif_sample-1)*uncoast+1;step=uncoast)], ftles_unif_sample; color=:dodgerblue, marker=:xcross, markersize=2)
-    scatter!(ax4, ftles_prepeak_uncoast, ftles_prepeak_coast; color=:black, marker=:circle, markersize=3)
-    for ax=(ax1,ax2)
+    ax11 = Axis(lout[1,1]; theme_ax..., limits=(xlimits,astlimits), xlabel=statesymbol, ylabel="AST")
+    ax12 = Axis(lout[1,2]; theme_ax..., limits=(edtlimits,astlimits))
+    ax21 = Axis(lout[2,1]; theme_ax..., limits=(xlimits,astlimits), xlabel=statesymbol, ylabel="AST")
+    ax22 = Axis(lout[2,2]; theme_ax..., limits=(edtlimits,edtlimits), xlabel="EDT", ylabel="EDT")
+
+    scatter!(ax11, xs_prepeak_coast, coasts; color=astcols["XclEnt"], marker=:circle, markersize=3)
+
+    scatter!(ax21, xs_prepeak_coast, edts_prepeak_coast; color=astcols["XclEnt"], marker=:circle, markersize=3)
+    scatter!(ax21, xs_prepeak_uncoast, edts_prepeak_uncoast; color=astcols["astunif"], marker=:cross, markersize=3)
+    scatter!(ax21, xs_unif_sample_spaced, edts_unif_sample; color=:grey79, marker=:circle, markersize=1.5)
+
+    scatter!(ax12, edts_prepeak_uncoast, coasts; color=astcols["XclEnt"], marker=:circle, markersize=3)
+
+    scatter!(ax22, edts_prepeak_uncoast, edts_prepeak_coast; color=:black, marker=:circle, markersize=3)
+
+    for ax=(ax11,ax12)
         ax.xlabelvisible = ax.xticklabelsvisible = false
-        hlines!(ax,uncoast; color=:black)
+        hlines!(ax,uncoast; color=:black, linewidth=0.5)
     end
-    for ax=(ax2,ax4)
+    for ax=(ax12,ax22)
         ax.ylabelvisible = ax.yticklabelsvisible = false
-        vlines!(ax,log(2); color=:black)
-        vlines!(ax,0; color=:black,linestyle=(:dash,:dense))
+        vlines!(ax,[-1,1]; color=:black, linewidth=0.5)
+        vlines!(ax,0; color=:black,linestyle=(:dash,:dense), linewidth=0.5)
     end
-    for ax=(ax3,ax4)
-        hlines!(ax,log(2); color=:black)
-        hlines!(ax,0; color=:black,linestyle=(:dash,:dense))
+    for ax=(ax21,ax22)
+        hlines!(ax,[-1,1]; color=:black, linewidth=0.5)
+        hlines!(ax,0; color=:black,linestyle=(:dash,:dense), linewidth=0.5)
     end
     colgap!(lout,1,0)
     rowgap!(lout,1,0)
-    linkyaxes!(ax1,ax2)
-    linkyaxes!(ax3,ax4)
-    linkxaxes!(ax1,ax3)
-    linkxaxes!(ax2,ax4)
+    linkyaxes!(ax11,ax12)
+    linkyaxes!(ax21,ax22)
+    linkxaxes!(ax11,ax21)
+    linkxaxes!(ax12,ax22)
     save(joinpath(figdir,"coast_state_dependence.png"), fig)
 
 
@@ -513,7 +544,6 @@ function plot_moctails(
 
 
     # ---------- convergence with N -----------
-    astcols = astcolors()
     mean_return_period = mean(diff(ts_peak_valid))
     uncoast = perturbation_neglog - threshold_neglog # unconditionally optimal 
     alllosses = vcat(losses_moctail_astunif_kldiv_boot[uncoast,:,:][:], losses_moctail_coast_kldiv_boot[:], losses_valid_kldiv_boot[:])
