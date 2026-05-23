@@ -14,7 +14,7 @@ end
 
 function get_themes()
     theme_ax = (xticklabelsize=8, yticklabelsize=8, xlabelsize=10, ylabelsize=10, xgridvisible=false, ygridvisible=false, titlefont="Menlo", ylabelfont="Menlo", xlabelfont="Menlo", xticklabelfont="Menlo", yticklabelfont="Menlo", titlesize=10)
-    theme_leg = (labelsize=8, framevisible=true, labelfont="Menlo", titlefont="Menlo")
+    theme_leg = (labelsize=8, titlesize=10, framevisible=true, labelfont="Menlo", titlefont="Menlo")
     return theme_ax,theme_leg
 end
 

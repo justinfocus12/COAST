@@ -360,6 +360,12 @@ function plot_moctails(
         datadir::String, figdir::String, asts::Vector{Int64}, N_dsc::Int64, bst::Int64, bin_lower_edges::Vector{Float64}, i_bin_thresh::Int64, perturbation_neglog::Int64, threshold_neglog::Int64, mapfun_derivative::Function; 
         ccdf_peak_wholetruth::ornot(Vector{Float64})=nothing, statesymbol::String="𝑥")
 
+    todo = Dict{String,Bool}(
+                             "edtast" =>       1,
+                             "klconv" =>       1,
+                             "moctail" =>      0,
+                            )
+
     # ----------------------------------------------------
     # Plotting 
     #
@@ -453,9 +459,11 @@ function plot_moctails(
 
     theme_ax,theme_leg = get_themes()
     theme_ax = (; theme_ax..., xlabelsize=12, ylabelsize=12, xticklabelsize=10, yticklabelsize=10, titlesize=12)
-    theme_leg = (; theme_leg..., framevisible=false)
+    theme_leg = (; theme_leg..., framevisible=true)
     astcols = astcolors()
+
     # ----------- State-dependence of COAST and FTLE ----------
+    !(todo["edtast"] || todo["klconv"] || todo["moctail"]) && return
     #          ----------------------------           
     #          |             |            |             
     #    (AXC) |             |            |
@@ -501,26 +509,31 @@ function plot_moctails(
     edtlimits = (-asts[end]-1/2,asts[end]+1/2) # error-doubling time limits 
     scatargs = (; markersize=2)
 
-    fig = Figure(size=(400,300))
+    fig = Figure(size=(450,300))
     lout = fig[1,1] = GridLayout()
-    ax11 = Axis(lout[1,1]; theme_ax..., limits=(xlimits,astlimits), xlabel=statesymbol, ylabel="AST")
+    ax11 = Axis(lout[1,1]; theme_ax..., limits=(xlimits,astlimits), xlabel=statesymbol, ylabel="AST 𝐴")
+    ax21 = Axis(lout[2,1]; theme_ax..., limits=(xlimits,astlimits), xlabel=statesymbol, ylabel="EDT")
     ax12 = Axis(lout[1,2]; theme_ax..., limits=(edtlimits,astlimits))
-    ax21 = Axis(lout[2,1]; theme_ax..., limits=(xlimits,astlimits), xlabel=statesymbol, ylabel="AST")
     ax22 = Axis(lout[2,2]; theme_ax..., limits=(edtlimits,edtlimits), xlabel="EDT", ylabel="EDT")
 
-    scatter!(ax11, xs_prepeak_coast, coasts; color=astcols["XclEnt"], marker=:circle, markersize=3)
+    scatter!(ax11, xs_prepeak_coast, coasts; color=astcols["XclEnt"], marker=:circle, markersize=3, label="𝐴=XclEnt-COAST")
+    scatter!(ax12, edts_prepeak_coast, coasts; color=astcols["XclEnt"], marker=:circle, markersize=3,label="𝐴=XclEnt-COAST")
 
-    scatter!(ax21, xs_prepeak_coast, edts_prepeak_coast; color=astcols["XclEnt"], marker=:circle, markersize=3)
-    scatter!(ax21, xs_prepeak_uncoast, edts_prepeak_uncoast; color=astcols["astunif"], marker=:cross, markersize=3)
-    scatter!(ax21, xs_unif_sample_spaced, edts_unif_sample; color=:grey79, marker=:circle, markersize=1.5)
+    scatter!(ax21, xs_prepeak_coast, edts_prepeak_coast; color=astcols["XclEnt"], marker=:circle, markersize=3, label="τ=XclEnt-COAST")
+    scatter!(ax21, xs_prepeak_uncoast, edts_prepeak_uncoast; color=astcols["astunif"], marker=:circle, markersize=3, label="τ=𝐾−𝑀")
+    scatter!(ax21, xs_unif_sample_spaced, edts_unif_sample; color=:grey79, marker=:circle, markersize=1.5, label="τ=𝐾−𝑀\n𝑥∼𝑝")
 
-    scatter!(ax12, edts_prepeak_uncoast, coasts; color=astcols["XclEnt"], marker=:circle, markersize=3)
 
-    scatter!(ax22, edts_prepeak_uncoast, edts_prepeak_coast; color=:black, marker=:circle, markersize=3)
+    idx_long_coast = findall(coasts .> uncoast)
+    idx_short_coast = findall(coasts .< uncoast)
+    idx_mid_coast = findall(coasts .== uncoast)
+    for (idx,color,comparator) = ((idx_short_coast,astcols["astunif"],"<"),(idx_mid_coast,"black","="),(idx_long_coast,astcols["XclEnt"],">"))
+        length(idx)>0 && scatter!(ax22, edts_prepeak_coast[idx], edts_prepeak_uncoast[idx]; color=color, marker=:circle, markersize=3, label=" $(comparator) 𝐾 − 𝑀")
+    end
 
     for ax=(ax11,ax12)
         ax.xlabelvisible = ax.xticklabelsvisible = false
-        hlines!(ax,uncoast; color=:black, linewidth=0.5)
+        hlines!(ax,uncoast; color=astcols["astunif"], linewidth=0.5, label="𝐴=𝐾−𝑀")
     end
     for ax=(ax12,ax22)
         ax.ylabelvisible = ax.yticklabelsvisible = false
@@ -531,6 +544,13 @@ function plot_moctails(
         hlines!(ax,[-1,1]; color=:black, linewidth=0.5)
         hlines!(ax,0; color=:black,linestyle=(:dash,:dense), linewidth=0.5)
     end
+    #leg21 = Legend(lout[3,1], ax21; theme_leg..., markersize=50, rowgap=0)
+    #leg22 = Legend(lout[3,2], ax22, "XclEnt-\nCOAST:"; theme_leg..., markersize=50, rowgap=0)
+
+    rowsize!(lout,1,Relative(1/4))
+
+    colsize!(lout,2,Relative(2.5/4.5))
+
     colgap!(lout,1,0)
     rowgap!(lout,1,0)
     linkyaxes!(ax11,ax12)
@@ -541,9 +561,11 @@ function plot_moctails(
 
 
 
+    !(todo["klconv"] || todo["moctail"]) && return
 
 
     # ---------- convergence with N -----------
+    theme_leg = (; theme_leg..., framevisible=false)
     mean_return_period = mean(diff(ts_peak_valid))
     uncoast = perturbation_neglog - threshold_neglog # unconditionally optimal 
     alllosses = vcat(losses_moctail_astunif_kldiv_boot[uncoast,:,:][:], losses_moctail_coast_kldiv_boot[:], losses_valid_kldiv_boot[:])
@@ -607,7 +629,7 @@ function plot_moctails(
     # XclEnt
     draw_bands!(ax_N, ax_C,
                 Ns_anc_boot, mean_return_period + N_dsc*uncoast, 
-                losses_coast_lomidhi, astcols["XclEnt"], "𝐴=argmax(XclEnt)")
+                losses_coast_lomidhi, astcols["XclEnt"], "𝐴=XclEnt-\nCOAST")
     Legend(lout[2,2], ax_N; theme_leg...)
 
     colsize!(lout, 1, Relative(4/5))
@@ -615,6 +637,7 @@ function plot_moctails(
     rowgap!(lout,1,15)
     save(joinpath(figdir, "KL_vs_N.png"), fig)
     
+    !(todo["moctail"]) && return
 
     # -----------------------------------------
 
