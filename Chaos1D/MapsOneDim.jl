@@ -12,18 +12,11 @@ include("displayfuns.jl")
 
 ornot(dt::DataType) = Union{Nothing,dt}
 
-function illustrate_map(z0::Float64, F::Function, conjugate_bwd::Function, mapsymbol::String, statesymbol::String, mapname::String, plotdir::String, outfilename::String)
-    xgrid = collect(range(0, 1; length=65))
-    x0 = conjugate_bwd(z0)
-    T = 12
-    xs = zeros(Float64,T)
-    xs[1] = x0
-    for t = 2:T
-        x1 = F(x0)
-        xs[t] = x1
-        x0 = x1
-    end
+function illustrate_map(x_init::Float64, F::Function, simulate_fun::Function, rng::Random.AbstractRNG, mapsymbol::String, statesymbol::String, mapname::String, plotdir::String, outfilename::String)
+    T = 11
+    _, xs, ts = simulate([x_init,], T, rng, 33)
 
+    xgrid = collect(range(0, 1; length=65)[1:end-1])
     pofx = compute_pdf_wholetruth.(xgrid[2:end-1])
     pdflo = minimum(pofx)
     pdfhi = maximum(pofx)
@@ -36,11 +29,11 @@ function illustrate_map(z0::Float64, F::Function, conjugate_bwd::Function, mapsy
     ax = Axis(lout[1,1]; xlabel=statesymbol, ylabel="$(mapsymbol)($(statesymbol))", title=mapname, limits=((0,1),(0,1)), titlefont="Menlo",  xticklabelfont="Menlo", yticklabelfont="Menlo", xgridvisible=false, ygridvisible=false)
     lines!(ax, xgrid, F.(xgrid); color=:black)
     lines!(ax, xgrid, xgrid; color=:grey79, linewidth=3)
-    scatter!(ax,xs[1],xs[1],color=:goldenrod,marker=:star6,markersize=25)
+    scatter!(ax,x_init,x_init,color=:goldenrod,marker=:star6,markersize=25)
     scatter!(ax,xs[T],xs[T],color=:firebrick,marker=:star6,markersize=25)
-    x0 = xs[1]
-    for t = 2:T
-        x1 = xs[t]
+    x0 = x_init
+    for t = 1:T
+        x1 = xs[1,t]
         arrows2d!(ax, [x0], [x0], [0.0], [x1-x0]; lengthscale=1.0, color=:goldenrod, align=:tail, shaftwidth=2, tipwidth=5)
         arrows2d!(ax, [x0], [x1], [x1-x0], [0.0]; lengthscale=1.0, color=:firebrick, align=:tail, shaftwidth=2, tipwidth=5)
         x0 = x1
@@ -53,7 +46,7 @@ function illustrate_map(z0::Float64, F::Function, conjugate_bwd::Function, mapsy
     ax = Axis(lout[1,2]; title="PDF", xlabel="𝑝($(statesymbol))", xgridvisible=false, ygridvisible=false, ylabel=statesymbol, titlefont="Menlo", xlabelfont="Menlo", xticklabelfont="Menlo", ylabelfont="Menlo", yticklabelfont="Menlo",  yticklabelsvisible=false, limits=((xlo,xhi),(0,1)), xticks=(xtickvalues,xticklabels))
     vlines!(ax, 0; color=:black, linestyle=(:dash,:dense))
     lines!(ax, pofx, xgrid[2:end-1]; color=:black)
-    scatter!(ax, zeros(T), xs; color=:black)
+    scatter!(ax, zeros(T), xs[1,:]; color=:black)
     colsize!(lout, 2, Relative(1/4))
     colgap!(lout,1,10)
     save(joinpath(plotdir, outfilename), fig)
@@ -77,7 +70,6 @@ function boost_peaks(
         perturbation_neglog::Int64, 
         asts::Vector{Int64}, 
         bst::Int64, 
-        bit_precision::Int64, 
         Ndsc_per_leadtime::Int64, 
         seed::Int64, 
         datadir::String, 
@@ -116,7 +108,7 @@ function boost_peaks(
                 Ndsc_already_simulated = (anckey in keys(f) && astkey in keys(f[joinpath(anckey)])) ? length(f[joinpath(anckey,astkey)]) : 0
                 for i_dsc = Ndsc_already_simulated+1:Ndsc_per_leadtime
                     rng = MersenneTwister(seed)
-                    x_init_dsc, xs_dsc, ts_dsc = simulate_fun(x_init_anc, ast+bst, bit_precision, rng, perturbation_neglog; perturb_init=true)
+                    x_init_dsc, xs_dsc, ts_dsc = simulate_fun(x_init_anc, ast+bst, rng, perturbation_neglog; perturb_init=true)
                     #x_init_dsc = x_init_anc
                     #z_init_anc = (latentize ? conjugate_fwd_fun : identity)(x_init_anc[1])
                     #z_init_dsc = mod(
@@ -362,7 +354,7 @@ function plot_moctails(
         ccdf_peak_wholetruth::ornot(Vector{Float64})=nothing, statesymbol::String="𝑥")
 
     todo = Dict{String,Bool}(
-                             "edtast" =>       0,
+                             "edtast" =>       1,
                              "klconv" =>       1,
                              "moctail" =>      1,
                             )
@@ -893,8 +885,9 @@ function plot_dns(duration_spinup::Int64, duration_spinon::Int64, datadir::Strin
     if isnothing(edges)
         edges = collect(range(0,1;length=33))
     end
-    h = SB.normalize(SB.fit(SB.Histogram, xs[1,t0:t1], edges); mode=:pdf)
-    bincenters = (h.edges[1][1:end-1] .+ h.edges[1][2:end])./2
+    cdf = mean(xs[1,t0:t1] .<= edges'; dims=1)[1,:]
+    pdf = diff(cdf) ./ diff(edges)
+    bincenters = (edges[1:end-1] .+ edges[2:end])./2
 
     Nt2plot = 128
     fig = Figure(size=(600,150))
@@ -910,10 +903,10 @@ function plot_dns(duration_spinup::Int64, duration_spinon::Int64, datadir::Strin
     ylims!(ax_ts, 0, 1)
     xlims!(ax_hist, 0, 2)
     ylims!(ax_hist, 0, 1)
+    scatterlines!(ax_hist, pdf, bincenters; color=:steelblue2, markersize=2)
     if !isnothing(pdf_wholetruth)
         lines!(ax_hist, pdf_wholetruth, bincenters; color=:black, linestyle=(:dash,:dense), linewidth=3, label="WholeTruth")
     end
-    scatterlines!(ax_hist, h.weights, bincenters; color=:steelblue2, markersize=2)
     
 
     colsize!(lout, 2, Relative(1/6))

@@ -23,7 +23,6 @@ function BoostParams()
             threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
             perturbation_neglog = 9,  # how many bits to keep when doing the perturbation 
             min_cluster_gap = 2^4, # longer than bit precision
-            bit_precision = 32,
             ast_min = 1,
             ast_max = 12,
             bst = 2, # how long to run each descendant past the ancestor's peak 
@@ -35,7 +34,7 @@ end
 
 function strrep(bpar::NamedTuple)
     # For naming file 
-    s = @sprintf("TentMap_Tv%d_Ta%d_thr%d_prt%d_bp%d", round(Int, log2(bpar.duration_valid)), round(Int, log2(bpar.duration_ancgen)), bpar.threshold_neglog, bpar.perturbation_neglog, bpar.bit_precision)
+    s = @sprintf("TentMap_Tv%d_Ta%d_thr%d_prt%d", round(Int, log2(bpar.duration_valid)), round(Int, log2(bpar.duration_ancgen)), bpar.threshold_neglog, bpar.perturbation_neglog,)
     return s
 end
 
@@ -54,7 +53,7 @@ function tentmap(x::Float64)
 end
 
 function float64_to_uint32(X::Float64) 
-    @assert 0<X<1
+    @assert 0<=X<1
     return round(UInt32, X*(1+typemax(UInt32)))
 end
 function uint32_to_float64(Z::UInt32) 
@@ -65,36 +64,35 @@ function tentmap(Z::UInt32)
     return xor(Z<<1, msb*typemax(UInt32))
 end
 
-function perturb(X::Float32, bit_precision::Integer, rng::Random.AbstractRNG)
-    Z = perturb(float64_to_uint32(X), bit_precision, rng)
+function perturb(X::Float32, perturbation_neglog::Integer, rng::Random.AbstractRNG)
+    Z = perturb(float64_to_uint32(X), perturbation_neglog, rng)
     return uint32_to_float64(Z)
 end
 
-function perturb(Z::UInt32, bit_precision::Integer, rng::Random.AbstractRNG)
-    return xor(Z, rand(rng, UInt32)>>bit_precision)
+function perturb(Z::UInt32, perturbation_neglog::Integer, rng::Random.AbstractRNG)
+    return xor(Z, rand(rng, UInt32)>>perturbation_neglog)
 end
 
-
-    
 tentmap_derivative(x::Float64) = 2*sign(x - 0.5)
 
 function illustrate_map(plotdir::String)
-    X0 = 0.26
-    F(X) = float32_to_int64(tentmap(float64_to_int32(X))) # inefficient but fine for illustation
-    illustrate_map(z0, tentmap, conjugate_bwd, "𝑇", "𝑧", "Tent map", plotdir, "tentmap.png")
+    X0 = 0.23
+    rng = Random.MersenneTwister(238)
+    F(X) = uint32_to_float64(tentmap(float64_to_uint32(X)))
+    illustrate_map(X0, F, simulate, rng, "𝑇", "𝑧", "Tent map", plotdir, "tentmap.png")
     return
 end
 
-function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG, perturbation_bit_precision::Int64; perturb_init::Bool=false)
+function simulate(x_init::Vector{Float64}, duration::Int64, rng::Random.AbstractRNG, init_perturbation_neglog::Integer=33)
     Zs = zeros(UInt32, duration)
     X_init = x_init[1]
-    @assert 0<x<1
-    ts = collect(1:duration)
-    Z_init = float_to_uint32(X_init) 
-    if perturb_init
-        Z_init = perturb(Z_init, perturbation_bit_precision)
-        X_init = uint32_to_float64(Z_init)
+    if !(0<X_init<1)
+        @infiltrate
     end
+    ts = collect(1:duration)
+    Z_init = float64_to_uint32(X_init) 
+    Z_init = perturb(Z_init, init_perturbation_neglog, rng)
+    x_init_pert = [uint32_to_float64(Z_init), ]
     Z = Z_init
     for t = 1:duration
         Z = tentmap(Z) #
@@ -102,14 +100,13 @@ function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64
         Zs[t] = Z
     end
     xs = zeros(Float64,(1,duration))
-    xs[1,:] .= Float64.(Zs ./ typemax(UInt32))
-    x_init_pert = [Xs_init,]
+    xs[1,:] .= uint32_to_float64.(Zs)
     return x_init_pert, xs, ts
 end
 
 
-function simulate(x0::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG, datadir::String, outfile_suffix::String)
-    xs, ts = simulate(x0, duration, bit_precision, rng)
+function simulate_save(x0::Vector{Float64}, duration::Int64, rng::Random.AbstractRNG, datadir::String, outfile_suffix::String)
+    _, xs, ts = simulate(x0, duration, rng)
     jldopen(joinpath(datadir, "dns_$(outfile_suffix).jld2"),"w") do f
         f["xs"] = xs
         f["ts"] = ts
@@ -119,17 +116,17 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           1,
-                             "run_dns_valid" =>            1,
-                             "plot_dns_valid" =>           1,
-                             "run_dns_ancgen" =>           1,
-                             "plot_dns_ancgen" =>          1,
-                             "analyze_peaks_valid" =>      1,
-                             "analyze_peaks_ancgen" =>     1,
-                             "boost_peaks" =>              1,
-                             "mix_conditional_tails" =>    1,
-                             "plot_moctails" =>            1,
-                             "plot_boosts" =>              1,
+                             "illustrate_map" =>           0,
+                             "run_dns_valid" =>            0,
+                             "plot_dns_valid" =>           0,
+                             "run_dns_ancgen" =>           0,
+                             "plot_dns_ancgen" =>          0,
+                             "analyze_peaks_valid" =>      0,
+                             "analyze_peaks_ancgen" =>     0,
+                             "boost_peaks" =>              0,
+                             "mix_conditional_tails" =>    0,
+                             "plot_moctails" =>            0,
+                             "plot_boosts" =>              0,
                             )
 
     overwrite_boosts = true
@@ -170,19 +167,19 @@ function main(bpar_adj)
         seed_dns_valid = 9281
         rng_dns_valid = Random.MersenneTwister(seed_dns_valid)
         x0 = Random.rand(rng_dns_valid, Float64, (1,))
-        simulate(x0, bpar.duration_spinup+bpar.duration_valid, bpar.bit_precision, rng_dns_valid, datadir, "valid")
+        simulate_save(x0, bpar.duration_spinup+bpar.duration_valid, rng_dns_valid, datadir, "valid")
     end
     if todo["plot_dns_valid"]
         plot_dns(bpar.duration_spinup, bpar.duration_valid, datadir, figdir, "valid"; edges=bin_edges, pdf_wholetruth=pdf_wholetruth, statesymbol="𝑧")
     end
     if todo["run_dns_ancgen"]
-        seed_dns_ancgen = 3827
+        seed_dns_ancgen = 6028
         rng_dns_ancgen = Random.MersenneTwister(seed_dns_ancgen)
         x0 = Random.rand(rng_dns_ancgen, Float64, (1,))
-        simulate(x0, bpar.duration_spinup+bpar.duration_ancgen, bpar.bit_precision, rng_dns_ancgen, datadir, "ancgen")
+        simulate_save(x0, bpar.duration_spinup+bpar.duration_ancgen, rng_dns_ancgen, datadir, "ancgen")
     end
     if todo["plot_dns_ancgen"]
-        plot_dns(bpar.duration_spinup, bpar.duration_ancgen, datadir, figdir, "ancgen", statesymbol="𝑧")
+        plot_dns(bpar.duration_spinup, bpar.duration_ancgen, datadir, figdir, "ancgen"; edges=bin_edges, pdf_wholetruth=pdf_wholetruth, statesymbol="𝑧")
     end
     if todo["analyze_peaks_valid"]
         find_peaks_over_threshold(threshold, bpar.duration_spinup, bpar.duration_valid, bpar.min_cluster_gap, datadir, "valid")
@@ -194,7 +191,7 @@ function main(bpar_adj)
     end
     if todo["boost_peaks"]
         seed_boost = 8086
-        boost_peaks(simulate, conjugate_fwd, conjugate_bwd, threshold, bpar.perturbation_neglog, asts, bpar.bst, bpar.bit_precision, bpar.num_descendants, seed_boost, datadir, "ancgen"; overwrite_boosts=overwrite_boosts)
+        boost_peaks(simulate, conjugate_fwd, conjugate_bwd, threshold, bpar.perturbation_neglog, asts, bpar.bst, bpar.num_descendants, seed_boost, datadir, "ancgen"; overwrite_boosts=overwrite_boosts)
     end
     if todo["mix_conditional_tails"]
         rngseed_boot = 3900
