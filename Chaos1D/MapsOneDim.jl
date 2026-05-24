@@ -71,7 +71,6 @@ end
 
 function boost_peaks(
         simulate_fun::Function, 
-        latentize::Bool, 
         conjugate_fwd_fun::Function, 
         conjugate_bwd_fun::Function, 
         threshold::Float64, 
@@ -117,16 +116,18 @@ function boost_peaks(
                 Ndsc_already_simulated = (anckey in keys(f) && astkey in keys(f[joinpath(anckey)])) ? length(f[joinpath(anckey,astkey)]) : 0
                 for i_dsc = Ndsc_already_simulated+1:Ndsc_per_leadtime
                     rng = MersenneTwister(seed)
-                    z_init_anc = (latentize ? conjugate_fwd_fun : identity)(x_init_anc[1])
-                    z_init_dsc = mod(
-                                     (
-                                      floor(Int, z_init_anc*2^perturbation_neglog)
-                                      + pert_seq[i_dsc]
-                                     ) / (2^perturbation_neglog), 
-                                     1
-                                    )
-                    x_init_dsc = [(latentize ? conjugate_bwd_fun : identity)(z_init_dsc)]
-                    xs_dsc,ts_dsc = simulate_fun(x_init_dsc, ast+bst, bit_precision, rng)
+                    x_init_dsc, xs_dsc, ts_dsc = simulate_fun(x_init_anc, ast+bst, bit_precision, rng, perturbation_neglog; perturb_init=true)
+                    #x_init_dsc = x_init_anc
+                    #z_init_anc = (latentize ? conjugate_fwd_fun : identity)(x_init_anc[1])
+                    #z_init_dsc = mod(
+                    #                 (
+                    #                  floor(Int, z_init_anc*2^perturbation_neglog)
+                    #                  + pert_seq[i_dsc]
+                    #                 ) / (2^perturbation_neglog), 
+                    #                 1
+                    #                )
+                    #x_init_dsc = [(latentize ? conjugate_bwd_fun : identity)(z_init_dsc)]
+                    #xs_dsc,ts_dsc = simulate_fun(x_init_dsc, ast+bst, bit_precision, rng)
                     f[joinpath(anckey,astkey,"idsc$(i_dsc)","t_split")] = t_split
                     f[joinpath(anckey,astkey,"idsc$(i_dsc)","xs")] = xs_dsc
                     f[joinpath(anckey,astkey,"idsc$(i_dsc)","x_init")] = x_init_dsc

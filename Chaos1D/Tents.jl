@@ -28,7 +28,6 @@ function BoostParams()
             ast_max = 12,
             bst = 2, # how long to run each descendant past the ancestor's peak 
             num_descendants = 127,
-            latentize = true, # but this is trivial for the tent map 
             bin_width_neglog = 13,
            )
 end
@@ -50,32 +49,64 @@ function compute_pdf_wholetruth(x::Float64)
     return 1.0
 end
 
-tentmap(x::Float64) = clamp(2*(x < 0.5 ? x : 1-x), 0, 1)
+function tentmap(x::Float64) 
+    return clamp(2*(x < 0.5 ? x : 1-x), 0, 1)
+end
+
+function float64_to_uint32(X::Float64) 
+    @assert 0<X<1
+    return round(UInt32, X*(1+typemax(UInt32)))
+end
+function uint32_to_float64(Z::UInt32) 
+    return Float64(Z/typemax(UInt32))
+end
+function tentmap(Z::UInt32)
+    msb = isodd(Z >> 31)
+    return xor(Z<<1, msb*typemax(UInt32))
+end
+
+function perturb(X::Float32, bit_precision::Integer, rng::Random.AbstractRNG)
+    Z = perturb(float64_to_uint32(X), bit_precision, rng)
+    return uint32_to_float64(Z)
+end
+
+function perturb(Z::UInt32, bit_precision::Integer, rng::Random.AbstractRNG)
+    return xor(Z, rand(rng, UInt32)>>bit_precision)
+end
+
+
+    
 tentmap_derivative(x::Float64) = 2*sign(x - 0.5)
 
 function illustrate_map(plotdir::String)
-    z0 = 0.26
+    X0 = 0.26
+    F(X) = float32_to_int64(tentmap(float64_to_int32(X))) # inefficient but fine for illustation
     illustrate_map(z0, tentmap, conjugate_bwd, "𝑇", "𝑧", "Tent map", plotdir, "tentmap.png")
     return
 end
 
-           
-
-function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG)
-    xs = zeros(Float64, (1,duration)) # x_init is not included in the final output array 
-    x = x_init[1]
+function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG, perturbation_bit_precision::Int64; perturb_init::Bool=false)
+    Zs = zeros(UInt32, duration)
+    X_init = x_init[1]
+    @assert 0<x<1
     ts = collect(1:duration)
-    for t = 1:duration
-        x = tentmap(x) #
-        x = clamp(
-                 (floor(Int, x*2^bit_precision) + Random.rand(rng, Float64))
-                 / (2^bit_precision), 
-                 0, 1
-                )
-        xs[1,t] = x
+    Z_init = float_to_uint32(X_init) 
+    if perturb_init
+        Z_init = perturb(Z_init, perturbation_bit_precision)
+        X_init = uint32_to_float64(Z_init)
     end
-    return xs, ts
+    Z = Z_init
+    for t = 1:duration
+        Z = tentmap(Z) #
+        Z = xor(Z, UInt32(rand(rng,Bool)))
+        Zs[t] = Z
+    end
+    xs = zeros(Float64,(1,duration))
+    xs[1,:] .= Float64.(Zs ./ typemax(UInt32))
+    x_init_pert = [Xs_init,]
+    return x_init_pert, xs, ts
 end
+
 
 function simulate(x0::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG, datadir::String, outfile_suffix::String)
     xs, ts = simulate(x0, duration, bit_precision, rng)
@@ -88,17 +119,17 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           0,
-                             "run_dns_valid" =>            0,
-                             "plot_dns_valid" =>           0,
-                             "run_dns_ancgen" =>           0,
-                             "plot_dns_ancgen" =>          0,
-                             "analyze_peaks_valid" =>      0,
-                             "analyze_peaks_ancgen" =>     0,
-                             "boost_peaks" =>              0,
-                             "mix_conditional_tails" =>    0,
+                             "illustrate_map" =>           1,
+                             "run_dns_valid" =>            1,
+                             "plot_dns_valid" =>           1,
+                             "run_dns_ancgen" =>           1,
+                             "plot_dns_ancgen" =>          1,
+                             "analyze_peaks_valid" =>      1,
+                             "analyze_peaks_ancgen" =>     1,
+                             "boost_peaks" =>              1,
+                             "mix_conditional_tails" =>    1,
                              "plot_moctails" =>            1,
-                             "plot_boosts" =>              0,
+                             "plot_boosts" =>              1,
                             )
 
     overwrite_boosts = true
@@ -107,7 +138,7 @@ function main(bpar_adj)
     bpar = (; bpar_default..., bpar_adj...)
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-21/2",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-24/1",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
@@ -163,7 +194,7 @@ function main(bpar_adj)
     end
     if todo["boost_peaks"]
         seed_boost = 8086
-        boost_peaks(simulate, bpar.latentize, conjugate_fwd, conjugate_bwd, threshold, bpar.perturbation_neglog, asts, bpar.bst, bpar.bit_precision, bpar.num_descendants, seed_boost, datadir, "ancgen"; overwrite_boosts=overwrite_boosts)
+        boost_peaks(simulate, conjugate_fwd, conjugate_bwd, threshold, bpar.perturbation_neglog, asts, bpar.bst, bpar.bit_precision, bpar.num_descendants, seed_boost, datadir, "ancgen"; overwrite_boosts=overwrite_boosts)
     end
     if todo["mix_conditional_tails"]
         rngseed_boot = 3900
@@ -178,8 +209,8 @@ function main(bpar_adj)
 end
 
 function thresh_pert_loop()
-    for perturbation_neglog = [14, 16, 18]
-        for threshold_neglog = [8, 10, 12]
+    for perturbation_neglog = [14, 16, 18][1:1]
+        for threshold_neglog = [8, 10, 12][1:1]
             bpar_adj = (; threshold_neglog, perturbation_neglog)
             main(bpar_adj)
         end
