@@ -48,7 +48,7 @@ end
 function scinot(x::Number; base::Int64=10)
     logb = base==10 ? log10 : base==2 ? log2 : y->log(y)/log(base)
     x==0 && return "0"
-    expon = floor(Int64,logb(abs(x)))
+    expon = round(Int64,logb(abs(x)))
     coeff = round(Int64,x/(1.0*base)^expon)
     coeffstr = abs(coeff)==1 ? "" :  @sprintf("%d",abs(coeff))
     sign(coeff)==-1 && (coeffstr = "−"*coeffstr)
