@@ -15,7 +15,7 @@ function float64_to_uint32(X::Float64)
     return round(UInt32, X*(1+typemax(UInt32)))
 end
 function uint32_to_float64(Z::UInt32) 
-    return Float64(Z/typemax(UInt32))
+    return Float64(Z)/(1+typemax(UInt32))
 end
 
 function van_der_corput(N)

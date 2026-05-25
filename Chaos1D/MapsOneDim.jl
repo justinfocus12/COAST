@@ -64,8 +64,6 @@ end
 
 function boost_peaks(
         simulate_fun::Function, 
-        conjugate_fwd_fun::Function, 
-        conjugate_bwd_fun::Function, 
         threshold::Float64, 
         perturbation_neglog::Int64, 
         asts::Vector{Int64}, 
@@ -123,10 +121,6 @@ function boost_peaks(
                     x_init_dsc = uint32_to_float64(X_init_dsc) .* ones(1)
                     #@infiltrate
                     _, xs_dsc, ts_dsc = simulate_fun(x_init_dsc, ast+bst, rng) #, perturbation_neglog)
-                    #x_init_dsc = x_init_anc
-                    #z_init_anc = (latentize ? conjugate_fwd_fun : identity)(x_init_anc[1])
-                    #x_init_dsc = [(latentize ? conjugate_bwd_fun : identity)(z_init_dsc)]
-                    #xs_dsc,ts_dsc = simulate_fun(x_init_dsc, ast+bst, bit_precision, rng)
                     f[joinpath(anckey,astkey,"idsc$(i_dsc)","t_split")] = t_split
                     f[joinpath(anckey,astkey,"idsc$(i_dsc)","xs")] = xs_dsc
                     f[joinpath(anckey,astkey,"idsc$(i_dsc)","x_init")] = x_init_dsc
@@ -588,12 +582,12 @@ function plot_moctails(
     losses_coast_lomidhi = [mapslices(arr->quantfun(arr,qua), losses_moctail_coast_kldiv_boot[:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2,0,1/2]]
     losses_anconly_lomidhi = [mapslices(arr->quantfun(arr,qua), losses_anconly_kldiv_boot[:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2,0,1/2]]
     losses_valid_lomidhi = [mapslices(arr->quantfun(arr,qua), losses_valid_kldiv_boot[:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2,0,1/2]]
-    function draw_bands!(ax_Nanc, ax_cost, Ns_anc, cost_per_anc, losses_lomidhi, color, label; alpha=0.25)
+    function draw_bands!(ax_Nanc, ax_cost, Ns_anc, cost_per_anc, losses_lomidhi, color, label; alpha=0.25, linestyle=:solid)
         losses_lo,losses_mid,losses_hi = losses_lomidhi
         band!(ax_Nanc, Ns_anc, losses_lo, losses_hi; color=color, alpha=alpha)
-        scatterlines!(ax_Nanc, Ns_anc, losses_mid; color=color, label=label, marker=:circle, markersize=1)
+        scatterlines!(ax_Nanc, Ns_anc, losses_mid; color=color, label=label, marker=:circle, markersize=1, linestyle=linestyle)
         band!(ax_cost, Ns_anc.*cost_per_anc, losses_lo, losses_hi; color=color, alpha=alpha)
-        scatterlines!(ax_cost, Ns_anc.*cost_per_anc, losses_mid; color=color, marker=:circle, markersize=1)
+        scatterlines!(ax_cost, Ns_anc.*cost_per_anc, losses_mid; color=color, marker=:circle, markersize=1, linestyle=linestyle)
     end
     i_uncoast = findfirst(==(uncoast), asts)
 
@@ -636,7 +630,7 @@ function plot_moctails(
     # XclEnt
     draw_bands!(ax_N, ax_C,
                 Ns_anc_boot, mean_return_period + N_dsc*uncoast, 
-                losses_coast_lomidhi, astcols["XclEnt"], "𝐴=XclEnt-\nCOAST"; alpha=0.5)
+                losses_coast_lomidhi, astcols["XclEnt"], "𝐴=XclEnt-\nCOAST"; alpha=0.5, linestyle=(:dash,:dense))
     Legend(lout[2,2], ax_N; theme_leg...)
 
     colsize!(lout, 1, Relative(4/5))
@@ -774,13 +768,15 @@ function plot_moctails(
     # compute y-axis limits 
     loss_min_astunif,loss_max_astunif = (func(filter(isfinite, losses_moctail_astunif_kldiv_boot[:,:,i_boot_size])) for func=(minimum,maximum))
     yhi = 2.0 * maximum(filter(isnonneg, [loss_max_astunif, loss_moctail_coast_kldiv]))
-    klposlo = minimum(filter(ispos, vcat(losses_moctail_astunif_kldiv_boot[:,:,i_boot_size][:], losses_moctail_coast_kldiv_boot[:,i_boot_size])))
+    #klposlo = minimum(filter(ispos, vcat(losses_moctail_astunif_kldiv_boot[:,:,i_boot_size][:], losses_moctail_coast_kldiv_boot[:,i_boot_size])))
 
-    ylo = -klposlo #0.5 * klposlo
-    ytickvalues = [0,sqrt(klposlo*yhi),yhi]
-    yticklabels = (y->@sprintf("%.0E",y)).(ytickvalues)
+    klposlo = -xlogx(1/N_dsc)
+    ylo = -klposlo
+    yhi = round(log2(N_bin))
+    ytickvalues = [0,klposlo,1,yhi] #[0,sqrt(klposlo*yhi),yhi]
+    yticklabels = (y->@sprintf("%.1f",y)).(ytickvalues)
     ax = Axis(lout[4,1:N_ast]; theme_ax..., 
-              xlabel="−AST", title="KL divergence", yscale=Makie.Symlog10(2*klposlo),
+              xlabel="−AST", title="KL divergence", yscale=Makie.Symlog10(klposlo),
               ylabel="[bits]", ylabelrotation=pi/2, xgridvisible=false, ygridvisible=false, 
               xticks=(-asts, string.(-asts)), 
               limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])), (ylo,yhi)),

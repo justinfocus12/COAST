@@ -10,7 +10,6 @@ export pert_thresh_loop, illustrate_map
 
 include("./MapsOneDim.jl")
 
-
 struct TentMapParams
     tentpeak::Float64
 end
@@ -26,7 +25,7 @@ function BoostParams()
             ast_min = 1,
             ast_max = 12,
             bst = 2, # how long to run each descendant past the ancestor's peak 
-            num_descendants = 128,
+            num_descendants = 16,
             bin_width_neglog = 13,
            )
 end
@@ -34,10 +33,9 @@ end
 
 function strrep(bpar::NamedTuple)
     # For naming file 
-    s = @sprintf("TentMap_Tv%d_Ta%d_thr%d_prt%d", round(Int, log2(bpar.duration_valid)), round(Int, log2(bpar.duration_ancgen)), bpar.threshold_neglog, bpar.perturbation_neglog,)
+    s = @sprintf("TentMap_Tv%d_Ta%d_thr%d_prt%d_bw%d", round(Int, log2(bpar.duration_valid)), round(Int, log2(bpar.duration_ancgen)), bpar.threshold_neglog, bpar.perturbation_neglog, bpar.bin_width_neglog)
     return s
 end
-
 
 conjugate_fwd(x::Float64) = x
 conjugate_bwd(z::Float64) = z
@@ -66,7 +64,9 @@ function perturb(Z::UInt32, perturbation_neglog::Integer, rng::Random.AbstractRN
     return xor(Z, rand(rng, UInt32)>>perturbation_neglog)
 end
 
-tentmap_derivative(x::Float64) = 2*sign(x - 0.5)
+function tentmap_derivative(x::Float64) 
+    return 2*sign(x - 0.5)
+end
 
 function illustrate_map(plotdir::String)
     X0 = 0.23
@@ -76,11 +76,12 @@ function illustrate_map(plotdir::String)
     return
 end
 
+
 function simulate(x_init::Vector{Float64}, duration::Int64, rng::Random.AbstractRNG, init_perturbation_neglog::Integer=33)
     Zs = zeros(UInt32, duration)
     X_init = x_init[1]
     if !(0<X_init<1)
-        @infiltrate
+        error()
     end
     ts = collect(1:duration)
     Z_init = float64_to_uint32(X_init) 
@@ -128,7 +129,7 @@ function main(bpar_adj)
     bpar = (; bpar_default..., bpar_adj...)
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-24/1",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-25/1",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
@@ -139,7 +140,11 @@ function main(bpar_adj)
     threshold = compute_cquant_peak_wholetruth(exp2(-bpar.threshold_neglog))
     N_bin = N_bin_over * 2^bpar.threshold_neglog
     i_bin_thresh = N_bin - N_bin_over + 1
+
     bin_lower_edges = vcat(range(0, threshold; length=i_bin_thresh)[1:end-1], range(threshold, 1; length=N_bin_over+1)[1:end-1])
+
+
+
     bin_edges = vcat(bin_lower_edges, 1.0)
     bin_centers = vcat((bin_lower_edges[1:N_bin-1] .+ bin_lower_edges[2:N_bin])./2, (bin_lower_edges[N_bin]+1)/2)
     ccdf_peak_wholetruth = compute_ccdf_peak_wholetruth.(bin_lower_edges[i_bin_thresh:N_bin]) ./ compute_ccdf_peak_wholetruth(threshold)
@@ -155,52 +160,61 @@ function main(bpar_adj)
         illustrate_map(figdir)
     end
 
-
     if todo["run_dns_valid"]
         seed_dns_valid = 9281
         rng_dns_valid = Random.MersenneTwister(seed_dns_valid)
         x0 = Random.rand(rng_dns_valid, Float64, (1,))
         simulate_save(x0, bpar.duration_spinup+bpar.duration_valid, rng_dns_valid, datadir, "valid")
     end
+
     if todo["plot_dns_valid"]
         plot_dns(bpar.duration_spinup, bpar.duration_valid, datadir, figdir, "valid"; edges=bin_edges, pdf_wholetruth=pdf_wholetruth, statesymbol="𝑧")
     end
+
     if todo["run_dns_ancgen"]
         seed_dns_ancgen = 6028
         rng_dns_ancgen = Random.MersenneTwister(seed_dns_ancgen)
         x0 = Random.rand(rng_dns_ancgen, Float64, (1,))
         simulate_save(x0, bpar.duration_spinup+bpar.duration_ancgen, rng_dns_ancgen, datadir, "ancgen")
     end
+
     if todo["plot_dns_ancgen"]
         plot_dns(bpar.duration_spinup, bpar.duration_ancgen, datadir, figdir, "ancgen"; edges=bin_edges, pdf_wholetruth=pdf_wholetruth, statesymbol="𝑧")
     end
+
     if todo["analyze_peaks_valid"]
         find_peaks_over_threshold(threshold, bpar.duration_spinup, bpar.duration_valid, bpar.min_cluster_gap, datadir, "valid")
         plot_peaks_over_threshold(threshold, bpar.duration_spinup, duration_plot, datadir, figdir, "valid"; bin_edges=bin_edges, i_bin_thresh=i_bin_thresh, ccdf_peak_wholetruth=ccdf_peak_wholetruth, pdf_wholetruth=pdf_wholetruth, statesymbol="𝑧")
     end
+
     if todo["analyze_peaks_ancgen"]
         find_peaks_over_threshold(threshold, bpar.duration_spinup, bpar.duration_ancgen, bpar.min_cluster_gap, datadir, "ancgen")
         plot_peaks_over_threshold(threshold, bpar.duration_spinup, duration_plot, datadir, figdir, "ancgen"; bin_edges=bin_edges, i_bin_thresh=i_bin_thresh, ccdf_peak_wholetruth=ccdf_peak_wholetruth, pdf_wholetruth=pdf_wholetruth, statesymbol="𝑧")
     end
+
     if todo["boost_peaks"]
         seed_boost = 8086
-        boost_peaks(simulate, conjugate_fwd, conjugate_bwd, threshold, bpar.perturbation_neglog, asts, bpar.bst, bpar.num_descendants, seed_boost, datadir, "ancgen"; overwrite_boosts=overwrite_boosts)
+        boost_peaks(simulate, threshold, bpar.perturbation_neglog, asts, bpar.bst, bpar.num_descendants, seed_boost, datadir, "ancgen"; overwrite_boosts=overwrite_boosts)
     end
+
     if todo["mix_conditional_tails"]
         rngseed_boot = 3900
         mix_conditional_tails(datadir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, rngseed_boot; ccdf_peak_wholetruth=ccdf_peak_wholetruth)
     end
+
     if todo["plot_boosts"]
         plot_boosts(datadir, figdir, asts, bpar.bst, bpar.num_descendants, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog; statesymbol="𝑧")
     end
+
     if todo["plot_moctails"]
         plot_moctails(datadir, figdir, asts, bpar.num_descendants, bpar.bst, bin_lower_edges, i_bin_thresh, bpar.perturbation_neglog, bpar.threshold_neglog, tentmap_derivative; ccdf_peak_wholetruth=ccdf_peak_wholetruth,statesymbol="𝑧")
     end
+
 end
 
 function thresh_pert_loop()
-    for perturbation_neglog = [14, 16, 18]
-        for threshold_neglog = [8, 10, 12]
+    for perturbation_neglog = [14, 17]
+        for threshold_neglog = [8, 9, 10]
             bpar_adj = (; threshold_neglog, perturbation_neglog)
             main(bpar_adj)
         end
