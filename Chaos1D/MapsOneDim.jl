@@ -89,6 +89,7 @@ function boost_peaks(
     end
     Npeaks = length(ts_peak)
     pert_seq = van_der_corput(Ndsc_per_leadtime) #.* perturbation_width
+    pert_seq_uint32 = van_der_corput_uint32(Ndsc_per_leadtime) #.* perturbation_width
     datafile = joinpath(datadir,"xs_dscs.jld2")
     boostfile = joinpath(datadir,"xs_dscs.jld2")
     if isfile(boostfile) && overwrite_boosts
@@ -108,16 +109,22 @@ function boost_peaks(
                 Ndsc_already_simulated = (anckey in keys(f) && astkey in keys(f[joinpath(anckey)])) ? length(f[joinpath(anckey,astkey)]) : 0
                 for i_dsc = Ndsc_already_simulated+1:Ndsc_per_leadtime
                     rng = MersenneTwister(seed)
-                    x_init_dsc, xs_dsc, ts_dsc = simulate_fun(x_init_anc, ast+bst, rng, perturbation_neglog; perturb_init=true)
-                    #x_init_dsc = x_init_anc
-                    #z_init_anc = (latentize ? conjugate_fwd_fun : identity)(x_init_anc[1])
-                    #z_init_dsc = mod(
+                    #x_init_dsc = x_init_anc .+ pert_seq[i_dsc]/(2^perturbation_neglog).*ones(1)
+                    #x_init_dsc = mod(
                     #                 (
-                    #                  floor(Int, z_init_anc*2^perturbation_neglog)
+                    #                  floor(Int, x_init_anc[1]*2^perturbation_neglog)
                     #                  + pert_seq[i_dsc]
                     #                 ) / (2^perturbation_neglog), 
                     #                 1
-                    #                )
+                    #                ) .* ones(1)
+                    # Kill all zeros past the 32nd 
+                    X_init_dsc = float64_to_uint32(x_init_anc[1]) & (typemax(UInt32) << (32-perturbation_neglog))
+                    X_init_dsc = xor(X_init_dsc, pert_seq_uint32[i_dsc] >> perturbation_neglog)
+                    x_init_dsc = uint32_to_float64(X_init_dsc) .* ones(1)
+                    #@infiltrate
+                    _, xs_dsc, ts_dsc = simulate_fun(x_init_dsc, ast+bst, rng) #, perturbation_neglog)
+                    #x_init_dsc = x_init_anc
+                    #z_init_anc = (latentize ? conjugate_fwd_fun : identity)(x_init_anc[1])
                     #x_init_dsc = [(latentize ? conjugate_bwd_fun : identity)(z_init_dsc)]
                     #xs_dsc,ts_dsc = simulate_fun(x_init_dsc, ast+bst, bit_precision, rng)
                     f[joinpath(anckey,astkey,"idsc$(i_dsc)","t_split")] = t_split
@@ -781,21 +788,21 @@ function plot_moctails(
              )
     klunif_lomidhi = map(
                          qq->mapslices(
-                                       klarr->finitequantile(filter(isnonneg,klarr), qq),
+                                       klarr->finitequantile(filter(isfinite,klarr), qq),
                                        losses_moctail_astunif_kldiv_boot[:,:,i_boot_size];
                                        dims=2
                                       )[:,1],
                          1/2 .+ confint_width.*[-1/2,0,1/2]
                         )
     klcoast_lomidhi = map(
-                          qq->finitequantile(filter(isnonneg,losses_moctail_coast_kldiv_boot[:,i_boot_size]), qq), 
+                          qq->finitequantile(filter(isfinite,losses_moctail_coast_kldiv_boot[:,i_boot_size]), qq), 
                           1/2 .+ confint_width.*[-1/2,0,1/2]
                          )
-    @infiltrate isnan(klcoast_lomidhi[2])
     band!(ax, -asts, klunif_lomidhi[[1,3]]...; color=astcols["astunif"], alpha=0.25)
-    scatterlines!(ax, -asts, klunif_lomidhi[2]; color=astcols["astunif"], label=@sprintf("Uniform AST\nKL ≥ %.1E",minimum(klunif_lomidhi[2])))
+    klclip(kl) = (kl < -1/(2^32) ? kl : max(0, kl))
+    scatterlines!(ax, -asts, klunif_lomidhi[2]; color=astcols["astunif"], label=@sprintf("Uniform AST\nKL ≥ %.1E",klclip(minimum(klunif_lomidhi[2]))))
     band!(ax, -asts, (klcoast_lomidhi[i_qq].*ones(N_ast) for i_qq=[1,3])...; color=astcols["XclEnt"], alpha=0.25)
-    lines!(ax, -asts, klcoast_lomidhi[2].*ones(N_ast), color=astcols["XclEnt"], linestyle=:solid, linewidth=2, label=@sprintf("XclEnt-COAST\nKL = %.1E", klcoast_lomidhi[2])) #loss_moctail_coast_kldiv))
+    lines!(ax, -asts, klcoast_lomidhi[2].*ones(N_ast), color=astcols["XclEnt"], linestyle=:solid, linewidth=2, label=@sprintf("XclEnt-COAST\nKL = %.1E", klclip(klcoast_lomidhi[2]))) #loss_moctail_coast_kldiv))
     Legend(lout[4,N_ast+1], ax; theme_leg...,)
 
     rowgap!(lout, 1, 0)
@@ -999,14 +1006,14 @@ function mix_conditional_tails(
         @show i_anc,N_anc
         for i_ast = 1:N_ast
             # Stuff not pertainingto tails
-            total_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_ancanddsc[:,i_ast,i_anc], bin_lower_edges)
-            ccdfs_dsc[:,i_ast,i_anc] .= compute_empirical_ccdf(Rs_peak_ancanddsc[:,i_ast,i_anc], bin_lower_edges)
+            total_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_ancanddsc[2:end,i_ast,i_anc], bin_lower_edges)
+            ccdfs_dsc[:,i_ast,i_anc] .= compute_empirical_ccdf(Rs_peak_ancanddsc[2:end,i_ast,i_anc], bin_lower_edges)
             # Stuff pertaining to tails
-            anc_has_tail[i_ast,i_anc] = (maximum(Rs_peak_ancanddsc[:,i_ast,i_anc]) > bin_lower_edges[i_bin_thresh])
+            anc_has_tail[i_ast,i_anc] = (maximum(Rs_peak_ancanddsc[2:end,i_ast,i_anc]) > bin_lower_edges[i_bin_thresh])
 
             ccdfs_dsc_tail_accrej = ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] .+ (1-ccdfs_dsc[i_bin_thresh,i_ast,i_anc]).*(Rs_peak_anc[i_anc] .> bin_lower_edges[i_bin_thresh:N_bin])
-            thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_ancanddsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end])
-            extreme_conditional_entropy[i_ast, i_anc] = compute_extreme_conditional_entropy(Rs_peak_ancanddsc[:,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end]) 
+            thresholded_entropy[i_ast,i_anc] = compute_thresholded_entropy(Rs_peak_ancanddsc[2:end,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end])
+            extreme_conditional_entropy[i_ast, i_anc] = compute_extreme_conditional_entropy(Rs_peak_ancanddsc[2:end,i_ast,i_anc], bin_lower_edges[i_bin_thresh:end]) 
             if anc_has_tail[i_ast,i_anc]
                 ccdfs_dsc_tail_noaccrej .= ccdfs_dsc[i_bin_thresh:N_bin,i_ast,i_anc] ./ ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
                 extreme_conditional_entropy[i_ast, i_anc] /= ccdfs_dsc[i_bin_thresh,i_ast,i_anc]
@@ -1039,7 +1046,8 @@ function mix_conditional_tails(
                                               dims=1
                                              );
                                 dims=3
-                               )
+                               ) 
+    #ccdfs_moctail_astunif = sum(ccdfs_ctail .* insertdims(anc_has_tail; dims=1); dims=3) ./ insertdims(sum(anc_has_tail; dims=2); dims=1)
     # COAST 
     ccdf_moctail_coast,ccdf_poptail_coast = ntuple(_->zeros(Float64, (N_bin_over)), 2)
     for i_anc = 1:N_anc
@@ -1076,7 +1084,7 @@ function mix_conditional_tails(
             ccdfs_poptail_astunif_boot[:,:,i_boot_resamp,i_boot_size] .= sum(ccdfs_dsc[i_bin_thresh:end,:,:] .* insertdims(anc_weights_astunif; dims=1); dims=3)
             ccdfs_poptail_astunif_boot[:,:,i_boot_resamp,i_boot_size] ./= ccdfs_poptail_astunif_boot[1:1,:,i_boot_resamp,i_boot_size]
             # COAST
-            coast_total_weight = 0.0
+            coast_total_weight = 0
             for i_anc = 1:N_anc
                 anc_mult = anc_mults[i_anc] * anc_has_tail[idx_coast[i_anc],i_anc]
                 coast_total_weight += anc_mult

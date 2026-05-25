@@ -26,7 +26,7 @@ function BoostParams()
             ast_min = 1,
             ast_max = 12,
             bst = 2, # how long to run each descendant past the ancestor's peak 
-            num_descendants = 127,
+            num_descendants = 128,
             bin_width_neglog = 13,
            )
 end
@@ -52,13 +52,6 @@ function tentmap(x::Float64)
     return clamp(2*(x < 0.5 ? x : 1-x), 0, 1)
 end
 
-function float64_to_uint32(X::Float64) 
-    @assert 0<=X<1
-    return round(UInt32, X*(1+typemax(UInt32)))
-end
-function uint32_to_float64(Z::UInt32) 
-    return Float64(Z/typemax(UInt32))
-end
 function tentmap(Z::UInt32)
     msb = isodd(Z >> 31)
     return xor(Z<<1, msb*typemax(UInt32))
@@ -116,17 +109,17 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           0,
-                             "run_dns_valid" =>            0,
-                             "plot_dns_valid" =>           0,
-                             "run_dns_ancgen" =>           0,
-                             "plot_dns_ancgen" =>          0,
-                             "analyze_peaks_valid" =>      0,
-                             "analyze_peaks_ancgen" =>     0,
-                             "boost_peaks" =>              0,
-                             "mix_conditional_tails" =>    0,
-                             "plot_moctails" =>            0,
-                             "plot_boosts" =>              0,
+                             "illustrate_map" =>           1,
+                             "run_dns_valid" =>            1,
+                             "plot_dns_valid" =>           1,
+                             "run_dns_ancgen" =>           1,
+                             "plot_dns_ancgen" =>          1,
+                             "analyze_peaks_valid" =>      1,
+                             "analyze_peaks_ancgen" =>     1,
+                             "boost_peaks" =>              1,
+                             "mix_conditional_tails" =>    1,
+                             "plot_moctails" =>            1,
+                             "plot_boosts" =>              1,
                             )
 
     overwrite_boosts = true
@@ -206,8 +199,8 @@ function main(bpar_adj)
 end
 
 function thresh_pert_loop()
-    for perturbation_neglog = [14, 16, 18][1:1]
-        for threshold_neglog = [8, 10, 12][1:1]
+    for perturbation_neglog = [14, 16, 18]
+        for threshold_neglog = [8, 10, 12]
             bpar_adj = (; threshold_neglog, perturbation_neglog)
             main(bpar_adj)
         end

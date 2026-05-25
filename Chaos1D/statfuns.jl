@@ -10,6 +10,14 @@ function finitequantile(x,q)
     return any(isfinite.(x)) ? quantile(x,q) : NaN
 end
 
+function float64_to_uint32(X::Float64) 
+    @assert 0<=X<1
+    return round(UInt32, X*(1+typemax(UInt32)))
+end
+function uint32_to_float64(Z::UInt32) 
+    return Float64(Z/typemax(UInt32))
+end
+
 function van_der_corput(N)
     # Generate the first N points of the van der corput sequence 
     max_bit_length = floor(Int, 1+log2(N))
@@ -20,6 +28,19 @@ function van_der_corput(N)
             if n <= N
                 xs[n] = (2*k-1)/(2^bit_length)
             end
+            n += 1
+        end
+    end
+    return xs
+end
+
+function van_der_corput_uint32(N)
+    max_bit_length = floor(Int, 1+log2(N))
+    xs = zeros(UInt32, N)
+    n = 2
+    for bit_length = 1:max_bit_length
+        for k = 1:(2^(bit_length-1))
+            (n<=N) && (xs[n] = UInt32(2*k-1)<<(32-bit_length))
             n += 1
         end
     end

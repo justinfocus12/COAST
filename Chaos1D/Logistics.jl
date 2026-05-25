@@ -22,12 +22,10 @@ function BoostParams()
             threshold_neglog = 5, # 2^(-threshold_neglog) is the threshold
             perturbation_neglog = 9,  # how many bits to keep when doing the perturbation 
             min_cluster_gap = 2^4, # longer than maximum possible AST 
-            bit_precision = 32, # much longer than perturbation_neglog
             ast_min = 1,
             ast_max = 12,
             bst = 2,
             num_descendants = 127,
-            latentize = false,# Do we transform to Z space? 
             latentize_bins = true,
             bin_width_neglog = 13,
            )
@@ -35,7 +33,7 @@ end
 
 function strrep(bpar::NamedTuple)
     # For naming folder with experiments 
-    s = @sprintf("LogisticMap_Lat%d_Latbins%d_Tv%d_Ta%d_thr%d_prt%d_bp%d", bpar.latentize, bpar.latentize_bins, round(Int, log2(bpar.duration_valid)), round(Int, log2(bpar.duration_ancgen)), bpar.threshold_neglog, bpar.perturbation_neglog, bpar.bit_precision)
+    s = @sprintf("LogisticMap_Latbins%d_Tv%d_Ta%d_thr%d_prt%d", bpar.latentize_bins, round(Int, log2(bpar.duration_valid)), round(Int, log2(bpar.duration_ancgen)), bpar.threshold_neglog, bpar.perturbation_neglog, )
     return s
 end
 
@@ -48,7 +46,8 @@ function compute_pdf_wholetruth(x::Float64)
     return 1/(pi*sqrt(x*(1-x)))
 end
 
-function simulate(x_init::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG)
+function simulate(x_init::Vector{Float64}, duration::Int64, rng::Random.AbstractRNG, init_perturbation_neglog::Integer=33)
+    # TODO integer arithmeti
     xs = zeros(Float64, (1,duration))
     x = x_init[1]
     ts = collect(1:duration)
@@ -78,8 +77,8 @@ end
 
 
 
-function simulate(x0::Vector{Float64}, duration::Int64, bit_precision::Int64, rng::Random.AbstractRNG, datadir::String, outfile_suffix::String)
-    xs, ts = simulate(x0, duration, bit_precision, rng)
+function simulate_save(x0::Vector{Float64}, duration::Int64, rng::Random.AbstractRNG, datadir::String, outfile_suffix::String)
+    _, xs, ts = simulate(x0, duration, bit_precision, rng)
     jldopen(joinpath(datadir, "dns_$(outfile_suffix).jld2"),"w") do f
         f["xs"] = xs
         f["ts"] = ts
