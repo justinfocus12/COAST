@@ -113,7 +113,7 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           1,
+                             "illustrate_map" =>           0,
                              "run_dns_valid" =>            0,
                              "plot_dns_valid" =>           0,
                              "run_dns_ancgen" =>           0,
@@ -122,7 +122,7 @@ function main(bpar_adj)
                              "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
                              "mix_conditional_tails" =>    0,
-                             "plot_moctails" =>            0,
+                             "plot_moctails" =>            1,
                              "plot_boosts" =>              0,
                             )
 
@@ -178,7 +178,7 @@ function main(bpar_adj)
         seed_dns_ancgen = 3827
         rng_dns_ancgen = Random.MersenneTwister(seed_dns_ancgen)
         x0 = Random.rand(rng_dns_ancgen, Float64, (1,))
-        simulate(x0, bpar.duration_spinup+bpar.duration_ancgen, rng_dns_ancgen, datadir, "ancgen")
+        simulate_save(x0, bpar.duration_spinup+bpar.duration_ancgen, rng_dns_ancgen, datadir, "ancgen")
     end
 
     if todo["plot_dns_valid"]

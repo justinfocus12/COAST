@@ -117,8 +117,9 @@ function boost_peaks(
                     #                ) .* ones(1)
                     # Kill all zeros past the 32nd 
                     X_init_dsc = float64_to_uint32(x_init_anc[1]) & (typemax(UInt32) << (32-perturbation_neglog))
-                    X_init_dsc = xor(X_init_dsc, pert_seq_uint32[i_dsc] >> perturbation_neglog)
+                    X_init_dsc = xor(X_init_dsc, pert_seq_uint32[i_dsc] >> perturbation_neglog) | true # put a zero in the last position if all zeros 
                     x_init_dsc = uint32_to_float64(X_init_dsc) .* ones(1)
+                    @infiltrate !(0<x_init_dsc[1]<1)
                     #@infiltrate
                     _, xs_dsc, ts_dsc = simulate_fun(x_init_dsc, ast+bst, rng) #, perturbation_neglog)
                     f[joinpath(anckey,astkey,"idsc$(i_dsc)","t_split")] = t_split
@@ -571,10 +572,11 @@ function plot_moctails(
     uncoast = perturbation_neglog - threshold_neglog # unconditionally optimal 
     alllosses = vcat(losses_moctail_astunif_kldiv_boot[uncoast,:,:][:], losses_moctail_coast_kldiv_boot[:], losses_valid_kldiv_boot[:])
     kllo,klhi = (func(filter(loss->(isfinite(loss)&(loss>1e-10)),alllosses)) for func=(minimum,maximum))
-    ylo = 0
-    yhi = ceil(Int64,klhi) + 0.5
+    klposlo = -xlogx(1/N_dsc)
+    ylo = -klposlo/2
+    yhi = round(log2(N_bin))
 
-    quantfun(arr,qua) = (arrpos = filter(ispos,arr); length(arrpos) == 0 ? NaN : quantile(arrpos,qua))
+    quantfun(arr,qua) = finitequantile(arr,qua) #(arrpos = filter(ispos,arr); length(arrpos) == 0 ? NaN : quantile(arrpos,qua))
     losses_astunif_lomidhi = [
                               [mapslices(arr->quantfun(arr,qua), losses_moctail_astunif_kldiv_boot[i_ast,:,:]; dims=1)[1,:] for qua=1/2 .+ confint_width.*[-1/2, 0, 1/2]]
                               for i_ast=1:N_ast
@@ -599,11 +601,14 @@ function plot_moctails(
     xtickvalues_C = xtickvalues_N.*mean_return_period
     xticklabels_N = scinot2.(xtickvalues_N)
     xticklabels_C = scinot2.(xtickvalues_C)
-    ytickvalues = unique(vcat(0, exp10.(round.(Int64, range(log10(kllo), log10(yhi); length=6))), N_bin_over))
-    yticklabels = scinot.(ytickvalues)
+    ytickvalues = [0,klposlo,1,yhi] #[0,sqrt(klposlo*yhi),yhi]
+    yticklabels = (y->@sprintf("%.1f",y)).(ytickvalues)
+    #ytickvalues = unique(vcat(0, exp10.(round.(Int64, range(log10(kllo), log10(yhi); length=6))), N_bin_over))
+    #yticklabels = scinot.(ytickvalues)
+    klyscale = Makie.Symlog10(klposlo)
 
-    ax_N = Axis(lout[1,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="𝑁", ylabel="KL divergence", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=Makie.Symlog10(2*kllo), limits=((1,Ns_anc_boot_valid[end]), (ylo,yhi)), xticks=(xtickvalues_N,xticklabels_N), yticks=(ytickvalues,yticklabels), titlealign=:left)
-    ax_C = Axis(lout[2,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="Cost", ylabel="KL divergence", xscale=log2, yscale=Makie.Symlog10(2*kllo), limits=((mean_return_period,max(Ns_anc_boot_valid[end]*mean_return_period, Ns_anc_boot[end]*(mean_return_period+N_dsc*asts[end]))), (ylo,yhi)), yticks=(ytickvalues,yticklabels), xticks=(xtickvalues_C,xticklabels_C), titlealign=:left, )
+    ax_N = Axis(lout[1,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="𝑁", ylabel="KL divergence", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=klyscale, limits=((1,Ns_anc_boot_valid[end]), (ylo,yhi)), xticks=(xtickvalues_N,xticklabels_N), yticks=(ytickvalues,yticklabels), titlealign=:left)
+    ax_C = Axis(lout[2,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="Cost", ylabel="KL divergence", xscale=log2, yscale=klyscale, limits=((mean_return_period,max(Ns_anc_boot_valid[end]*mean_return_period, Ns_anc_boot[end]*(mean_return_period+N_dsc*asts[end]))), (ylo,yhi)), yticks=(ytickvalues,yticklabels), xticks=(xtickvalues_C,xticklabels_C), titlealign=:left, )
     # all non-optimal uniform ASTs 
     for i_ast = 1:N_ast
         draw_bands!(ax_N, ax_C, 
@@ -767,11 +772,11 @@ function plot_moctails(
     # ------------ Row 4:  KL divergence ------
     # compute y-axis limits 
     loss_min_astunif,loss_max_astunif = (func(filter(isfinite, losses_moctail_astunif_kldiv_boot[:,:,i_boot_size])) for func=(minimum,maximum))
-    yhi = 2.0 * maximum(filter(isnonneg, [loss_max_astunif, loss_moctail_coast_kldiv]))
+    #yhi = 2.0 * maximum(filter(isnonneg, [loss_max_astunif, loss_moctail_coast_kldiv]))
     #klposlo = minimum(filter(ispos, vcat(losses_moctail_astunif_kldiv_boot[:,:,i_boot_size][:], losses_moctail_coast_kldiv_boot[:,i_boot_size])))
 
     klposlo = -xlogx(1/N_dsc)
-    ylo = -klposlo
+    ylo = -klposlo/2
     yhi = round(log2(N_bin))
     ytickvalues = [0,klposlo,1,yhi] #[0,sqrt(klposlo*yhi),yhi]
     yticklabels = (y->@sprintf("%.1f",y)).(ytickvalues)

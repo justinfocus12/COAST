@@ -7,7 +7,7 @@ function isnonneg(x)
 end
 
 function finitequantile(x,q)
-    return any(isfinite.(x)) ? quantile(x,q) : NaN
+    return any(isfinite.(x)) ? quantile(filter(isfinite,x),q) : NaN
 end
 
 function float64_to_uint32(X::Float64) 
