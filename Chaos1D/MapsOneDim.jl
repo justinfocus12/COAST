@@ -14,7 +14,7 @@ ornot(dt::DataType) = Union{Nothing,dt}
 
 function illustrate_map(x_init::Float64, F::Function, simulate_fun::Function, rng::Random.AbstractRNG, mapsymbol::String, statesymbol::String, mapname::String, plotdir::String, outfilename::String)
     T = 11
-    _, xs, ts = simulate([x_init,], T, rng, 33)
+    _, xs, ts = simulate([x_init,], T, rng, 32)
 
     xgrid = collect(range(0, 1; length=65)[1:end-1])
     pofx = compute_pdf_wholetruth.(xgrid[2:end-1])
@@ -117,7 +117,7 @@ function boost_peaks(
                     #                ) .* ones(1)
                     # Kill all zeros past the 32nd 
                     X_init_dsc = float64_to_uint32(x_init_anc[1]) & (typemax(UInt32) << (32-perturbation_neglog))
-                    X_init_dsc = xor(X_init_dsc, pert_seq_uint32[i_dsc] >> perturbation_neglog) | true # put a zero in the last position if all zeros 
+                    X_init_dsc = xor((X_init_dsc>>(32-perturbation_neglog))<<(32-perturbation_neglog), pert_seq_uint32[i_dsc] >> perturbation_neglog) | true # put a zero in the last position if all zeros 
                     x_init_dsc = uint32_to_float64(X_init_dsc) .* ones(1)
                     @infiltrate !(0<x_init_dsc[1]<1)
                     #@infiltrate

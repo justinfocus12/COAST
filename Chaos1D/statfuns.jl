@@ -36,15 +36,15 @@ end
 
 function van_der_corput_uint32(N)
     max_bit_length = floor(Int, 1+log2(N))
-    xs = zeros(UInt32, N)
+    Zs = zeros(UInt32, N)
     n = 2
     for bit_length = 1:max_bit_length
         for k = 1:(2^(bit_length-1))
-            (n<=N) && (xs[n] = UInt32(2*k-1)<<(32-bit_length))
+            (n<=N) && (Zs[n] = UInt32(2*k-1)<<(32-bit_length))
             n += 1
         end
     end
-    return xs
+    return Zs
 end
 
 function empirical_ccdf(x::Vector{<:Number})

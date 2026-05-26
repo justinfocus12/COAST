@@ -61,7 +61,8 @@ function perturb(X::Float32, perturbation_neglog::Integer, rng::Random.AbstractR
 end
 
 function perturb(Z::UInt32, perturbation_neglog::Integer, rng::Random.AbstractRNG)
-    return xor(Z, rand(rng, UInt32)>>perturbation_neglog)
+    #return xor(Z, rand(rng, UInt32)>>perturbation_neglog)
+    return xor((Z>>(32-perturbation_neglog))<<(32-perturbation_neglog), rand(rng, UInt32)>>perturbation_neglog)
 end
 
 function tentmap_derivative(x::Float64) 
@@ -77,7 +78,7 @@ function illustrate_map(plotdir::String)
 end
 
 
-function simulate(x_init::Vector{Float64}, duration::Int64, rng::Random.AbstractRNG, init_perturbation_neglog::Integer=33)
+function simulate(x_init::Vector{Float64}, duration::Int64, rng::Random.AbstractRNG, init_perturbation_neglog::Integer=32)
     Zs = zeros(UInt32, duration)
     X_init = x_init[1]
     if !(0<X_init<1)
@@ -110,17 +111,17 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           0,
-                             "run_dns_valid" =>            0,
-                             "plot_dns_valid" =>           0,
-                             "run_dns_ancgen" =>           0,
-                             "plot_dns_ancgen" =>          0,
-                             "analyze_peaks_valid" =>      0,
-                             "analyze_peaks_ancgen" =>     0,
-                             "boost_peaks" =>              0,
-                             "mix_conditional_tails" =>    0,
+                             "illustrate_map" =>           1,
+                             "run_dns_valid" =>            1,
+                             "plot_dns_valid" =>           1,
+                             "run_dns_ancgen" =>           1,
+                             "plot_dns_ancgen" =>          1,
+                             "analyze_peaks_valid" =>      1,
+                             "analyze_peaks_ancgen" =>     1,
+                             "boost_peaks" =>              1,
+                             "mix_conditional_tails" =>    1,
                              "plot_moctails" =>            1,
-                             "plot_boosts" =>              0,
+                             "plot_boosts" =>              1,
                             )
 
     overwrite_boosts = true
@@ -129,7 +130,7 @@ function main(bpar_adj)
     bpar = (; bpar_default..., bpar_adj...)
 
     # Set up folders and filenames 
-    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-25/1",strrep(bpar))
+    exptdir = joinpath("/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/Chaos1D","2026-05-26/1",strrep(bpar))
     datadir = joinpath(exptdir, "data")
     figdir = joinpath(exptdir, "figures")
     mkpath(exptdir)
