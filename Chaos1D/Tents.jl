@@ -55,7 +55,7 @@ function tentmap(Z::UInt32)
     return xor(Z<<1, msb*typemax(UInt32))
 end
 
-function perturb(X::Float32, perturbation_neglog::Integer, rng::Random.AbstractRNG)
+function perturb(X::Float64, perturbation_neglog::Integer, rng::Random.AbstractRNG)
     Z = perturb(float64_to_uint32(X), perturbation_neglog, rng)
     return uint32_to_float64(Z)
 end
@@ -111,17 +111,17 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           1,
-                             "run_dns_valid" =>            1,
-                             "plot_dns_valid" =>           1,
-                             "run_dns_ancgen" =>           1,
-                             "plot_dns_ancgen" =>          1,
-                             "analyze_peaks_valid" =>      1,
-                             "analyze_peaks_ancgen" =>     1,
-                             "boost_peaks" =>              1,
-                             "mix_conditional_tails" =>    1,
+                             "illustrate_map" =>           0,
+                             "run_dns_valid" =>            0,
+                             "plot_dns_valid" =>           0,
+                             "run_dns_ancgen" =>           0,
+                             "plot_dns_ancgen" =>          0,
+                             "analyze_peaks_valid" =>      0,
+                             "analyze_peaks_ancgen" =>     0,
+                             "boost_peaks" =>              0,
+                             "mix_conditional_tails" =>    0,
                              "plot_moctails" =>            1,
-                             "plot_boosts" =>              1,
+                             "plot_boosts" =>              0,
                             )
 
     overwrite_boosts = true

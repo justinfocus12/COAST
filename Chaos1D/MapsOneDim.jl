@@ -734,7 +734,7 @@ function plot_moctails(
                   color=astcols["XclEnt"], alpha=0.25
                  )
         end
-        scatterlines!(ax, (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth), bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=3, linestyle=(:dash,:dense), label=(isnothing(ccdf_peak_wholetruth) ? "Ground truth" : "Whole truth"), marker=:circle, markersize=10)
+        scatterlines!(ax, (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth), bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=1.5, linestyle=(:dash,:dense), label=(isnothing(ccdf_peak_wholetruth) ? "Ground truth" : "Whole truth"), marker=:cross, markersize=6)
         if i_ast == i_coast_mean
             legtitle = @sprintf("𝑁 = %d ancestors\nmedians & %d%% CIs\n(%d-ancestor bootstraps)", N_anc, round(Int,confint_width*100), Ns_anc_boot[i_boot_size], )
             Legend(lout[1,N_ast+1], ax, legtitle; theme_leg..., )
@@ -1029,9 +1029,10 @@ function mix_conditional_tails(
         first_decrease = findfirst(diff(thresholded_entropy[:,i_anc]) .< 0) 
         argmax_thrent = argmax(thresholded_entropy[:,i_anc]) 
         argmax_xclent = argmax(extreme_conditional_entropy[:,i_anc])
+        argmax_xclent_last = N_ast + 1 - argmax(reverse(extreme_conditional_entropy[:,i_anc]))
         argmin_xclent = argmin(extreme_conditional_entropy[:,i_anc])
         argmax_xclent_later = argmax(extreme_conditional_entropy[1:argmin_xclent,i_anc])
-        idx_coast[i_anc] = argmax_xclent
+        idx_coast[i_anc] = argmax_xclent_last
         # 
         # ---------------------------------------------------------
     end
