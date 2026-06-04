@@ -357,8 +357,8 @@ function plot_moctails(
 
     todo = Dict{String,Bool}(
                              "edtast" =>       1,
-                             "klconv" =>       1,
-                             "moctail" =>      1,
+                             "klconv" =>       0,
+                             "moctail" =>      0,
                             )
 
     # ----------------------------------------------------
@@ -484,8 +484,8 @@ function plot_moctails(
         coasts[i_anc] = asts[idx_coast[i_anc]]
         xs_prepeak_coast[i_anc] = xs_anc[1,ts_peak[i_anc]-ts_anc[1]+1-coasts[i_anc]]
         xs_prepeak_uncoast[i_anc] = xs_anc[1,ts_peak[i_anc]-ts_anc[1]+1-uncoast]
-        tidx_coast2peak = ts_peak[i_anc]-ts_anc[1]+1 .+ collect(range(-coasts[i_anc],0;step=1))
-        tidx_uncoast2peak = ts_peak[i_anc]-ts_anc[1]+1 .+ collect(range(-(uncoast),0;step=1))
+        tidx_coast2peak = ts_peak[i_anc]-ts_anc[1]+1 .+ collect(range(-coasts[i_anc],-1;step=1))
+        tidx_uncoast2peak = ts_peak[i_anc]-ts_anc[1]+1 .+ collect(range(-(uncoast),-1;step=1))
         ftles_prepeak_coast[i_anc] = mean(log2.(abs.(mapfun_derivative.(xs_anc[1,tidx_coast2peak]))))
         ftles_prepeak_uncoast[i_anc] = mean(log2.(abs.(mapfun_derivative.(xs_anc[1,tidx_uncoast2peak]))))
     end
@@ -494,50 +494,58 @@ function plot_moctails(
     N_ftle_unif_sample = 5000
     xs_unif_sample = xs_anc[1,1:(N_ftle_unif_sample*uncoast)]
     derivatives_unif_sample = log2.(abs.(mapfun_derivative.(xs_unif_sample)))
-    ftles_unif_sample = mean(reshape(derivatives_unif_sample, (uncoast,N_ftle_unif_sample)); dims=1)[1,:]
+    ftles_unif_sample = collect(map(t->mean(derivatives_unif_sample[t:t+uncoast-1]), 1:(N_ftle_unif_sample*uncoast-uncoast)))
+                                #mean(reshape(derivatives_unif_sample, (uncoast,N_ftle_unif_sample)); dims=1)[1,:]
     edts_unif_sample = 1 ./ ftles_unif_sample
-    xs_unif_sample_spaced = xs_unif_sample[1:uncoast:end]
+    xs_unif_sample_spaced = xs_unif_sample[1:N_ftle_unif_sample*uncoast-uncoast] #[1:uncoast:end]
+
 
     xlimits = (-0.05,1.05)
-    xticks = ([0,1/2,1],["0","½","1"])
+    xticks = ([0,1/2,1],["0","1/2","1"])
+    Rlimits = (bin_lower_edges[i_bin_thresh],1)
+    Rtickvalues = Rlimits[1] .+ [1/6,1/2,2/3].*(Rlimits[2]-Rlimits[1])
+    Rticklabels = scinot2near1.(Rtickvalues)
     asttickvalues = round.(Int64, range(1,asts[end];length=3))
     astticklabels = (A->@sprintf("%d",A)).(asttickvalues)
     astticks = (asttickvalues,astticklabels)
     edttickvalues = asttickvalues
     edtticklabels = astticklabels 
     edtticks = (edttickvalues,edtticklabels)
-    ftlelimits = map(qq->quantile(ftles_unif_sample,qq), (0.0,1.0))
+    ftlelimits = extrema(vcat(ftles_prepeak_coast,ftles_prepeak_uncoast,ftles_unif_sample))
+    ftletickvalues = sort(unique([ftlelimits[1],0,ftlelimits[2]]))
+    ftleticklabels = (t->@sprintf("%d",t)).(ftletickvalues)
+    ftleticks = (ftletickvalues,ftleticklabels)
     astlimits = (0,asts[end]+1/2)
-    edtlimits = (0,asts[end]+1/2) # error-doubling time limits 
+    edtlimits = nothing #(0,asts[end]+1/2) # error-doubling time limits 
     scatargs = (; markersize=2)
 
-    fig = Figure(size=(300,200).*1.2)
+    fig = Figure(size=(200,180).*1.5)
     lout = fig[1,1] = GridLayout()
-    ax11 = Axis(lout[1,1]; theme_ax..., limits=(xlimits,astlimits), xlabel=statesymbol, xticks=xticks, yticks=astticks, ylabel="AST 𝐴", title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), titlealign=:left, )
-    ax21 = Axis(lout[2,1]; theme_ax..., limits=(xlimits,astlimits), xlabel=statesymbol, xticks=xticks, yticks=astticks, ylabel="EDT")
-    ax12 = Axis(lout[1,2]; theme_ax..., limits=(edtlimits,astlimits), xticks=edtticks, yticks=astticks)
-    ax22 = Axis(lout[2,2]; theme_ax..., limits=(edtlimits,edtlimits), xticks=edtticks, yticks=edtticks, xlabel="EDT", ylabel="EDT")
+    ax11 = Axis(lout[1,1]; theme_ax..., limits=(xlimits,astlimits), xlabel=@sprintf("%s(𝑡*-𝐴ˣᶜ)", statesymbol), xticks=xticks, yticks=astticks, ylabel="AST 𝐴ˣᶜ", title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), titlealign=:left, )
+    ax21 = Axis(lout[2,1]; theme_ax..., limits=(xlimits,ftlelimits), xlabel=statesymbol, xticks=xticks, yticks=ftleticks, ylabel="FTLE")
+    ax12 = Axis(lout[1,2]; theme_ax..., limits=(ftlelimits,astlimits), xticks=ftleticks, yticks=astticks, xlabel="FTLE")
+    ax22 = Axis(lout[2,2]; theme_ax..., limits=(ftlelimits,ftlelimits), xticks=ftleticks, yticks=astticks, xlabel="FTLE", ylabel="FTLE")
 
     rowsize!(lout,1,Relative(1/2))
     colsize!(lout,2,Relative(100/300))
 
     scatter!(ax11, xs_prepeak_coast, coasts; color=astcols["XclEnt"], marker=:circle, markersize=4, label="𝐴=XclEnt-COAST")
-    scatter!(ax12, edts_prepeak_coast, coasts; color=astcols["XclEnt"], marker=:circle, markersize=4,label="𝐴=XclEnt-COAST")
+    scatter!(ax12, ftles_prepeak_coast, coasts; color=astcols["XclEnt"], marker=:circle, markersize=4,label="𝐴=XclEnt-COAST")
 
-    scatter!(ax21, xs_prepeak_coast, edts_prepeak_coast; color=astcols["XclEnt"], marker=:circle, markersize=4, label="τ=XclEnt-COAST")
-    scatter!(ax21, xs_prepeak_uncoast, edts_prepeak_uncoast; color=astcols["astunif"], marker=:circle, markersize=4, label="τ=𝐾−𝑀")
-    scatter!(ax21, xs_unif_sample_spaced, edts_unif_sample; color=:grey79, marker=:circle, markersize=2, label="τ=𝐾−𝑀\n𝑥∼𝑝")
+    scatter!(ax21, xs_prepeak_coast, ftles_prepeak_coast; color=astcols["XclEnt"], marker=:circle, markersize=4, label="τ=XclEnt-COAST")
+    scatter!(ax21, xs_prepeak_uncoast, ftles_prepeak_uncoast; color=astcols["astunif"], marker=:circle, markersize=4, label="τ=𝐾−𝑀")
+    scatter!(ax21, xs_unif_sample_spaced, ftles_unif_sample; color=:grey79, marker=:circle, markersize=2, label="τ=𝐾−𝑀\n𝑥∼𝑝")
 
 
     idx_long_coast = findall(coasts .> uncoast)
     idx_short_coast = findall(coasts .< uncoast)
     idx_mid_coast = findall(coasts .== uncoast)
     for (idx,color,comparator) = ((idx_short_coast,astcols["astunif"],"<"),(idx_mid_coast,"black","="),(idx_long_coast,astcols["XclEnt"],">"))
-        length(idx)>0 && scatter!(ax22, edts_prepeak_coast[idx], edts_prepeak_uncoast[idx]; color=color, marker=:circle, markersize=4, label=" $(comparator) 𝐾 − 𝑀")
+        length(idx)>0 && scatter!(ax22, ftles_prepeak_coast[idx], ftles_prepeak_uncoast[idx]; color=color, marker=:circle, markersize=4, label=" $(comparator) 𝐾 − 𝑀")
     end
 
     for ax=(ax11,ax12)
-        ax.xlabelvisible = ax.xticklabelsvisible = false
+        ax.xlabelvisible = ax.xticklabelsvisible = true
         hlines!(ax,uncoast; color=astcols["astunif"], linewidth=0.5, label="𝐴=𝐾−𝑀")
     end
     for ax=(ax12,ax22)
@@ -553,10 +561,10 @@ function plot_moctails(
     #leg22 = Legend(lout[3,2], ax22, "XclEnt-\nCOAST:"; theme_leg..., markersize=50, rowgap=0)
 
 
-    colgap!(lout,1,10)
-    rowgap!(lout,1,10)
+    colgap!(lout,1,0)
+    rowgap!(lout,1,15)
     linkyaxes!(ax11,ax12)
-    linkyaxes!(ax21,ax22)
+    #linkyaxes!(ax21,ax22)
     linkxaxes!(ax11,ax21)
     linkxaxes!(ax12,ax22)
     save(joinpath(figdir,"coast_state_dependence.png"), fig)
@@ -627,7 +635,7 @@ function plot_moctails(
     # Validation 
     draw_bands!(ax_N, ax_C, 
                 Ns_anc_boot_valid, mean_return_period, 
-                losses_valid_lomidhi, astcols["valid"],  "Long DNS"; alpha=0.5)
+                losses_valid_lomidhi, astcols["valid"],  "SiMC"; alpha=0.5)
     # Ancestors only 
     draw_bands!(ax_N, ax_C,
                Ns_anc_boot, mean_return_period,
@@ -654,7 +662,7 @@ function plot_moctails(
     xlimits = [minimum(filter(ispos, isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth))/2, 1]
     i_coast_mean = round(Int64,mean(idx_coast))
     # which bootstrap to use
-    i_boot_size = div(length(Ns_anc_boot),2)
+    i_boot_size = 2 #div(length(Ns_anc_boot),2)
     (ccdfs_anconly_boot_lomidhi,
      ccdfs_moctail_coast_boot_lomidhi,
     ) = map(

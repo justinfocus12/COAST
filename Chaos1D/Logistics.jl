@@ -57,6 +57,12 @@ function logisticmap(Z::UInt32)
     return UInt32(V >> 30)
 end
 
+function show_perturbation_effect(x::Float64, dx::Float64)
+    X = float64_to_uint32(x)
+    Y = logisticmap(X)
+    z1 = uint32_to_float64(x) 
+end
+
 
 function perturb(X::Float64, perturbation_neglog::Integer, rng::Random.AbstractRNG)
     Z = perturb(float64_to_uint32(X), perturbation_neglog, rng)
