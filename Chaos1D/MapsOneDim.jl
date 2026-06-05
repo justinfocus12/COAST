@@ -3,7 +3,7 @@ import StatsBase as SB
 using Statistics: mean, quantile
 using Printf: @sprintf
 using JLD2: jldopen, jldsave
-#using Infiltrator: @infiltrate
+using Infiltrator: @infiltrate
 using LogExpFunctions: xlogx, xlogy
 using CairoMakie
 
@@ -687,16 +687,20 @@ function plot_moctails(
             0.5 .+ confint_width.*[-1/2,0,1/2]
            )
 
-    ytickvalues = bin_edges[[i_bin_thresh, div(i_bin_thresh+N_bin,2), N_bin]] #,yticklabels = let
-    yticklabels = scinot2near1.(ytickvalues) 
-    ylimits = let
+    ylo,ymid,yhi = let
         ylohi = bin_edges[[i_bin_thresh,N_bin]]
         ylohi .= nlg1m.(ylohi)
         ymid = mean(ylohi)
         padding = 0.1
         ylohi .= (1+padding) .* ylohi .- padding*ymid
-        nlg1m_inv.(ylohi)
+        ylo = floor(Int64,ylohi[1])
+        yhi = ceil(Int64,ylohi[2])
+        ymid = div(ylo+yhi,2)
+        nlg1m_inv.((ylo,ymid,yhi))
     end
+    ylimits = (ylo,yhi)
+    ytickvalues = unique([ylo,ymid,yhi])
+    yticklabels = scinot2near1.(ytickvalues) 
 
     theme_ax = (; 
                 xgridvisible=false, ygridvisible=false, 

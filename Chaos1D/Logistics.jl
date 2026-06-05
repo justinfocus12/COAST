@@ -3,6 +3,7 @@ module Logistics
 import Random
 import StatsBase as SB
 using Printf: @sprintf
+using Infiltrator: @infiltrate
 using JLD2: jldopen
 using CairoMakie
 
@@ -26,7 +27,7 @@ function BoostParams()
             ast_max = 12,
             bst = 2,
             num_descendants = 16,
-            latentize_bins = false,
+            latentize_bins = true,
             bin_width_neglog = 13,
            )
 end
