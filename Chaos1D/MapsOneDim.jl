@@ -3,7 +3,7 @@ import StatsBase as SB
 using Statistics: mean, quantile
 using Printf: @sprintf
 using JLD2: jldopen, jldsave
-using Infiltrator: @infiltrate
+#using Infiltrator: @infiltrate
 using LogExpFunctions: xlogx, xlogy
 using CairoMakie
 
@@ -119,7 +119,6 @@ function boost_peaks(
                     X_init_dsc = float64_to_uint32(x_init_anc[1]) & (typemax(UInt32) << (32-perturbation_neglog))
                     X_init_dsc = xor((X_init_dsc>>(32-perturbation_neglog))<<(32-perturbation_neglog), pert_seq_uint32[i_dsc] >> perturbation_neglog) | true # put a zero in the last position if all zeros 
                     x_init_dsc = uint32_to_float64(X_init_dsc) .* ones(1)
-                    @infiltrate !(0<x_init_dsc[1]<1)
                     #@infiltrate
                     _, xs_dsc, ts_dsc = simulate_fun(x_init_dsc, ast+bst, rng) #, perturbation_neglog)
                     f[joinpath(anckey,astkey,"idsc$(i_dsc)","t_split")] = t_split
@@ -357,8 +356,8 @@ function plot_moctails(
 
     todo = Dict{String,Bool}(
                              "edtast" =>       1,
-                             "klconv" =>       0,
-                             "moctail" =>      0,
+                             "klconv" =>       1,
+                             "moctail" =>      1,
                             )
 
     # ----------------------------------------------------
@@ -662,7 +661,7 @@ function plot_moctails(
     xlimits = [minimum(filter(ispos, isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth))/2, 1]
     i_coast_mean = round(Int64,mean(idx_coast))
     # which bootstrap to use
-    i_boot_size = 2 #div(length(Ns_anc_boot),2)
+    i_boot_size = div(length(Ns_anc_boot),2)
     (ccdfs_anconly_boot_lomidhi,
      ccdfs_moctail_coast_boot_lomidhi,
     ) = map(
