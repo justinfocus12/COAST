@@ -1,0 +1,11 @@
+[
+deps
+]
+Random
+StatsBase
+Statistics
+Printf
+JLD2
+LogExpFunctions
+CairoMakie
+
