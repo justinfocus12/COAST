@@ -183,7 +183,7 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
     end
     simlength = length(ts)-duration_spinup
     log2simlength = round(Int, log2(simlength))
-    lines!(ax_hist_Rs, hist_Rs.weights[bins2plot], bin_centers_Rs[bins2plot]; color=:black, label=@sprintf("DNS\n%.1f×%s", simlength/2^log2simlength, poweroftwostring(log2simlength)))
+    lines!(ax_hist_Rs, hist_Rs.weights[bins2plot], bin_centers_Rs[bins2plot]; color=:black, label=@sprintf("SiMC\n%.1f×%s", simlength/2^log2simlength, poweroftwostring(log2simlength)))
     for ax = (ax_Rs,ax_hist_Rs)
         hlines!(ax, thresh; color=:black, linewidth=1, linestyle=(:dash,:dense), label=@sprintf("Thresh\n1-2%s", supscr(-round(Int64,nlg1m(thresh)))))
     end
@@ -1153,7 +1153,7 @@ function mix_conditional_tails(
         end
     end
 
-    # TODO compute costs, and make an equal-cost DNS estimator 
+    # TODO compute costs, and make an equal-cost SiMC estimator 
 
     # Save results to file 
 
