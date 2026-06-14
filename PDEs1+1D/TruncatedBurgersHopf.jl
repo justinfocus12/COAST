@@ -1,4 +1,8 @@
 using Printf: @sprintf
+using CairoMakie
+import Random
+using JLD2: jldopen
+using Infiltrator: @infiltrate
 
 function tendency!(dt_u_s, usq_s, u_s, kmax)
     usq_s .= 0
@@ -39,25 +43,14 @@ function timestep_rk4!(
     return
 end
 
-function integrate_tbh()
+function integrate_tbh(u_init, t_init, dt, Nt)
     NF = Float64
     # Simulate the Truncated Burgers-Hopf dynamics, which is a truncation of 
     # u_t + u*u_x = 0
     # to a finite number of Fourier modes. Don't even do FFT on this simplest of demos. 
-    # ----------------- Parameters ------------------
-    kmax = 16 # maximum wavenumber to retain 
-    ks = collect(0:1:kmax)
-    # ----------------- Initial conditions ----------
-    init_wavenumbers = [1,2,4,8]
-    init_amplitudes = [0.5,0.3,0.1,0.05]
-    # ----------------- Simulation parameters -------
-    dt = 0.01
-    Nt = 1000
-    Lx = 3.8 # domain width 
-    Nx = 128
     # ----------------- Allocate arrays -------------
-    uhist = zeros(Complex{NF}, (kmax+1, Nt)) # u in spectral space 
     # scratch space for RK4
+    kmax = length(u_init) - 1
     (
      u_old,u_new,
      dt_u,usq,
@@ -65,12 +58,10 @@ function integrate_tbh()
      urk1,urk2,urk3,urk4,
      dturk1,dturk2,dturk3,dturk4
     ) = ntuple(_->zeros(Complex{NF}, (kmax+1,)), 12)
-    # ----------------- Initialize ------------------
-    for (ik,k) in enumerate(init_wavenumbers)
-        uhist[1+k,1] = init_amplitudes[ik]
-    end
-    # ----------------- Integrate -------------------
-    u_old .= uhist[:,1]
+    uhist = zeros(Complex{NF}, (kmax+1, Nt)) # u in spectral space 
+    thist = t_init .+ (0:Nt-1).*dt
+    # ------- Initialize -------
+    u_old .= u_init
     for it = 2:Nt
         timestep_rk4!(u_new,
                       urk1,urk2,urk3,urk4,
@@ -83,7 +74,106 @@ function integrate_tbh()
         uhist[:,it] .= u_new
         u_old .= u_new
     end
-    return uhist
+    return uhist, thist
 end
 
-function plot_tbh
+function spec2grid(u::Vector{<:Complex{NF}}, Nx::Integer) where NF
+    kmax = length(u) - 1
+    ug = zeros(NF, Nx)
+    ug .+= u[1]
+    xs = collect(range(0, 2pi; length=Nx))
+    for k = 1:kmax
+        ug .+= 2 * real.(u[k+1] .* exp.(1im .* k .* xs))
+    end
+    return ug
+end
+
+function spec2grid(uhist::Matrix{<:Complex{NF}}, Nx::Integer) where NF
+    return mapslices(u->spec2grid(u,Nx), uhist; dims=1) 
+end
+
+function theme_ax()
+    thmax = (;
+             xlabelsize=10, ylabelsize=10, titlesize=12,
+             xticklabelsize=8, yticklabelsize=8, 
+             xlabelfont="Menlo", xticklabelfont="Menlo", ylabelfont="Menlo", yticklabelfont="Menlo", titlefont="Menlo",
+             xgridvisible=false, ygridvisible=false,
+            )
+    return thmax
+end
+
+    
+
+function plot_tbh(uhist, t0, dt)
+    Nk,Nt = size(uhist)
+    Nx = 251
+    ughist = spec2grid(uhist, Nx)
+    uglimits = [-1,1].*maximum(abs.(ughist))
+    Rlimits = uglimits
+    xs = collect(range(0, 2pi; length=Nx))
+    ts = t0 .+ dt.*collect(0:Nt-1)
+
+    # Trace out an observable 
+    x_target = pi
+    ix = argmin(abs.(xs .- x_target)) # location where the observable is measured 
+    Roft = ughist[ix,:]
+
+
+    thmax = theme_ax()
+    xlimits = (0, 2pi)
+    tlimits = (ts[1], ts[end])
+    fig = Figure(size=(400,300))
+    lout = fig[1,1] = GridLayout()
+
+    axhov = Axis(lout[1,1]; thmax..., xticklabelsvisible=false, ylabel="𝑥", yticks=([0,pi,2pi], ["0","π", "2π"]), limits=(tlimits,xlimits), title="𝑢(𝑥,𝑡)")
+    heatmap!(axhov, ts, xs, ughist'; colormap=:coolwarm, colorrange=uglimits)
+    hlines!(axhov, xs[ix]; color=:black, linestyle=(:dash,:dense))
+
+    Rtickvalues = [Rlimits[1], 0, Rlimits[2]]
+    Rticklabels = (u->@sprintf("%.1f", u)).(Rtickvalues)
+    axRoft = Axis(lout[2,1]; thmax..., title="𝑅(𝑡)", yticklabelsvisible=false, ylabelvisible=false, limits=(tuple(Rlimits...), tlimits), xticks=(Rtickvalues, Rticklabels), xticklabelrotation=-pi/2)
+    lines!(axRoft, Roft, ts; color=:black)
+
+
+
+    linkyaxes!(axhov, axRoft)
+    colsize!(lout, 1, Relative(4/5))
+    colgap!(lout, 1, 10)
+
+    save("ughist.png", fig)
+end
+
+function main()
+    # ---------------- Output directories -----------
+    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-14/1"
+    mkpath(dirout_base)
+    dirout_data = joinpath(dirout_base, "data")
+    dirout_plot = joinpath(dirout_base, "plot")
+    mkpath.([dirout_data,dirout_plot])
+    # ----------------- Parameters ------------------
+    kmax = 16 # maximum wavenumber to retain 
+    ks = collect(0:1:kmax)
+    # ----------------- Simulation parameters -------
+    dt = 0.01
+    # -----------------------------------------------
+    # ----------------- spinup --------------
+    rng = Random.MersenneTwister(48401)
+    init_wavenumbers = [1,2,4,8]
+    init_amplitudes = [0.5,0.3,0.1,0.05]
+    init_phases = 2pi .* rand(rng, Float64, length(init_amplitudes)) 
+    u_init = zeros(ComplexF64, (kmax+1,))
+    for ik = 1:length(init_wavenumbers)
+        u_init[init_wavenumbers[ik]+1] = init_amplitudes[ik] * exp(1im * init_phases[ik])
+    end
+    t_init = 0.0
+    Nt_spinup = round(Int64, 5/dt)
+    uhist_spinup,thist_spinup = integrate_tbh(u_init, t_init, dt, Nt_spinup)
+    jldopen(joinpath(dirout_data,"spinup.jld2"), "w") do f
+        f["uhist"] = uhist_spinup
+        f["thist"] = thist_spinup
+    end
+end
+
+main()
+
+
