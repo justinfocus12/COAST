@@ -3,6 +3,7 @@ using CairoMakie
 import Random
 using JLD2: jldopen
 using Infiltrator: @infiltrate
+using Statistics: quantile, median, mean
 
 function tendency!(dtu, usq, u, kmax)
     usq .= 0
@@ -34,6 +35,60 @@ function read_history(filename::String)
         f["uhist"], f["thist"]
     end
     return uhist,thist
+end
+
+function compute_peaks_over_threshold(Rhist::Vector{NF}, excprob::Real, buffer::Integer) where NF<:Real
+    Nt = length(Rhist)
+    Rspeak = Vector{NF}([])
+    itspeak = Vector{Integer}([])
+    threshold = quantile(Rhist, 1-excprob)
+    itprecluster = 0
+    incluster = false
+    valley_length = 0
+    for it = 1:Nt
+        if Rhist[it] > threshold
+            if !incluster
+                itprecluster = it - 1
+            end
+            incluster = true 
+            valley_length = 0
+        else
+            valley_length += 1
+            if valley_length > buffer
+                if incluster
+                    itpeaknew = itprecluster + argmax(Rhist[itprecluster+1:it])
+                    push!(itspeak, itpeaknew)
+                    push!(Rspeak, Rhist[itpeaknew])
+                end
+                incluster = false
+            end
+        end
+    end
+    return threshold, Rspeak, itspeak
+end
+
+function compute_extreme_statistics(Rfile::String, Rpeakfile::String, threshold::NFr, buffer::NFt) where {NFr<:Real,NFt<:Real}
+    Rhist,thist = jldopen(Rfile,"r") do f
+        return f["Rhist"], f["thist"]
+    end
+    dt = thist[2] - thist[1]
+    buffer_integer = round(Int64, buffer/dt)
+    threshold,Rspeak,itspeak = compute_peaks_over_threshold(Rhist, threshold, buffer)
+    jldopen(Rpeakfile,"w") do f
+        f["thist"] = thist
+        f["threshold"] = threshold
+        f["Rspeak"] = Rspeak
+        f["itspeak"] = itspeak
+    end
+
+function compute_intensity(ufile::String, Rfile::String)
+    uhist,thist = read_history(ufile)
+    Rhist = intensity(uhist)
+    jldopen(Rfile, "w") do f
+        f["Rhist"] = Rhist_spinon
+        f["thist"] = thist_spinon
+    end
+    return
 end
 
 function timestep_rk4!(
@@ -132,7 +187,7 @@ function intensity(uhist::Matrix,x::NF=pi) where NF <: Real
     return mapslices(u->intensity(u,x), uhist; dims=1)[1,:]
 end
 
-function plot_tbh_trace_pdf(uhist, thist, tspan_plot, outfilename; Rbins::Union{Vector,Nothing}=nothing)
+function plot_tbh_trace_pdf(uhist, thist, tspan_plot_timeseries, tspan_plot_peaks, threshold, outfilename; Rbins::Union{Vector,Nothing}=nothing)
     # Plot a limited-time trace of the observable
     Rhist = intensity(uhist)
     if isnothing(Rbins)
@@ -146,13 +201,15 @@ function plot_tbh_trace_pdf(uhist, thist, tspan_plot, outfilename; Rbins::Union{
     ccdf_counts = sum(Rhist .> Rbineds'; dims=1)[1,:]
     @assert ccdf_counts[end] == 0
     ccdf = ccdf_counts./ccdf_counts[1]
+    ccdfmin = minimum(filter(c->c>0, ccdf))
     pdf = (ccdf[1:end-1] .- ccdf[2:end]) ./ diff(Rbineds)
+    pdfmin = (ccdf[1:end-1] .- ccdf[2:end]) ./ diff(Rbineds)
     
-    itfirst = searchsortedfirst(thist, tspan_plot[1])
-    itlast = searchsortedlast(thist, tspan_plot[2])
+    itfirst_timeseries = searchsortedfirst(thist, tspan_plot_timeseries[1])
+    itlast_timeseries = searchsortedlast(thist, tspan_plot_timeseries[2])
+    itfirst_peaks = searchsortedfirst(thist, tspan_plot_peaks[1])
+    itlast_peaks = searchsortedlast(thist, tspan_plot_peaks[2])
 
-    excprob = 0.1
-    threshold = Rbineds[findlast(ccdf .> excprob)]
     ccdfmin = minimum(filter(c->c>0, ccdf))
     @show threshold
 
@@ -160,18 +217,18 @@ function plot_tbh_trace_pdf(uhist, thist, tspan_plot, outfilename; Rbins::Union{
     fig = Figure(size=(400,500))
     lout = fig[1,1] = GridLayout()
 
-    ax1 = Axis(lout[1,1]; thmax..., limits=((tspan_plot[1],tspan_plot[end]),(Rmin,Rmax)), xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))")
-    lines!(ax1, thist[itfirst:itlast], Rhist[itfirst:itlast]; color=:black)
+    ax1 = Axis(lout[1,1]; thmax..., limits=((tspan_plot_timeseries[1],tspan_plot_timeseries[2]),(Rmin,Rmax)), xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))")
+    lines!(ax1, thist[itfirst_timeseries:itlast_timeseries], Rhist[itfirst_timeseries:itlast_timeseries]; color=:black)
 
-    ax2 = Axis(lout[1,2]; thmax..., title="PDF", ylabelvisible=false, yticklabelsvisible=false, xscale=log10)
+    ax2 = Axis(lout[1,2]; thmax..., title="PDF", ylabelvisible=false, yticklabelsvisible=false, xscale=log10, xticklabelrotation=-pi/2)
     lines!(ax2, replace(pdf, 0=>NaN), Rbinmids; color=:black)
 
-    ax3 = Axis(lout[2,1]; thmax..., limits=((thist[1],thist[end]),(threshold,Rmax)), xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))")
-    scatter!(ax3, thist, Rhist; color=:black, markersize=2)
+    ax3 = Axis(lout[2,1]; thmax..., limits=((tspan_plot_peaks[1],tspan_plot_peaks[2]),(threshold,Rmax)), xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))")
+    scatter!(ax3, thist[itfirst_peaks:itlast_peaks], Rhist[itfirst_peaks:itlast_peaks]; color=:black, markersize=2)
 
-    ax4 = Axis(lout[2,2]; thmax..., limits=((ccdfmin,excprob),(threshold,Rmax)), title="CCDF", ylabelvisible=false, yticklabelsvisible=false, xscale=log10)
+    ax4 = Axis(lout[2,2]; thmax..., limits=((ccdfmin/2,excprob),(threshold,Rmax)), title="CCDF", ylabelvisible=false, yticklabelsvisible=false, xscale=log10, xticklabelrotation=-pi/2, xticks=(xticklabels=[ccdfmin,(ccdfmin+excprob)/2,excprob]; (xticklabels,(x->@sprintf("%.0E", x)).(xticklabels))))
     lines!(ax4, replace(ccdf, 0=>NaN), Rbineds; color=:black)
-
+e
     linkyaxes!(ax1,ax2)
     linkyaxes!(ax3,ax4)
     colsize!(lout, 1, Relative(4/5))
@@ -218,12 +275,13 @@ end
 
 function main()
     todo = Dict{String,Bool}(
-                             "spinup" =>           0,
-                             "plot_spinup" =>      0,
-                             "spinon" =>           0,
+                             "spinup" =>           1,
+                             "plot_spinup" =>      1,
+                             "spinon" =>           1,
+                             "potspinon" =>        1,
                              "plot_spinon" =>      1,
-                             "spinoff" =>          0,
-                             "plot_spinoffs" =>    0,
+                             "spinoff" =>          1,
+                             "plot_spinoffs" =>    1,
                             )
     # ---------------- Output directories -----------
     dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-14/1"
@@ -241,6 +299,8 @@ function main()
     duration_spinon = 200.0 
     duration_spinoff = 6.0 
     N_dsc = 3
+    # ------------- Target parameters -----------
+    excprob = 0.01
     # ----------------- spinup --------------
     if todo["spinup"]
         rng = Random.MersenneTwister(48401)
@@ -260,7 +320,6 @@ function main()
     if todo["plot_spinup"]
         uhist,thist = read_history(joinpath(dirout_data,"spinup.jld2"))
         plot_tbh_hov_trace(uhist, thist, joinpath(dirout_plot, "spinup.png"))
-        plot_tbh_trace_pdf(uhist, thist, [thist[1],thist[end]], joinpath(dirout_plot, "Rhist_spinup.png"))
     end
     if todo["spinon"]
         uhist_spinup,thist_spinup = read_history(joinpath(dirout_data,"spinup.jld2"))
@@ -270,10 +329,16 @@ function main()
         uhist_spinon,thist_spinon = integrate_tbh(u_init, t_init, dt, Nt_spinon)
         write_history(uhist_spinon,thist_spinon,joinpath(dirout_data,"spinon.jld2"))
     end
+    if todo["compute_intensity_spinon"]
+        compute_intensity(joinpath(dirout_data,"spinon.jld2"), joinpath(dirout_data,"spinonR.jld2"))
+    end
+    if todo["potspinon"]
+        compute_extreme_statistics(joinpath.(dirout_data, ["spinonR.jld2","spinonextstats.jld2"])..., excprob, buffer)
+    end
     if todo["plot_spinon"]
         uhist,thist = read_history(joinpath(dirout_data,"spinon.jld2"))
         plot_tbh_hov_trace(uhist, thist, joinpath(dirout_plot, "spinon.png"))
-        plot_tbh_trace_pdf(uhist, thist, [thist[1],thist[end]], joinpath(dirout_plot, "Rhist_spinon.png"))
+        plot_tbh_trace_pdf(uhist, thist, [thist[1],thist[1]+30], [thist[1],thist[end]], joinpath(dirout_plot, "Rhist_spinon.png"))
     end
 
     if todo["spinoff"]
