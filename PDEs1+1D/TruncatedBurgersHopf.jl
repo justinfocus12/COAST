@@ -22,6 +22,20 @@ function tendency!(dtu, usq, u, kmax)
     return
 end
 
+function write_history(uhist::Matrix,thist::Vector,filename::String)
+    jldopen(filename,"w") do f
+        f["uhist"] = uhist
+        f["thist"] = thist
+    end
+    return 
+end
+function read_history(filename::String)
+    uhist,thist= jldopen(filename,"r") do f
+        f["uhist"], f["thist"]
+    end
+    return uhist,thist
+end
+
 function timestep_rk4!(
         u_new, # final output
         urk1,urk2,urk3,urk4, # arguments to tendency!
@@ -59,9 +73,10 @@ function integrate_tbh(u_init, t_init, dt, Nt)
      dturk1,dturk2,dturk3,dturk4
     ) = ntuple(_->zeros(Complex{NF}, (kmax+1,)), 11)
     uhist = zeros(Complex{NF}, (kmax+1, Nt)) # u in spectral space 
-    thist = t_init .+ (0:Nt-1).*dt
+    thist = collect(t_init .+ (0:Nt-1).*dt)
     # ------- Initialize -------
     u_old .= u_init
+    uhist[:,1] .= u_init
     for it = 2:Nt
         timestep_rk4!(u_new,
                       urk1,urk2,urk3,urk4,
@@ -101,8 +116,71 @@ function theme_ax()
             )
     return thmax
 end
+function padbounds(v::Vector{NF},padfrac::Real) where NF <: Real
+    vmin,vmax = extrema(v)
+    vrange = vmax - vmin
+    vmin -= padfrac*vrange
+    vmax += padfrac*vrange
+    return (vmin,vmax)
+end
 
+function intensity(u::Vector,x::NF=pi) where NF <: Real
+    kmax = length(u)-1
+    return sum(2*real(u[1]) .+ real.(u[2:kmax+1] .* exp.(1im .* (1:kmax) .* x)))
+end
+function intensity(uhist::Matrix,x::NF=pi) where NF <: Real
+    return mapslices(u->intensity(u,x), uhist; dims=1)[1,:]
+end
+
+function plot_tbh_trace_pdf(uhist, thist, tspan_plot, outfilename; Rbins::Union{Vector,Nothing}=nothing)
+    # Plot a limited-time trace of the observable
+    Rhist = intensity(uhist)
+    if isnothing(Rbins)
+        Rmin,Rmax = padbounds(Rhist,0.01)
+        Rmin,Rmax = extrema(Rhist)
+        Rbineds = collect(range(Rmin, Rmax; length=31))
+    end
+    Rbinlos = Rbineds[1:end-1]
+    Rbinmids = (Rbineds[1:end-1] .+ Rbineds[2:end])./2
+    Nbin = length(Rbinlos)
+    ccdf_counts = sum(Rhist .> Rbineds'; dims=1)[1,:]
+    @assert ccdf_counts[end] == 0
+    ccdf = ccdf_counts./ccdf_counts[1]
+    pdf = (ccdf[1:end-1] .- ccdf[2:end]) ./ diff(Rbineds)
     
+    itfirst = searchsortedfirst(thist, tspan_plot[1])
+    itlast = searchsortedlast(thist, tspan_plot[2])
+
+    excprob = 0.1
+    threshold = Rbineds[findlast(ccdf .> excprob)]
+    ccdfmin = minimum(filter(c->c>0, ccdf))
+    @show threshold
+
+    thmax = theme_ax()
+    fig = Figure(size=(400,500))
+    lout = fig[1,1] = GridLayout()
+
+    ax1 = Axis(lout[1,1]; thmax..., limits=((tspan_plot[1],tspan_plot[end]),(Rmin,Rmax)), xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))")
+    lines!(ax1, thist[itfirst:itlast], Rhist[itfirst:itlast]; color=:black)
+
+    ax2 = Axis(lout[1,2]; thmax..., title="PDF", ylabelvisible=false, yticklabelsvisible=false, xscale=log10)
+    lines!(ax2, replace(pdf, 0=>NaN), Rbinmids; color=:black)
+
+    ax3 = Axis(lout[2,1]; thmax..., limits=((thist[1],thist[end]),(threshold,Rmax)), xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))")
+    scatter!(ax3, thist, Rhist; color=:black, markersize=2)
+
+    ax4 = Axis(lout[2,2]; thmax..., limits=((ccdfmin,excprob),(threshold,Rmax)), title="CCDF", ylabelvisible=false, yticklabelsvisible=false, xscale=log10)
+    lines!(ax4, replace(ccdf, 0=>NaN), Rbineds; color=:black)
+
+    linkyaxes!(ax1,ax2)
+    linkyaxes!(ax3,ax4)
+    colsize!(lout, 1, Relative(4/5))
+    colgap!(lout, 1, 0)
+
+    save(outfilename, fig)
+end
+    
+
 
 function plot_tbh_hov_trace(uhist, thist, outfilename)
     Nk,Nt = size(uhist)
@@ -140,8 +218,12 @@ end
 
 function main()
     todo = Dict{String,Bool}(
-                             "spinup" =>           1,
-                             "plot_spinup" =>      1,
+                             "spinup" =>           0,
+                             "plot_spinup" =>      0,
+                             "spinon" =>           0,
+                             "plot_spinon" =>      1,
+                             "spinoff" =>          0,
+                             "plot_spinoffs" =>    0,
                             )
     # ---------------- Output directories -----------
     dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-14/1"
@@ -156,7 +238,9 @@ function main()
     dt = 0.01
     # ----------------- Ensemble parameters ---------
     duration_spinup = 15.0
-    duration_spinon = 6.0 
+    duration_spinon = 200.0 
+    duration_spinoff = 6.0 
+    N_dsc = 3
     # ----------------- spinup --------------
     if todo["spinup"]
         rng = Random.MersenneTwister(48401)
@@ -169,26 +253,53 @@ function main()
         end
         u_init[1] = 1/3 
         t_init = 0.0
-        Nt_spinup = round(Int64, duration_spinup/dt)
+        Nt_spinup = round(Int64, duration_spinup/dt) + 1
         uhist_spinup,thist_spinup = integrate_tbh(u_init, t_init, dt, Nt_spinup)
-        jldopen(joinpath(dirout_data,"spinup.jld2"), "w") do f
-            f["uhist"] = uhist_spinup
-            f["thist"] = thist_spinup
-        end
+        write_history(uhist_spinup,thist_spinup,joinpath(dirout_data,"spinup.jld2"))
     end
     if todo["plot_spinup"]
-        uhist,thist = jldopen(joinpath(dirout_data,"spinup.jld2"),"r") do f
-            f["uhist"], f["thist"]
-        end
+        uhist,thist = read_history(joinpath(dirout_data,"spinup.jld2"))
         plot_tbh_hov_trace(uhist, thist, joinpath(dirout_plot, "spinup.png"))
+        plot_tbh_trace_pdf(uhist, thist, [thist[1],thist[end]], joinpath(dirout_plot, "Rhist_spinup.png"))
+    end
+    if todo["spinon"]
+        uhist_spinup,thist_spinup = read_history(joinpath(dirout_data,"spinup.jld2"))
+        u_init = uhist_spinup[:,end]
+        t_init = thist_spinup[end]
+        Nt_spinon = round(Int64, duration_spinon/dt) + 1
+        uhist_spinon,thist_spinon = integrate_tbh(u_init, t_init, dt, Nt_spinon)
+        write_history(uhist_spinon,thist_spinon,joinpath(dirout_data,"spinon.jld2"))
+    end
+    if todo["plot_spinon"]
+        uhist,thist = read_history(joinpath(dirout_data,"spinon.jld2"))
+        plot_tbh_hov_trace(uhist, thist, joinpath(dirout_plot, "spinon.png"))
+        plot_tbh_trace_pdf(uhist, thist, [thist[1],thist[end]], joinpath(dirout_plot, "Rhist_spinon.png"))
     end
 
-    #if todo["spinoff"]
-    #    u_init = uhist[:,end]
-    #end
-    return uhist, thist
+    if todo["spinoff"]
+        Nt_spinoff = round(Int64, duration_spinoff/dt) + 1
+        rng = Random.MersenneTwister(90193)
+        uhist_spinon,thist_spinon = read_history(joinpath(dirout_data,"spinon.jld2"))
+        for i_dsc = 1:N_dsc
+            phase_shift = rand(rng, Float64, kmax) .* (2pi/10)
+            u_init = uhist_spinon[:,end] 
+            u_init[2:kmax+1] .*= exp.(1im * phase_shift)
+            t_init = thist_spinon[end]
+            uhist_spinoff,thist_spinoff = integrate_tbh(u_init, t_init, dt, Nt_spinoff)
+            write_history(uhist_spinoff, thist_spinoff, joinpath(dirout_data,"spinoff_dsc$(i_dsc).jld2"))
+        end
+    end
+
+    if todo["plot_spinoffs"]
+        for i_dsc = 1:N_dsc
+            uhist_spinoff,thist_spinoff = read_history(joinpath(dirout_data,"spinoff_dsc$(i_dsc).jld2"))
+            plot_tbh_hov_trace(uhist_spinoff, thist_spinoff, joinpath(dirout_plot,"spinoff_dsc$(i_dsc).png"))
+        end
+
+    end
+    return 
 end
 
-uhist, thist = main()
+main()
 
 
