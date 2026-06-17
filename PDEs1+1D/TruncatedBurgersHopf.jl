@@ -1,6 +1,7 @@
 using Printf: @sprintf
 using CairoMakie
 import Random
+import Extremes
 using JLD2: jldopen
 using Infiltrator: @infiltrate
 using Statistics: quantile, median, mean
@@ -66,21 +67,64 @@ function compute_peaks_over_threshold(Rhist::Vector{NF}, threshold::Real, buffer
     return Rspeak, itspeak
 end
 
-function compute_intensity_statistics(Rfile::String, Rpeakfile::String, excprob::NFr, peakbuffer::NFt) where {NFr<:Real,NFt<:Real}
+function cquantile_gpd(excprob::Real, logscale::Real, shape::Real; loc::Real=0.0)
+    return loc + exp(logscale)/shape * (1/exprob^shape - 1)
+end
+
+function survival_fun_gpd(x::Real, logscale::Real, shape::Real; loc::Real=0.0)
+    return (1 + shape * (x - loc)/exp(logscale))^(-1/shape)
+end
+
+
+function compute_intensity_statistics(Rfile::String, Rpeakfile::String, excprob_approx::NFr, Nbin::Integer, peakbuffer::NFt) where {NFr<:Real,NFt<:Real}
     Rhist,thist = jldopen(Rfile,"r") do f
         return f["Rhist"], f["thist"]
     end
     dt = thist[2] - thist[1]
+    Nt = length(thist)
     buffer = round(Int64, peakbuffer/dt)
-    threshold = quantile(Rhist,1-excprob)
-    Rspeak,itspeak = compute_peaks_over_threshold(Rhist, threshold, buffer)
-    # Get empirical histogram with uniform bins that covers both body and tail.
+    Rmin,Rmax = padbounds(Rhist,0.01)
+
+    Rbineds = collect(range(Rmin, Rmax; length=Nbin+1))
+    Rbinlos = Rbineds[1:Nbin]
+
+    Rccdf = sum(Rhist .> Rbinlos'; dims=1)[1,:] ./ Nt
+    Rccdf = ccdf_counts ./ ccdf_counts[1]
+    i_bin_thresh = Nbin + 1 - searchsortedfirst(reverse(ccdf), excprob)
+    threshold = Rbinlos[i_bin_thresh]
+    excprob = ccdf[i_bin_thresh]
+
+    # Now start dealing with severities, i.e. Peaks, called S
+    Ss,Sits = compute_peaks_over_threshold(Rhist, threshold, buffer)
+    Npeak = length(Ss)
+
+    Sbinlos_unif = Rbinlos[i_bin_thresh:Nbin]
+    Sccdf_empest_unifbins = sum(Ss .> Sbinlos_unif'; dims=1)[1,:] ./ Npeak
+    # Fit GPD and rearrange tail bins to have uniformly spaced quantiles 
+    GPD = Extremes.gpfitpwm(Ss .- threshold)
+    gpdlogscale,gpdshape = GPD.θ̂
+    Sccdf_gpdest_unifbins = survival_fun_gpd.(Sbinlos_unif, logscale, shape; loc=threshold)
+    Sbinlo_gpdest_gpdbins = collect(range(excprob, 0; length=N_bin-i_bin_thresh+2)[1:end-1])
+    Sbinlos_gpd = cquantle_gpd.(Sbinlo_gpdest_gpdbins, gpdlogscale, gpdshape; loc=threshold)
+    Sbinlos_empest_gpdbins = sum(Ss .> Sbinlos_gpd'; dims=1)[1,:] ./ Npeak
+    
     # Estmate GEV and GPD parameters for the tail, and make an empirical histogram wth evnly spaced bins in estimated probability space. 
     jldopen(Rpeakfile,"w") do f
         f["thist"] = thist
+        f["Ss"] = Ss
+        f["Sits"] = Sits 
         f["threshold"] = threshold
-        f["Rspeak"] = Rspeak
-        f["itspeak"] = itspeak
+        f["excprob"] = excprob
+        f["Rbinlos"] = Rbinlos
+        f["Rccdf"] = Rccdf
+        f["Sbinlos_unif"] = Sbinlos_unifbins
+        f["gpdlogscale"] = gpdlogscale
+        f["gpdshape"] = gpdshape
+        f["Sccdf_empest_unifbins"] = Sccdf_empest_unifbins
+        f["Sccdf_gpdest_unifbins"] = Sccdf_gpdest_unifbins
+        f["Sccdf_gpdest_gpdbins"] = Sccdf_gpdest_gpdbins
+        f["Sbinlos_gpd"] = Sbinlos_gpd
+        f["Sccdf_empest_gpdbins"] = Sccdf_empest_gpdbins
     end
 end
 
@@ -192,29 +236,27 @@ end
 
 function plot_tbh_trace_pdf(ufilename, Rfilename, Rstatsfilename, outfilename)
     uhist,thist = read_history(ufilename)
-    Rhist = jldopen(Rfilename,"r") do f; return f["Rhist"]; done
-    threshold,Rspeak,itspeak = jldopen(Rstatsfilename, "r") do f
-        return f["threshold"],f["Rspeak"],f["itspeak"]
+    Rhist = jldopen(Rfilename,"r") do f; return f["Rhist"]; end
+
+    threshold,Rspeak,itspeak,Rbinlos,ccdf = jldopen(Rstatsfilename, "r") do f
+        return f["threshold"],f["Rspeak"],f["itspeak"],f["Rbinlos"],f["ccdf"]
     end
     tspan_plot_timeseries = [thist[1],thist[1]+30]
     tspan_plot_peaks = [thist[1],thist[end]]
-    Rmin,Rmax = padbounds(Rhist,0.01)
-    Rmin,Rmax = extrema(Rhist)
-    Rbineds = collect(range(Rmin, Rmax; length=31))
-    plot_tbh_trace_pdf(uhist,thist,Rhist,Rspeak,itspeak,Rbineds,tspan_plot_timeseries,tspan_plot_peaks,threshold,outfilename)
+    plot_tbh_trace_pdf(uhist,thist,Rhist,Rspeak,itspeak,Rbinlos,tspan_plot_timeseries,tspan_plot_peaks,threshold,outfilename)
 end
 
-function plot_tbh_trace_pdf(uhist, Rhist, thist, Rspeak, itspeak, Rbineds, tspan_plot_timeseries, tspan_plot_peaks, threshold, outfilename)
+function plot_tbh_trace_pdf(uhist, thist, Rhist, Rspeak, itspeak, Rbinlos, tspan_plot_timeseries, tspan_plot_peaks, threshold, outfilename)
     # Plot a limited-time trace of the observable
-    Rbinlos = Rbineds[1:end-1]
-    Rbinmids = (Rbineds[1:end-1] .+ Rbineds[2:end])./2
     Nbin = length(Rbinlos)
-    ccdf_counts = sum(Rhist .> Rbineds'; dims=1)[1,:]
+    Rbinwidths = vcat(diff(Rbinlos), Rbinlos[Nbin]-Rbinlos[Nbin-1])./2
+    Rbinmids = Rbinlos .+ Rbinwidths./2
+    ccdf_counts = sum(Rhist .> Rbinlos'; dims=1)[1,:]
     @assert ccdf_counts[end] == 0
     ccdf = ccdf_counts./ccdf_counts[1]
     ccdfmin = minimum(filter(c->c>0, ccdf))
-    pdf = (ccdf[1:end-1] .- ccdf[2:end]) ./ diff(Rbineds)
-    pdfmin = (ccdf[1:end-1] .- ccdf[2:end]) ./ diff(Rbineds)
+    pdf = (ccdf[1:end-1] .- ccdf[2:end]) ./ Rbinwidths
+    pdfmin = (ccdf[1:end-1] .- ccdf[2:end]) ./ Rbinwidths
     
     itfirst_timeseries = searchsortedfirst(thist, tspan_plot_timeseries[1])
     itlast_timeseries = searchsortedlast(thist, tspan_plot_timeseries[2])
@@ -299,7 +341,7 @@ function main()
                              "plot_spinoffs" =>             0,
                             )
     # ---------------- Output directories -----------
-    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-14/1"
+    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-17/1"
     mkpath(dirout_base)
     dirout_data = joinpath(dirout_base, "data")
     dirout_plot = joinpath(dirout_base, "plot")
