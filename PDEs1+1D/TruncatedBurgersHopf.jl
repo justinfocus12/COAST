@@ -68,7 +68,7 @@ function compute_peaks_over_threshold(Rhist::Vector{NF}, threshold::Real, buffer
 end
 
 function cquantile_gpd(excprob::Real, logscale::Real, shape::Real; loc::Real=0.0)
-    return loc + exp(logscale)/shape * (1/exprob^shape - 1)
+    return loc + exp(logscale)/shape * (1/excprob^shape - 1)
 end
 
 function survival_fun_gpd(x::Real, logscale::Real, shape::Real; loc::Real=0.0)
@@ -76,7 +76,7 @@ function survival_fun_gpd(x::Real, logscale::Real, shape::Real; loc::Real=0.0)
 end
 
 
-function compute_intensity_statistics(Rfile::String, Rpeakfile::String, excprob_approx::NFr, Nbin::Integer, peakbuffer::NFt) where {NFr<:Real,NFt<:Real}
+function compute_intensity_statistics(Rfile::String, Rstatsfile::String, excprob_approx::NFR, Nbin::Integer, peakbuffer::NFt) where {NFR<:Real,NFt<:Real}
     Rhist,thist = jldopen(Rfile,"r") do f
         return f["Rhist"], f["thist"]
     end
@@ -89,10 +89,9 @@ function compute_intensity_statistics(Rfile::String, Rpeakfile::String, excprob_
     Rbinlos = Rbineds[1:Nbin]
 
     Rccdf = sum(Rhist .> Rbinlos'; dims=1)[1,:] ./ Nt
-    Rccdf = ccdf_counts ./ ccdf_counts[1]
-    i_bin_thresh = Nbin + 1 - searchsortedfirst(reverse(ccdf), excprob)
+    i_bin_thresh = searchsortedfirst(Rccdf, excprob_approx; lt=(x,y)->(x>=y))
     threshold = Rbinlos[i_bin_thresh]
-    excprob = ccdf[i_bin_thresh]
+    excprob = Rccdf[i_bin_thresh]
 
     # Now start dealing with severities, i.e. Peaks, called S
     Ss,Sits = compute_peaks_over_threshold(Rhist, threshold, buffer)
@@ -103,23 +102,25 @@ function compute_intensity_statistics(Rfile::String, Rpeakfile::String, excprob_
     # Fit GPD and rearrange tail bins to have uniformly spaced quantiles 
     GPD = Extremes.gpfitpwm(Ss .- threshold)
     gpdlogscale,gpdshape = GPD.θ̂
-    Sccdf_gpdest_unifbins = survival_fun_gpd.(Sbinlos_unif, logscale, shape; loc=threshold)
-    Sbinlo_gpdest_gpdbins = collect(range(excprob, 0; length=N_bin-i_bin_thresh+2)[1:end-1])
-    Sbinlos_gpd = cquantle_gpd.(Sbinlo_gpdest_gpdbins, gpdlogscale, gpdshape; loc=threshold)
-    Sbinlos_empest_gpdbins = sum(Ss .> Sbinlos_gpd'; dims=1)[1,:] ./ Npeak
+    Sccdf_gpdest_unifbins = survival_fun_gpd.(Sbinlos_unif, gpdlogscale, gpdshape; loc=threshold)
+    Sccdf_gpdest_gpdbins = collect(range(excprob, 0; length=Nbin-i_bin_thresh+2)[1:end-1])
+    Sbinlos_gpd = cquantile_gpd.(Sccdf_gpdest_gpdbins, gpdlogscale, gpdshape; loc=threshold)
+    Sccdf_empest_gpdbins = sum(Ss .> Sbinlos_gpd'; dims=1)[1,:] ./ Npeak
+    Sccdf_gpdest_gpdbins = survival_fun_gpd.(Sbinlos_gpd, gpdlogscale, gpdshape; loc=threshold) # should be same, uniformly spaced
     
     # Estmate GEV and GPD parameters for the tail, and make an empirical histogram wth evnly spaced bins in estimated probability space. 
-    jldopen(Rpeakfile,"w") do f
+    jldopen(Rstatsfile,"w") do f
         f["thist"] = thist
-        f["Ss"] = Ss
-        f["Sits"] = Sits 
-        f["threshold"] = threshold
-        f["excprob"] = excprob
         f["Rbinlos"] = Rbinlos
         f["Rccdf"] = Rccdf
-        f["Sbinlos_unif"] = Sbinlos_unifbins
+        f["threshold"] = threshold
+        f["i_bin_thresh"] = i_bin_thresh
+        f["Ss"] = Ss
+        f["Sits"] = Sits 
+        f["excprob"] = excprob
         f["gpdlogscale"] = gpdlogscale
         f["gpdshape"] = gpdshape
+        f["Sbinlos_unif"] = Sbinlos_unif
         f["Sccdf_empest_unifbins"] = Sccdf_empest_unifbins
         f["Sccdf_gpdest_unifbins"] = Sccdf_gpdest_unifbins
         f["Sccdf_gpdest_gpdbins"] = Sccdf_gpdest_gpdbins
@@ -228,7 +229,8 @@ end
 
 function intensity(u::Vector,x::NF=pi) where NF <: Real
     kmax = length(u)-1
-    return sum(2*real(u[1]) .+ real.(u[2:kmax+1] .* exp.(1im .* (1:kmax) .* x)))
+    uatx = sum(2*real(u[1]) .+ real.(u[2:kmax+1] .* exp.(1im .* (1:kmax) .* x)))
+    return exp.(uatx)
 end
 function intensity(uhist::Matrix,x::NF=pi) where NF <: Real
     return mapslices(u->intensity(u,x), uhist; dims=1)[1,:]
@@ -238,50 +240,60 @@ function plot_tbh_trace_pdf(ufilename, Rfilename, Rstatsfilename, outfilename)
     uhist,thist = read_history(ufilename)
     Rhist = jldopen(Rfilename,"r") do f; return f["Rhist"]; end
 
-    threshold,Rspeak,itspeak,Rbinlos,ccdf = jldopen(Rstatsfilename, "r") do f
-        return f["threshold"],f["Rspeak"],f["itspeak"],f["Rbinlos"],f["ccdf"]
-    end
-    tspan_plot_timeseries = [thist[1],thist[1]+30]
-    tspan_plot_peaks = [thist[1],thist[end]]
-    plot_tbh_trace_pdf(uhist,thist,Rhist,Rspeak,itspeak,Rbinlos,tspan_plot_timeseries,tspan_plot_peaks,threshold,outfilename)
+    (; Rbinlos, Rccdf, threshold, i_bin_thresh, Ss, Sits, excprob, Sbinlos_unif, Sccdf_empest_unifbins, Sccdf_gpdest_unifbins) = jldopen(Rstatsfilename, "r") do f; return NamedTuple(Symbol(key)=>f[key] for key in keys(f)); end
+    Npeak = length(Ss)
+    tspan_plot_R = thist[Sits[div(Npeak,2)]] .+ [-20,20] #[thist[Sits[1]],thist[1]+30]
+    tspan_plot_S = thist[Sits[div(Npeak,2)]] .+ [-100,100] #[thist[1],thist[1]+100]
+    plot_tbh_trace_pdf(thist, Rhist, Ss, Sits,
+                       Rbinlos, Rccdf,
+                       Sbinlos_unif, Sccdf_empest_unifbins, Sccdf_gpdest_unifbins, 
+                       tspan_plot_R,tspan_plot_S,threshold,
+                       outfilename)
 end
 
-function plot_tbh_trace_pdf(uhist, thist, Rhist, Rspeak, itspeak, Rbinlos, tspan_plot_timeseries, tspan_plot_peaks, threshold, outfilename)
+function plot_tbh_trace_pdf(
+        thist, Rhist, Ss, Sits,
+        Rbinlos, Rccdf,
+        Sbinlos_unif, Sccdf_empest_unifbins, Sccdf_gpdest_unifbins,
+        tspan_plot_R, tspan_plot_S, threshold, 
+        outfilename)
     # Plot a limited-time trace of the observable
-    Nbin = length(Rbinlos)
-    Rbinwidths = vcat(diff(Rbinlos), Rbinlos[Nbin]-Rbinlos[Nbin-1])./2
+    NbinR = length(Rbinlos)
+    Rmin,Rmax = padbounds(Rhist,0.01)
+    Rbinwidths = vcat(diff(Rbinlos), Rbinlos[NbinR]-Rbinlos[NbinR-1])./2
     Rbinmids = Rbinlos .+ Rbinwidths./2
-    ccdf_counts = sum(Rhist .> Rbinlos'; dims=1)[1,:]
-    @assert ccdf_counts[end] == 0
-    ccdf = ccdf_counts./ccdf_counts[1]
-    ccdfmin = minimum(filter(c->c>0, ccdf))
-    pdf = (ccdf[1:end-1] .- ccdf[2:end]) ./ Rbinwidths
-    pdfmin = (ccdf[1:end-1] .- ccdf[2:end]) ./ Rbinwidths
-    
-    itfirst_timeseries = searchsortedfirst(thist, tspan_plot_timeseries[1])
-    itlast_timeseries = searchsortedlast(thist, tspan_plot_timeseries[2])
-    itfirst_peaks = searchsortedfirst(thist, tspan_plot_peaks[1])
-    itlast_peaks = searchsortedlast(thist, tspan_plot_peaks[2])
+    Rpdf = vcat(-diff(Rccdf),Rccdf[end]) ./ Rbinwidths
+    Rpdfmin = minimum(filter(c->c>0, Rpdf))
 
-    ccdfmin = minimum(filter(c->c>0, ccdf))
-    @show threshold
+    NbinS = length(Sbinlos_unif)
+    Sbinwidths = vcat(diff(Sbinlos_unif), Sbinlos_unif[NbinS]-Sbinlos_unif[NbinS-1])./2
+    Sbinmids = Sbinlos_unif .+ Sbinwidths./2
+    Sccdfmin = min((minimum(filter(c->c>0, Sccdf)) for Sccdf=(Sccdf_empest_unifbins, Sccdf_gpdest_unifbins))...)
+    
+    itfirstR = searchsortedfirst(thist, tspan_plot_R[1])
+    itlastR = searchsortedlast(thist, tspan_plot_S[2])
+    iSfirst = searchsortedfirst(thist[Sits], tspan_plot_S[1])
+    iSlast = searchsortedlast(thist[Sits], tspan_plot_S[2])
 
     thmax = theme_ax()
     fig = Figure(size=(400,500))
     lout = fig[1,1] = GridLayout()
 
-    ax1 = Axis(lout[1,1]; thmax..., limits=((tspan_plot_timeseries[1],tspan_plot_timeseries[2]),(Rmin,Rmax)), xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))")
-    lines!(ax1, thist[itfirst_timeseries:itlast_timeseries], Rhist[itfirst_timeseries:itlast_timeseries]; color=:black)
+    ax1 = Axis(lout[1,1]; thmax..., limits=((tspan_plot_R[1],tspan_plot_R[2]),(Rmin,Rmax)), xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))", title="Intensity")
+    hlines!(ax1, threshold; color=:grey79)
+    lines!(ax1, thist[itfirstR:itlastR], Rhist[itfirstR:itlastR]; color=:black)
 
     ax2 = Axis(lout[1,2]; thmax..., title="PDF", ylabelvisible=false, yticklabelsvisible=false, xscale=log10, xticklabelrotation=-pi/2)
-    lines!(ax2, replace(pdf, 0=>NaN), Rbinmids; color=:black)
+    lines!(ax2, replace(Rpdf, 0=>NaN), Rbinmids; color=:black)
 
-    ax3 = Axis(lout[2,1]; thmax..., limits=((tspan_plot_peaks[1],tspan_plot_peaks[2]),(threshold,Rmax)), xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))")
-    scatter!(ax3, thist[itfirst_peaks:itlast_peaks], Rhist[itfirst_peaks:itlast_peaks]; color=:black, markersize=2)
+    ax3 = Axis(lout[2,1]; thmax..., limits=((tspan_plot_S[1],tspan_plot_S[2]),(threshold,Rmax)), xlabel="𝑡*", ylabel="𝑅*", title="Severities")
+    lines!(ax3, thist[Sits[iSfirst]:Sits[iSlast]], Rhist[Sits[iSfirst]:Sits[iSlast]]; color=:black, linewidth=1)
+    scatter!(ax3, thist[Sits[iSfirst:iSlast]], Ss[iSfirst:iSlast]; color=:red, markersize=5, marker=:star6)
 
-    ax4 = Axis(lout[2,2]; thmax..., limits=((ccdfmin/2,excprob),(threshold,Rmax)), title="CCDF", ylabelvisible=false, yticklabelsvisible=false, xscale=log10, xticklabelrotation=-pi/2, xticks=(xticklabels=[ccdfmin,(ccdfmin+excprob)/2,excprob]; (xticklabels,(x->@sprintf("%.0E", x)).(xticklabels))))
-    lines!(ax4, replace(ccdf, 0=>NaN), Rbineds; color=:black)
-e
+    ax4 = Axis(lout[2,2]; thmax..., limits=((Sccdfmin/2,1.0),(threshold,Rmax)), title="CCDF", ylabelvisible=false, yticklabelsvisible=false, xscale=log10, xticklabelrotation=-pi/2, xticks=(xticklabels=[Sccdfmin,sqrt(Sccdfmin*1.0),1.0]; (xticklabels,(x->@sprintf("%.0E", x)).(xticklabels))))
+    lines!(ax4, replace(Sccdf_empest_unifbins, 0=>NaN), Sbinlos_unif; color=:black, linewidth=2, linestyle=(:dash,:dense))
+    lines!(ax4, replace(Sccdf_gpdest_unifbins, 0=>NaN), Sbinlos_unif; color=:red)
+
     linkyaxes!(ax1,ax2)
     linkyaxes!(ax3,ax4)
     colsize!(lout, 1, Relative(4/5))
@@ -311,7 +323,7 @@ function plot_tbh_hov_trace(uhist, thist, outfilename)
     thmax = theme_ax()
     xlimits = (0, 2pi)
     dt = thist[2]-thist[1]
-    tlimits = (thist[1]-dt/2, thist[end]+dt/2)
+    tlimits = (thist[1]-dt/2, thist[1]+30+dt/2)
     fig = Figure(size=(600,300))
     lout = fig[1,1] = GridLayout()
 
@@ -331,17 +343,19 @@ end
 
 function main()
     todo = Dict{String,Bool}(
-                             "spinup" =>                    1,
-                             "plot_spinup" =>               1,
-                             "spinon" =>                    1,
+                             "spinup" =>                    0,
+                             "plot_spinup" =>               0,
+                             "spinon" =>                    0,
+                             "plot_spinon" =>               1,
                              "compute_intensity" =>         1,
                              "compute_intensity_stats" =>   1,
-                             "plot_spinon" =>               0,
+                             "plot_intensity" =>            1,
+                             "plot_intensity_stats" =>      1,
                              "spinoff" =>                   0,
                              "plot_spinoffs" =>             0,
                             )
     # ---------------- Output directories -----------
-    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-17/1"
+    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-17/2"
     mkpath(dirout_base)
     dirout_data = joinpath(dirout_base, "data")
     dirout_plot = joinpath(dirout_base, "plot")
@@ -353,12 +367,13 @@ function main()
     dt = 0.01
     # ----------------- Ensemble parameters ---------
     duration_spinup = 15.0
-    duration_spinon = 200.0 
+    duration_spinon = 5000.0 
     duration_spinoff = 6.0 
     N_dsc = 3
     # ------------- Target parameters -----------
-    excprob = 0.01
+    excprob_approx = 0.01
     peakbuffer = 5.0
+    Nbin = 60
     # ----------------- spinup --------------
     if todo["spinup"]
         rng = Random.MersenneTwister(48401)
@@ -390,12 +405,14 @@ function main()
     if todo["compute_intensity"]
         compute_intensity(joinpath(dirout_data,"spinon.jld2"), joinpath(dirout_data,"spinonR.jld2"))
     end
-    if todo["compute_intensity_stats"]
-        compute_intensity_statistics(joinpath.(dirout_data, ["spinonR.jld2","spinonRstats.jld2"])..., excprob, peakbuffer)
-    end
     if todo["plot_spinon"]
         plot_tbh_hov_trace(joinpath(dirout_data,"spinon.jld2"),joinpath(dirout_plot, "spinon_hov_trace.png"))
-        plot_tbh_trace_pdf(joinpath.(dirout_data,["spinon.jld2","spinonR.jld2","spinonRstats.jld2"])..., joinpath(dirout_plot, "Rhist_spinon.png"))
+    end
+    if todo["compute_intensity_stats"]
+        compute_intensity_statistics(joinpath.(dirout_data, ["spinonR.jld2","spinonRstats.jld2"])..., excprob_approx, Nbin, peakbuffer)
+    end
+    if todo["plot_intensity_stats"]
+        plot_tbh_trace_pdf(joinpath.(dirout_data,["spinon.jld2","spinonR.jld2","spinonRstats.jld2"])..., joinpath(dirout_plot, "Rstats_spinon.png"))
     end
 
     if todo["spinoff"]
