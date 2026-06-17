@@ -37,11 +37,10 @@ function read_history(filename::String)
     return uhist,thist
 end
 
-function compute_peaks_over_threshold(Rhist::Vector{NF}, excprob::Real, buffer::Integer) where NF<:Real
+function compute_peaks_over_threshold(Rhist::Vector{NF}, threshold::Real, buffer::Integer) where NF<:Real
     Nt = length(Rhist)
     Rspeak = Vector{NF}([])
     itspeak = Vector{Integer}([])
-    threshold = quantile(Rhist, 1-excprob)
     itprecluster = 0
     incluster = false
     valley_length = 0
@@ -64,29 +63,33 @@ function compute_peaks_over_threshold(Rhist::Vector{NF}, excprob::Real, buffer::
             end
         end
     end
-    return threshold, Rspeak, itspeak
+    return Rspeak, itspeak
 end
 
-function compute_extreme_statistics(Rfile::String, Rpeakfile::String, threshold::NFr, buffer::NFt) where {NFr<:Real,NFt<:Real}
+function compute_intensity_statistics(Rfile::String, Rpeakfile::String, excprob::NFr, peakbuffer::NFt) where {NFr<:Real,NFt<:Real}
     Rhist,thist = jldopen(Rfile,"r") do f
         return f["Rhist"], f["thist"]
     end
     dt = thist[2] - thist[1]
-    buffer_integer = round(Int64, buffer/dt)
-    threshold,Rspeak,itspeak = compute_peaks_over_threshold(Rhist, threshold, buffer)
+    buffer = round(Int64, peakbuffer/dt)
+    threshold = quantile(Rhist,1-excprob)
+    Rspeak,itspeak = compute_peaks_over_threshold(Rhist, threshold, buffer)
+    # Get empirical histogram with uniform bins that covers both body and tail.
+    # Estmate GEV and GPD parameters for the tail, and make an empirical histogram wth evnly spaced bins in estimated probability space. 
     jldopen(Rpeakfile,"w") do f
         f["thist"] = thist
         f["threshold"] = threshold
         f["Rspeak"] = Rspeak
         f["itspeak"] = itspeak
     end
+end
 
 function compute_intensity(ufile::String, Rfile::String)
     uhist,thist = read_history(ufile)
     Rhist = intensity(uhist)
     jldopen(Rfile, "w") do f
-        f["Rhist"] = Rhist_spinon
-        f["thist"] = thist_spinon
+        f["Rhist"] = Rhist
+        f["thist"] = thist
     end
     return
 end
@@ -187,14 +190,22 @@ function intensity(uhist::Matrix,x::NF=pi) where NF <: Real
     return mapslices(u->intensity(u,x), uhist; dims=1)[1,:]
 end
 
-function plot_tbh_trace_pdf(uhist, thist, tspan_plot_timeseries, tspan_plot_peaks, threshold, outfilename; Rbins::Union{Vector,Nothing}=nothing)
-    # Plot a limited-time trace of the observable
-    Rhist = intensity(uhist)
-    if isnothing(Rbins)
-        Rmin,Rmax = padbounds(Rhist,0.01)
-        Rmin,Rmax = extrema(Rhist)
-        Rbineds = collect(range(Rmin, Rmax; length=31))
+function plot_tbh_trace_pdf(ufilename, Rfilename, Rstatsfilename, outfilename)
+    uhist,thist = read_history(ufilename)
+    Rhist = jldopen(Rfilename,"r") do f; return f["Rhist"]; done
+    threshold,Rspeak,itspeak = jldopen(Rstatsfilename, "r") do f
+        return f["threshold"],f["Rspeak"],f["itspeak"]
     end
+    tspan_plot_timeseries = [thist[1],thist[1]+30]
+    tspan_plot_peaks = [thist[1],thist[end]]
+    Rmin,Rmax = padbounds(Rhist,0.01)
+    Rmin,Rmax = extrema(Rhist)
+    Rbineds = collect(range(Rmin, Rmax; length=31))
+    plot_tbh_trace_pdf(uhist,thist,Rhist,Rspeak,itspeak,Rbineds,tspan_plot_timeseries,tspan_plot_peaks,threshold,outfilename)
+end
+
+function plot_tbh_trace_pdf(uhist, Rhist, thist, Rspeak, itspeak, Rbineds, tspan_plot_timeseries, tspan_plot_peaks, threshold, outfilename)
+    # Plot a limited-time trace of the observable
     Rbinlos = Rbineds[1:end-1]
     Rbinmids = (Rbineds[1:end-1] .+ Rbineds[2:end])./2
     Nbin = length(Rbinlos)
@@ -237,7 +248,10 @@ e
     save(outfilename, fig)
 end
     
-
+function plot_tbh_hov_trace(ufilename::String, outfilename::String)
+    uhist,thist = read_history(ufilename)
+    plot_tbh_hov_trace(uhist,thist,outfilename)
+end
 
 function plot_tbh_hov_trace(uhist, thist, outfilename)
     Nk,Nt = size(uhist)
@@ -275,13 +289,14 @@ end
 
 function main()
     todo = Dict{String,Bool}(
-                             "spinup" =>           1,
-                             "plot_spinup" =>      1,
-                             "spinon" =>           1,
-                             "potspinon" =>        1,
-                             "plot_spinon" =>      1,
-                             "spinoff" =>          1,
-                             "plot_spinoffs" =>    1,
+                             "spinup" =>                    1,
+                             "plot_spinup" =>               1,
+                             "spinon" =>                    1,
+                             "compute_intensity" =>         1,
+                             "compute_intensity_stats" =>   1,
+                             "plot_spinon" =>               0,
+                             "spinoff" =>                   0,
+                             "plot_spinoffs" =>             0,
                             )
     # ---------------- Output directories -----------
     dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-14/1"
@@ -301,6 +316,7 @@ function main()
     N_dsc = 3
     # ------------- Target parameters -----------
     excprob = 0.01
+    peakbuffer = 5.0
     # ----------------- spinup --------------
     if todo["spinup"]
         rng = Random.MersenneTwister(48401)
@@ -329,16 +345,15 @@ function main()
         uhist_spinon,thist_spinon = integrate_tbh(u_init, t_init, dt, Nt_spinon)
         write_history(uhist_spinon,thist_spinon,joinpath(dirout_data,"spinon.jld2"))
     end
-    if todo["compute_intensity_spinon"]
+    if todo["compute_intensity"]
         compute_intensity(joinpath(dirout_data,"spinon.jld2"), joinpath(dirout_data,"spinonR.jld2"))
     end
-    if todo["potspinon"]
-        compute_extreme_statistics(joinpath.(dirout_data, ["spinonR.jld2","spinonextstats.jld2"])..., excprob, buffer)
+    if todo["compute_intensity_stats"]
+        compute_intensity_statistics(joinpath.(dirout_data, ["spinonR.jld2","spinonRstats.jld2"])..., excprob, peakbuffer)
     end
     if todo["plot_spinon"]
-        uhist,thist = read_history(joinpath(dirout_data,"spinon.jld2"))
-        plot_tbh_hov_trace(uhist, thist, joinpath(dirout_plot, "spinon.png"))
-        plot_tbh_trace_pdf(uhist, thist, [thist[1],thist[1]+30], [thist[1],thist[end]], joinpath(dirout_plot, "Rhist_spinon.png"))
+        plot_tbh_hov_trace(joinpath(dirout_data,"spinon.jld2"),joinpath(dirout_plot, "spinon_hov_trace.png"))
+        plot_tbh_trace_pdf(joinpath.(dirout_data,["spinon.jld2","spinonR.jld2","spinonRstats.jld2"])..., joinpath(dirout_plot, "Rhist_spinon.png"))
     end
 
     if todo["spinoff"]
