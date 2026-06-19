@@ -241,47 +241,57 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
     (; dt,) = sim_params
     @load ufilename uhist thist
     @load Rfilename Rhist
-    @load Rstatsfilename Sits Ss
+    @load Rstatsfilename Sits Ss threshold
 
-    NFu = typeof(real(uhist[1,1]))
+    NFu = typeof(uhist[1,1])
+    NFreal = typeof(real(uhist[1,1]))
     NFt = typeof(thist[1])
     Nanc = length(Sits)
-    asts = collect(range(astmin, astmax; step=aststep))
-    Nast = length(asts)
+    ianc = 2
     bsNt = round(Integer, bst/dt)
+    asts = collect(range(astmin, astmax; step=aststep))
+    asNts = round.(Integer, asts./dt)
+    Nast = findlast(asNts .< Sits[ianc])
     maxdNtpeak = round(Integer, maxdtpeak/dt)
-    iast = 1
-    ianc = 1
-    ast = asts[iast]
-    asNt = round(Integer, ast/dt)
+    for iast = 1:Nast
+        ast = asts[iast]
+        asNt = asNts[iast]
 
-    Rhist_dscs = zeros(NFu, (asNt+bsNt+1,Ndsc))
-    thist_dsc = zeros(NFt, asNt+bsNt+1) 
-    dSit_dscs = zeros(Integer, (Ndsc,))
-    S_dscs = zeros(NFu, (Ndsc,))
-    Rdsc_at_Sitancs = zeros(NFu, (Ndsc,))
-    for idsc = 1:Ndsc
-        @show idsc
-        jldopen(joinpath(dirout_data, "boost_ianc$(ianc)_iast$(iast)_idsc$(idsc).jld2"), "r") do f
-            Rhist_dscs[:,idsc] .= f["Rhist"]
-            S_dscs[idsc] = f["S_dsc"]
-            if idsc==1; thist_dsc .= f["thist"]; end
-            dSit_dscs[idsc] = f["dSit_dsc"]
-            Rdsc_at_Sitancs[idsc] = f["Rdsc_at_Sitanc"]
+        (Sits[ianc]-asNt <= 0) && continue
+
+        Rhist_dscs = zeros(NFreal, (asNt+bsNt+1,Ndsc))
+        thist_dscs = zeros(NFt, (asNt+bsNt+1,Ndsc))
+        dSit_dscs = zeros(Integer, (Ndsc,))
+        S_dscs = zeros(NFreal, (Ndsc,))
+        Rdsc_at_Sitancs = zeros(NFreal, (Ndsc,))
+        jldopen(joinpath(dirout_data, "boosts.jld2"), "r") do ff
+            anckey = "ianc$(ianc)"
+            astkey = "iast$(iast)"
+            for idsc = 1:Ndsc
+                dsckey = "idsc$(idsc)"
+                aadkey = joinpath(anckey,astkey,dsckey)
+                Rhist_dscs[:,idsc] .= ff[joinpath(aadkey,"Rhist")]
+                S_dscs[idsc] = ff[joinpath(aadkey,"S_dsc")]
+                thist_dscs[:,idsc] .= ff[joinpath(aadkey,"thist")]
+                dSit_dscs[idsc] = ff[joinpath(aadkey,"dSit_dsc")]
+                Rdsc_at_Sitancs[idsc] = ff[joinpath(aadkey,"Rdsc_at_Sitanc")]
+            end
         end
+        
+        thmax = theme_ax()
+        fig = Figure(size=(400,300))
+        lout = fig[1,1] = GridLayout()
+        ax = Axis(lout[1,1]; thmax..., xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))",)
+        tancmax = thist[Sits[ianc]]
+        for idsc = 1:Ndsc
+            lines!(ax, thist_dscs[:,idsc].-tancmax, Rhist_dscs[:,idsc]; color=:red, linestyle=:solid)
+            scatter!(ax, dt*dSit_dscs[idsc], S_dscs[idsc]; marker=:star6, color=:red)
+        end
+        lines!(ax, dt.*collect(-(asNts[Nast]):bsNt), Rhist[Sits[ianc].+(-asNts[Nast]:bsNt)]; color=:black, linestyle=(:dash,:dense))
+        scatter!(ax, 0, Ss[ianc]; marker=:star6, color=:black)
+        hlines!(ax, threshold; color=:grey79)
+        save(joinpath(dirout_plot, "boosts_ianc$(ianc)_iast$(iast).png"), fig)
     end
-    
-    thmax = theme_ax()
-    fig = Figure(size=(400,300))
-    lout = fig[1,1] = GridLayout()
-    ax = Axis(lout[1,1]; thmax..., xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))",)
-    for idsc = 1:Ndsc
-        lines!(ax, thist_dsc.-thist[Sits[ianc]], Rhist_dscs[:,idsc]; color=:red, linestyle=:solid)
-        scatter!(ax, dt*dSit_dscs[idsc], S_dscs[idsc]; marker=:star6, color=:red)
-    end
-    lines!(ax, thist_dsc.-thist[Sits[ianc]], Rhist[Sits[ianc] .+ (-asNt:bsNt)]; color=:black, linestyle=(:dash,:dense))
-    scatter!(ax, 0, Ss[ianc]; marker=:star6, color=:black)
-    save(joinpath(dirout_plot, "boosts_ianc$(ianc)_iast$(iast).png"), fig)
     return
 end
 
@@ -304,7 +314,7 @@ function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::Str
     maxdNtpeak = round(Integer, maxdtpeak/dt)
     boostfilename = joinpath(dirout_data,"boosts.jld2") 
     overwrite_boosts && rm(boostfilename)
-    for ianc = 1:1 #Nanc
+    for ianc = 1:2 #Nanc
         anckey = "ianc$(ianc)"
         for iast = 1:Nast
             astkey = "iast$(iast)"
@@ -319,24 +329,23 @@ function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::Str
                 Ndsc_done = (anckey in keys(ff) && astkey in keys(ff[anckey])) ? length(keys(ff[anckey][astkey])) : 0
                 for idsc = (Ndsc_done)+1:Ndsc
                     dsckey = "idsc$(idsc)"
-                    @show iast,idsc
+                    aadkey = joinpath(anckey,astkey,dsckey)
                     ast = asts[iast]
                     asNt = round(Integer,ast/dt)
                     it_init_dsc = Sits[ianc] - asNt
                     t_init_dsc = thist[it_init_dsc]
                     u_init_dsc .= uhist[:,it_init_dsc]
-                    u_init_dsc[kspert.+1] .*= exp.((2pi*1im*maxdphase) .* rand(rng, NFreal))
+                    u_init_dsc[kspert.+1] .*= exp.((2pi*1im*maxdphase) .* (2*rand(rng, NFreal)-1))
                     uhist_dsc,thist_dsc = integrate_tbh(u_init_dsc, t_init_dsc, dt, asNt+bsNt+1) 
                     Rhist_dsc = intensity(uhist_dsc)
                     S_dsc,dSit_dsc = findmax(Rhist_dsc[(asNt+1).+(-maxdNtpeak:maxdNtpeak)])
                     dSit_dsc -= (maxdNtpeak+1)
-                    ff[joinpath(anckey,astkey,dsckey,"thist")] = thist_dsc
-                    ff[joinpath(anckey,astkey,dsckey,"uhist")] = uhist_dsc
-                    ff[joinpath(anckey,astkey,dsckey,"Rhist")] = Rhist_dsc
-                    ff[joinpath(anckey,astkey,dsckey,"S_dsc")] = S_dsc
-                    ff[joinpath(anckey,astkey,dsckey,"dSit_dsc")] = dSit_dsc
-                    ff[joinpath(anckey,astkey,dsckey,"Rdsc_at_Sitanc")] = Rhist_dsc[asNt+1]
-                    @show S_dsc, dSit_dsc
+                    ff[joinpath(aadkey,"thist")] = thist_dsc
+                    ff[joinpath(aadkey,"uhist")] = uhist_dsc
+                    ff[joinpath(aadkey,"Rhist")] = Rhist_dsc
+                    ff[joinpath(aadkey,"S_dsc")] = S_dsc
+                    ff[joinpath(aadkey,"dSit_dsc")] = dSit_dsc
+                    ff[joinpath(aadkey,"Rdsc_at_Sitanc")] = Rhist_dsc[asNt+1]
                 end
             end
         end
@@ -468,7 +477,7 @@ function main()
                              "spinoff" =>                   0,
                              "plot_spinoffs" =>             0,
                              "boost" =>                     1,
-                             "plot_boosts" =>               0,
+                             "plot_boosts" =>               1,
                             )
     # ---------------- Output directories -----------
     dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-17/3"
@@ -488,7 +497,7 @@ function main()
     duration_spinoff = 6.0 
     Ndsc_spinoff = 3
 
-    boost_params = (; astmin=1/4, astmax=5.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/32, kspert=[kmax,], maxdtpeak=1/8)
+    boost_params = (; astmin=1/4, astmax=8.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/32, kspert=[kmax,], maxdtpeak=1/8)
     overwrite_boosts = true
 
     # ------------- Target parameters -----------
