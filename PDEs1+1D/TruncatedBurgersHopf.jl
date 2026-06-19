@@ -287,7 +287,7 @@ end
 
 
 
-function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::String, sim_params::NamedTuple, boost_params::NamedTuple)
+function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::String, sim_params::NamedTuple, boost_params::NamedTuple; overwrite_boosts::Bool=false)
 
     (; astmin, astmax, aststep, Ndsc, bst, kspert, maxdphase, maxdtpeak) = boost_params
     (; dt,) = sim_params
@@ -295,36 +295,49 @@ function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::Str
     #(; Sits, ) = jldopen(Rstatsfilename, "r") do f; return NamedTuple(Symbol(key)=>f[key] for key in keys(f)); end
     @load ufilename uhist thist
     #uhist, thist = jldopen(ufilename, "r") do f; return f["uhist"],f["thist"]; end
-    NF = typeof(real(uhist[1,1]))
+    NFu = typeof(uhist[1,1])
+    NFreal = typeof(real(uhist[1,1]))
     Nanc = length(Sits)
     asts = collect(range(astmin, astmax; step=aststep))
     Nast = length(asts)
     bsNt = round(Integer, bst/dt)
     maxdNtpeak = round(Integer, maxdtpeak/dt)
+    boostfilename = joinpath(dirout_data,"boosts.jld2") 
+    overwrite_boosts && rm(boostfilename)
     for ianc = 1:1 #Nanc
+        anckey = "ianc$(ianc)"
         for iast = 1:Nast
+            astkey = "iast$(iast)"
+            ast = asts[iast]
+            asNt = round(Integer,ast/dt)
+            it_init_dsc = Sits[ianc] - asNt
+            it_init_dsc <=0 && continue
+            t_init_dsc = thist[it_init_dsc]
+            u_init_dsc = zeros(NFu, size(uhist,1)) #uhist[:,it_init_dsc]
             rng = Random.MersenneTwister(27395)
-            for idsc = 1:Ndsc
-                @show iast,idsc
-                ast = asts[iast]
-                asNt = round(Integer,ast/dt)
-                it_init_dsc = Sits[ianc] - asNt
-                t_init_dsc = thist[it_init_dsc]
-                u_init_dsc = uhist[:,it_init_dsc]
-                u_init_dsc[kspert.+1] .*= exp.((2pi*1im*maxdphase) .* rand(rng, NF))
-                uhist_dsc,thist_dsc = integrate_tbh(u_init_dsc, t_init_dsc, dt, asNt+bsNt+1) 
-                Rhist_dsc = intensity(uhist_dsc)
-                S_dsc,dSit_dsc = findmax(Rhist_dsc[(asNt+1).+(-maxdNtpeak:maxdNtpeak)])
-                dSit_dsc -= (maxdNtpeak)
-                jldopen(joinpath(dirout_data, "boost_ianc$(ianc)_iast$(iast)_idsc$(idsc).jld2"), "w") do f
-                    f["thist"] = thist_dsc
-                    f["uhist"] = uhist_dsc
-                    f["Rhist"] = Rhist_dsc
-                    f["S_dsc"] = S_dsc
-                    f["dSit_dsc"] = dSit_dsc
-                    f["Rdsc_at_Sitanc"] = Rhist_dsc[asNt+1]
+            jldopen(boostfilename, "a+") do ff
+                Ndsc_done = (anckey in keys(ff) && astkey in keys(ff[anckey])) ? length(keys(ff[anckey][astkey])) : 0
+                for idsc = (Ndsc_done)+1:Ndsc
+                    dsckey = "idsc$(idsc)"
+                    @show iast,idsc
+                    ast = asts[iast]
+                    asNt = round(Integer,ast/dt)
+                    it_init_dsc = Sits[ianc] - asNt
+                    t_init_dsc = thist[it_init_dsc]
+                    u_init_dsc .= uhist[:,it_init_dsc]
+                    u_init_dsc[kspert.+1] .*= exp.((2pi*1im*maxdphase) .* rand(rng, NFreal))
+                    uhist_dsc,thist_dsc = integrate_tbh(u_init_dsc, t_init_dsc, dt, asNt+bsNt+1) 
+                    Rhist_dsc = intensity(uhist_dsc)
+                    S_dsc,dSit_dsc = findmax(Rhist_dsc[(asNt+1).+(-maxdNtpeak:maxdNtpeak)])
+                    dSit_dsc -= (maxdNtpeak+1)
+                    ff[joinpath(anckey,astkey,dsckey,"thist")] = thist_dsc
+                    ff[joinpath(anckey,astkey,dsckey,"uhist")] = uhist_dsc
+                    ff[joinpath(anckey,astkey,dsckey,"Rhist")] = Rhist_dsc
+                    ff[joinpath(anckey,astkey,dsckey,"S_dsc")] = S_dsc
+                    ff[joinpath(anckey,astkey,dsckey,"dSit_dsc")] = dSit_dsc
+                    ff[joinpath(anckey,astkey,dsckey,"Rdsc_at_Sitanc")] = Rhist_dsc[asNt+1]
+                    @show S_dsc, dSit_dsc
                 end
-                @show S_dsc, dSit_dsc
             end
         end
     end
@@ -455,7 +468,7 @@ function main()
                              "spinoff" =>                   0,
                              "plot_spinoffs" =>             0,
                              "boost" =>                     1,
-                             "plot_boosts" =>               1,
+                             "plot_boosts" =>               0,
                             )
     # ---------------- Output directories -----------
     dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-17/3"
@@ -475,7 +488,8 @@ function main()
     duration_spinoff = 6.0 
     Ndsc_spinoff = 3
 
-    boost_params = (; astmin=3+1/4, astmax=3+3/4, bst=2.0, aststep=1/4, Ndsc=8, maxdphase=1/32, kspert=[kmax,], maxdtpeak=1/8)
+    boost_params = (; astmin=1/4, astmax=5.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/32, kspert=[kmax,], maxdtpeak=1/8)
+    overwrite_boosts = true
 
     # ------------- Target parameters -----------
     excprob_approx = 0.01
@@ -550,6 +564,8 @@ function main()
                     dirout_data,
                     sim_params,
                     boost_params,
+                    ;
+                    overwrite_boosts=overwrite_boosts,
                    )
     end
     if todo["plot_boosts"]
