@@ -2,7 +2,7 @@ using Printf: @sprintf
 using CairoMakie
 import Random
 import Extremes
-using JLD2: jldopen
+using JLD2: jldopen, @load
 using Infiltrator: @infiltrate
 using Statistics: quantile, median, mean
 
@@ -236,23 +236,76 @@ function intensity(uhist::Matrix,x::NF=pi) where NF <: Real
     return mapslices(u->intensity(u,x), uhist; dims=1)[1,:]
 end
 
+function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::String, dirout_data::String, dirout_plot::String, sim_params::NamedTuple, boost_params::NamedTuple)
+    (; astmin, astmax, aststep, Ndsc, bst, kspert, maxdphase, maxdtpeak) = boost_params
+    (; dt,) = sim_params
+    @load ufilename uhist thist
+    @load Rfilename Rhist
+    @load Rstatsfilename Sits Ss
+
+    NFu = typeof(real(uhist[1,1]))
+    NFt = typeof(thist[1])
+    Nanc = length(Sits)
+    asts = collect(range(astmin, astmax; step=aststep))
+    Nast = length(asts)
+    bsNt = round(Integer, bst/dt)
+    maxdNtpeak = round(Integer, maxdtpeak/dt)
+    iast = 1
+    ianc = 1
+    ast = asts[iast]
+    asNt = round(Integer, ast/dt)
+
+    Rhist_dscs = zeros(NFu, (asNt+bsNt+1,Ndsc))
+    thist_dsc = zeros(NFt, asNt+bsNt+1) 
+    dSit_dscs = zeros(Integer, (Ndsc,))
+    S_dscs = zeros(NFu, (Ndsc,))
+    Rdsc_at_Sitancs = zeros(NFu, (Ndsc,))
+    for idsc = 1:Ndsc
+        @show idsc
+        jldopen(joinpath(dirout_data, "boost_ianc$(ianc)_iast$(iast)_idsc$(idsc).jld2"), "r") do f
+            Rhist_dscs[:,idsc] .= f["Rhist"]
+            S_dscs[idsc] = f["S_dsc"]
+            if idsc==1; thist_dsc .= f["thist"]; end
+            dSit_dscs[idsc] = f["dSit_dsc"]
+            Rdsc_at_Sitancs[idsc] = f["Rdsc_at_Sitanc"]
+        end
+    end
+    
+    thmax = theme_ax()
+    fig = Figure(size=(400,300))
+    lout = fig[1,1] = GridLayout()
+    ax = Axis(lout[1,1]; thmax..., xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))",)
+    for idsc = 1:Ndsc
+        lines!(ax, thist_dsc.-thist[Sits[ianc]], Rhist_dscs[:,idsc]; color=:red, linestyle=:solid)
+        scatter!(ax, dt*dSit_dscs[idsc], S_dscs[idsc]; marker=:star6, color=:red)
+    end
+    lines!(ax, thist_dsc.-thist[Sits[ianc]], Rhist[Sits[ianc] .+ (-asNt:bsNt)]; color=:black, linestyle=(:dash,:dense))
+    scatter!(ax, 0, Ss[ianc]; marker=:star6, color=:black)
+    save(joinpath(dirout_plot, "boosts_ianc$(ianc)_iast$(iast).png"), fig)
+    return
+end
+
+
+
 function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::String, sim_params::NamedTuple, boost_params::NamedTuple)
 
     (; astmin, astmax, aststep, Ndsc, bst, kspert, maxdphase, maxdtpeak) = boost_params
     (; dt,) = sim_params
-    (; Sits, ) = jldopen(Rstatsfilename, "r") do f; return NamedTuple(Symbol(key)=>f[key] for key in keys(f)); end
-
-    uhist, thist = jldopen(ufilename, "r") do f; return f["uhist"],f["thist"]; end
+    @load Rstatsfilename Sits
+    #(; Sits, ) = jldopen(Rstatsfilename, "r") do f; return NamedTuple(Symbol(key)=>f[key] for key in keys(f)); end
+    @load ufilename uhist thist
+    #uhist, thist = jldopen(ufilename, "r") do f; return f["uhist"],f["thist"]; end
     NF = typeof(real(uhist[1,1]))
     Nanc = length(Sits)
     asts = collect(range(astmin, astmax; step=aststep))
     Nast = length(asts)
     bsNt = round(Integer, bst/dt)
     maxdNtpeak = round(Integer, maxdtpeak/dt)
-    for ianc = 1:Nanc
+    for ianc = 1:1 #Nanc
         for iast = 1:Nast
-            rng = MersenneTwister(27395)
+            rng = Random.MersenneTwister(27395)
             for idsc = 1:Ndsc
+                @show iast,idsc
                 ast = asts[iast]
                 asNt = round(Integer,ast/dt)
                 it_init_dsc = Sits[ianc] - asNt
@@ -261,15 +314,21 @@ function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::Str
                 u_init_dsc[kspert.+1] .*= exp.((2pi*1im*maxdphase) .* rand(rng, NF))
                 uhist_dsc,thist_dsc = integrate_tbh(u_init_dsc, t_init_dsc, dt, asNt+bsNt+1) 
                 Rhist_dsc = intensity(uhist_dsc)
-                dSit_dsc,S_dsc = findmax(Rhist_dsc[(asNt+1).+(-maxdNdtpeak:maxdNtpeak)])
+                S_dsc,dSit_dsc = findmax(Rhist_dsc[(asNt+1).+(-maxdNtpeak:maxdNtpeak)])
+                dSit_dsc -= (maxdNtpeak)
                 jldopen(joinpath(dirout_data, "boost_ianc$(ianc)_iast$(iast)_idsc$(idsc).jld2"), "w") do f
                     f["thist"] = thist_dsc
                     f["uhist"] = uhist_dsc
                     f["Rhist"] = Rhist_dsc
                     f["S_dsc"] = S_dsc
                     f["dSit_dsc"] = dSit_dsc
-                    f["RdscatSitanc"] = Rhist_dsc[asNt+1]
+                    f["Rdsc_at_Sitanc"] = Rhist_dsc[asNt+1]
                 end
+                @show S_dsc, dSit_dsc
+            end
+        end
+    end
+end
 
 
 
@@ -393,9 +452,10 @@ function main()
                              "compute_intensity_stats" =>   0,
                              "plot_intensity" =>            0,
                              "plot_intensity_stats" =>      0,
-                             "spinoff" =>                   1,
-                             "plot_spinoffs" =>             1,
-                             "boost" =>                     0,
+                             "spinoff" =>                   0,
+                             "plot_spinoffs" =>             0,
+                             "boost" =>                     1,
+                             "plot_boosts" =>               1,
                             )
     # ---------------- Output directories -----------
     dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-17/3"
@@ -415,7 +475,7 @@ function main()
     duration_spinoff = 6.0 
     Ndsc_spinoff = 3
 
-    boost_params = (; astmin=1/4, astmax=4.0, bst=2.0, aststep=1/4, Ndsc=8, maxdphase=1/32, kspert=[kmax,], maxdtpeak=1/8)
+    boost_params = (; astmin=3+1/4, astmax=3+3/4, bst=2.0, aststep=1/4, Ndsc=8, maxdphase=1/32, kspert=[kmax,], maxdtpeak=1/8)
 
     # ------------- Target parameters -----------
     excprob_approx = 0.01
@@ -487,9 +547,13 @@ function main()
         boost_peaks(
                     joinpath(dirout_data,"spinon.jld2"),
                     joinpath(dirout_data,"spinonRstats.jld2"),
-                    boost_params,
+                    dirout_data,
                     sim_params,
+                    boost_params,
                    )
+    end
+    if todo["plot_boosts"]
+        plot_boosts(joinpath(dirout_data,"spinon.jld2"), joinpath(dirout_data, "spinonR.jld2"), joinpath(dirout_data,"spinonRstats.jld2"), dirout_data, dirout_plot, sim_params, boost_params)
     end
     return 
 end
