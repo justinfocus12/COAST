@@ -6,7 +6,7 @@ using JLD2: jldopen, @load
 using Infiltrator: @infiltrate
 using Statistics: quantile, median, mean
 
-function tendency!(dtu, usq, u, kmax)
+function tendency!(dtu::Vector{Complex{NF}}, usq::Vector{Complex{NF}}, u::Vector{Complex{NF}}, kmax::Integer) where NF<:Real
     usq .= 0
     dtu .= 0
     # Fill in the usq array
@@ -130,6 +130,7 @@ function compute_intensity_statistics(Rfile::String, Rstatsfile::String, excprob
 end
 
 function compute_intensity(ufile::String, Rfile::String)
+    # TODO will put an intermediate "reduce" function as an initial pre-step which will determine boosting, but everything donwstream would be a monotonic transformation. I.e., we shouldn't need to settle on a single appropriate intensity yet, but only enough information to decide where to boost.
     uhist,thist = read_history(ufile)
     Rhist = intensity(uhist)
     jldopen(Rfile, "w") do f
@@ -227,21 +228,36 @@ function padbounds(v::Vector{NF},padfrac::Real) where NF <: Real
     return (vmin,vmax)
 end
 
-function intensity(u::Vector,x::NF=pi) where NF <: Real
+# ---------- various intensity functions -----------------
+# baseline intensity function for all downstream "local" measures of severity 
+function local_velocity(u::Vector{Complex{NFu}}, x::NFx) where {NFu<:Real,NFx<:Real}
     kmax = length(u)-1
-    uatx = sum(2*real(u[1]) .+ real.(u[2:kmax+1] .* exp.(1im .* (1:kmax) .* x)))
-    return exp.(uatx)
+    uatx = real(u[1]) + 2*sum(real.(u[2:kmax+1] .* exp.(1im .* (1:kmax) .* x)))
+    return uatx
 end
-function intensity(uhist::Matrix,x::NF=pi) where NF <: Real
-    return mapslices(u->intensity(u,x), uhist; dims=1)[1,:]
+
+function magcubed(uloc::NF) where NF<:Real
+    return abs(uloc)^3
 end
+
+# For example, in the main function, define intensity(u) = magcubed(local_velocity(u, pi))
+
+function intensity(u::Vector{NFu}) where NFu<:Number
+    return magcubed(local_velocity(u, pi))
+end
+
+function intensity(uhist::Matrix{NFu}) where NFu<:Number
+    return mapslices(intensity, uhist; dims=1)[1,:]
+end
+
+
 
 function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::String, dirout_data::String, dirout_plot::String, sim_params::NamedTuple, boost_params::NamedTuple)
     (; astmin, astmax, aststep, Ndsc, bst, kspert, maxdphase, maxdtpeak) = boost_params
     (; dt,) = sim_params
     @load ufilename uhist thist
     @load Rfilename Rhist
-    @load Rstatsfilename Sits Ss threshold Sbinlos_unif Sccdf_empest_unifbins
+    @load Rstatsfilename Sits Ss threshold Sbinlos_unif Sccdf_empest_unifbins Sbinlos_gpd Sccdf_empest_gpdbins
 
     NFu = typeof(uhist[1,1])
     NFreal = typeof(real(uhist[1,1]))
@@ -316,8 +332,6 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
     return
 end
 
-
-
 function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::String, sim_params::NamedTuple, boost_params::NamedTuple; overwrite_boosts::Bool=false)
 
     (; astmin, astmax, aststep, Ndsc, bst, kspert, maxdphase, maxdtpeak) = boost_params
@@ -334,7 +348,7 @@ function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::Str
     bsNt = round(Integer, bst/dt)
     maxdNtpeak = round(Integer, maxdtpeak/dt)
     boostfilename = joinpath(dirout_data,"boosts.jld2") 
-    overwrite_boosts && rm(boostfilename)
+    overwrite_boosts && ispath(boostfilename) && rm(boostfilename)
     for ianc = 1:2 #Nanc
         anckey = "ianc$(ianc)"
         for iast = 1:Nast
@@ -456,13 +470,15 @@ function plot_tbh_hov_trace(uhist, thist, outfilename)
     Nx = 251
     ughist = spec2grid(uhist, Nx)
     uglimits = [-1,1].*maximum(abs.(ughist))
-    Rlimits = uglimits
     xs = collect(range(0, 2pi; length=Nx))
 
-    # Trace out an observable 
+    # Trace out two observables 
     x_target = pi
     ix = argmin(abs.(xs .- x_target)) # location where the observable is measured 
-    Roft = ughist[ix,:]
+    uatx = ughist[ix,:]
+    Rofu = intensity(uhist)
+    @infiltrate
+    Rlimits = [minimum(Rofu), maximum(Rofu)]
 
     thmax = theme_ax()
     xlimits = (0, 2pi)
@@ -475,33 +491,39 @@ function plot_tbh_hov_trace(uhist, thist, outfilename)
     heatmap!(axhov, thist, xs, ughist'; colormap=:coolwarm, colorrange=uglimits)
     hlines!(axhov, xs[ix]; color=:black, linestyle=(:dash,:dense))
 
-    Rtickvalues = [Rlimits[1], 0, Rlimits[2]]
-    Rticklabels = (u->@sprintf("%.1f", u)).(Rtickvalues)
-    axRoft = Axis(lout[2,1]; thmax..., ylabel="𝑅(𝑡)", xlabel="𝑡", limits=(tlimits, tuple(Rlimits...)), yticks=(Rtickvalues, Rticklabels), )
-    lines!(axRoft, thist, Roft; color=:black)
-    linkxaxes!(axhov, axRoft)
-    rowsize!(lout, 1, Relative(4/5))
+    utickvalues = [uglimits[1], 0, uglimits[2]]
+    uticklabels = (uval->@sprintf("%.1f", uval)).(utickvalues)
+    axuatx = Axis(lout[2,1]; thmax..., ylabel="𝑢(π,𝑡)", xlabel="𝑡", limits=(tlimits, tuple(uglimits...)), yticks=(utickvalues, uticklabels), xlabelvisible=false, xticklabelsvisible=false)
+    lines!(axuatx, thist, uatx; color=:black)
+
+    Rtickvalues = [Rlimits[1],(Rlimits[1]+Rlimits[2])/2, Rlimits[2]]
+    Rticklabels = (R->@sprintf("%.1f", R)).(Rtickvalues)
+    axRofu = Axis(lout[3,1]; thmax..., ylabel="𝑅(𝑢(π,𝑡))", xlabel="𝑡", limits=(tlimits, tuple(Rlimits...)), yticks=(utickvalues, uticklabels), )
+    lines!(axRofu, thist, Rofu; color=:black)
+
+    linkxaxes!(axhov, axuatx, axRofu)
+    rowsize!(lout, 1, Relative(3/5))
+    rowsize!(lout, 2, Relative(1/5))
     rowgap!(lout, 1, 10)
+    rowgap!(lout, 2, 0)
     save(outfilename, fig)
 end
 
 function main()
     todo = Dict{String,Bool}(
-                             "spinup" =>                    0,
-                             "plot_spinup" =>               0,
-                             "spinon" =>                    0,
-                             "plot_spinon" =>               0,
-                             "compute_intensity" =>         0,
-                             "compute_intensity_stats" =>   0,
-                             "plot_intensity" =>            0,
-                             "plot_intensity_stats" =>      0,
-                             "spinoff" =>                   0,
-                             "plot_spinoffs" =>             0,
-                             "boost" =>                     0,
+                             "spinup" =>                    1,
+                             "plot_spinup" =>               1,
+                             "spinon" =>                    1,
+                             "plot_spinon" =>               1,
+                             "compute_intensity" =>         1,
+                             "compute_intensity_stats" =>   1,
+                             "plot_intensity" =>            1,
+                             "plot_intensity_stats" =>      1,
+                             "boost" =>                     1,
                              "plot_boosts" =>               1,
                             )
     # ---------------- Output directories -----------
-    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-17/3"
+    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-20/2"
     mkpath(dirout_base)
     dirout_data = joinpath(dirout_base, "data")
     dirout_plot = joinpath(dirout_base, "plot")
@@ -518,13 +540,13 @@ function main()
     duration_spinoff = 6.0 
     Ndsc_spinoff = 3
 
-    boost_params = (; astmin=1/4, astmax=8.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/32, kspert=[kmax,], maxdtpeak=1/8)
+    boost_params = (; astmin=1/4, astmax=8.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/32, kspert=[kmax,], maxdtpeak=1/2)
     overwrite_boosts = true
 
     # ------------- Target parameters -----------
-    excprob_approx = 0.01
+    excprob_approx = 1.0/250
     peakbuffer = 5.0
-    Nbin = 60
+    Nbin = 20
     # ----------------- spinup --------------
     if todo["spinup"]
         rng = Random.MersenneTwister(48401)
@@ -565,7 +587,7 @@ function main()
         plot_tbh_trace_pdf(joinpath.(dirout_data,["spinon.jld2","spinonR.jld2","spinonRstats.jld2"])..., joinpath(dirout_plot, "Rstats_spinon.png"))
     end
 
-    if todo["spinoff"]
+    if false && todo["spinoff"]
         Nt_spinoff = round(Int64, duration_spinoff/dt) + 1
         rng = Random.MersenneTwister(90193)
         uhist_spinon,thist_spinon = read_history(joinpath(dirout_data,"spinon.jld2"))
@@ -580,7 +602,7 @@ function main()
         end
     end
 
-    if todo["plot_spinoffs"]
+    if false && todo["plot_spinoffs"]
         for i_dsc = 1:Ndsc_spinoff
             uhist_spinoff,thist_spinoff = read_history(joinpath(dirout_data,"spinoff_dsc$(i_dsc).jld2"))
             plot_tbh_hov_trace(joinpath(dirout_data,"spinoff_dsc$(i_dsc).jld2"), joinpath(dirout_plot,"spinoff_dsc$(i_dsc).png"))
