@@ -241,7 +241,7 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
     (; dt,) = sim_params
     @load ufilename uhist thist
     @load Rfilename Rhist
-    @load Rstatsfilename Sits Ss threshold
+    @load Rstatsfilename Sits Ss threshold Sbinlos_unif Sccdf_empest_unifbins
 
     NFu = typeof(uhist[1,1])
     NFreal = typeof(real(uhist[1,1]))
@@ -277,19 +277,40 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
                 Rdsc_at_Sitancs[idsc] = ff[joinpath(aadkey,"Rdsc_at_Sitanc")]
             end
         end
+        Sbinwidths = vcat(diff(Sbinlos_unif), maximum(Ss)-Sbinlos_unif[end])
+        Spdf = -diff(vcat(Sccdf_empest_unifbins, 0)) ./ Sbinwidths
+        Sccdf_boost = sum(S_dscs .> Sbinlos_unif'; dims=1)[1,:]./Ndsc
+        Spdf_boost = -diff(vcat(Sccdf_boost, 0)) ./ Sbinwidths
+        Spdfmin = minimum(filter(p->p>0, vcat(Spdf, Spdf_boost)))
+        Spdfmax = maximum(vcat(Spdf, Spdf_boost))
+
+        Rlimits = (minimum(Rhist), 2*Sbinlos_unif[end]-Sbinlos_unif[end-1])
         
         thmax = theme_ax()
         fig = Figure(size=(400,300))
         lout = fig[1,1] = GridLayout()
-        ax = Axis(lout[1,1]; thmax..., xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))",)
+
+        ax1 = Axis(lout[1,1]; thmax..., xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))", limits=((-asts[end], bst,),Rlimits))
+        ax2 = Axis(lout[1,2]; thmax..., xlabel="PDF", ylabel="𝑅*",ylabelvisible=false, yticklabelsvisible=false, limits=((Spdfmin,Spdfmax),Rlimits))
+
         tancmax = thist[Sits[ianc]]
         for idsc = 1:Ndsc
-            lines!(ax, thist_dscs[:,idsc].-tancmax, Rhist_dscs[:,idsc]; color=:red, linestyle=:solid)
-            scatter!(ax, dt*dSit_dscs[idsc], S_dscs[idsc]; marker=:star6, color=:red)
+            lines!(ax1, thist_dscs[:,idsc].-tancmax, Rhist_dscs[:,idsc]; color=:red, linestyle=:solid)
+            scatter!(ax1, dt*dSit_dscs[idsc], S_dscs[idsc]; marker=:star6, color=:red)
         end
-        lines!(ax, dt.*collect(-(asNts[Nast]):bsNt), Rhist[Sits[ianc].+(-asNts[Nast]:bsNt)]; color=:black, linestyle=(:dash,:dense))
-        scatter!(ax, 0, Ss[ianc]; marker=:star6, color=:black)
-        hlines!(ax, threshold; color=:grey79)
+        lines!(ax1, dt.*collect(-(asNts[Nast]):bsNt), Rhist[Sits[ianc].+(-asNts[Nast]:bsNt)]; color=:black, linestyle=(:dash,:dense))
+        scatter!(ax1, 0, Ss[ianc]; marker=:star6, color=:black)
+        hlines!(ax1, threshold; color=:grey79)
+
+        lines!(ax2, Spdf, Sbinlos_unif.+Sbinwidths./2; color=:black, )
+        lines!(ax2, Spdf_boost, Sbinlos_unif.+Sbinwidths./2; color=:red, )
+        hlines!(ax1, threshold; color=:grey79)
+        hlines!(ax2, threshold; color=:grey79)
+
+
+        linkyaxes!(ax1, ax2)
+        colsize!(lout, 1, Relative(5/6))
+
         save(joinpath(dirout_plot, "boosts_ianc$(ianc)_iast$(iast).png"), fig)
     end
     return
@@ -476,7 +497,7 @@ function main()
                              "plot_intensity_stats" =>      0,
                              "spinoff" =>                   0,
                              "plot_spinoffs" =>             0,
-                             "boost" =>                     1,
+                             "boost" =>                     0,
                              "plot_boosts" =>               1,
                             )
     # ---------------- Output directories -----------
