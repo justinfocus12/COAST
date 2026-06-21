@@ -174,6 +174,7 @@ function compute_intensity_statistics(Rfile::String, Rstatsfile::String, excprob
     Rbinlos = Rbineds[1:Nbin]
 
     Rccdf = sum(Rhist .> Rbinlos'; dims=1)[1,:] ./ Nt
+    @infiltrate
     i_bin_thresh = searchsortedfirst(Rccdf, excprob_approx; lt=(x,y)->(x>=y))
     threshold = Rbinlos[i_bin_thresh]
     excprob = Rccdf[i_bin_thresh]
@@ -351,10 +352,27 @@ function magcubed(uloc::NF) where NF<:Real
 end
 
 # For example, in the main function, define intensity(u) = magcubed(spec2gridpoint(u, pi))
-
-function intensity(u::Vector{NFu}) where NFu<:Number
-    return magcubed(spec2gridpoint(u, pi))
+#
+function intensity(u::Vector{NFu}) where {NFu<:Union{Complex{NFr},NFr} where NFr<:Real}
+    return magcubed(spec2gridpoint(u,1.0*pi))
 end
+function intensity(uhist::Matrix{NFu}) where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
+    return mapslices(intensity, uhist; dims=1)[1,:]
+end
+
+#function local_intensity_fun_maker(locfun::Function, x::NFx) where {NFu<:Number,NFx<:Number}
+#    function locintfun(u::Vector{NFu}) where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
+#        return locfun(spec2gridpoint(u,x))
+#    end
+#    return locintfun
+#end
+#
+#function local_intensity_fun_multitime_maker(locintfun)
+#    function locintfun_crosstime(uhist::Matrix{NFu}) where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
+#        return mapslices(locintfun, uhist; dims=1)[1,:]
+#    end
+#    return locintfun_crosstime
+#end
 
 function intensity(uhist::Matrix{NFu}) where NFu<:Number
     return mapslices(intensity, uhist; dims=1)[1,:]
@@ -362,7 +380,7 @@ end
 
 
 
-function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::String, dirout_data::String, dirout_plot::String, sim_params::NamedTuple, boost_params::NamedTuple)
+function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::String, dirout_boost::String, dirout_plot::String, sim_params::NamedTuple, boost_params::NamedTuple)
     (; astmin, astmax, aststep, Ndsc, bst, kspert, maxdphase, maxdtpeak) = boost_params
     (; dt,) = sim_params
     @load ufilename uhist thist
@@ -393,7 +411,7 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
         dSit_dscs = zeros(Integer, (Ndsc,))
         S_dscs = zeros(NFr, (Ndsc,))
         Rdsc_at_Sitancs = zeros(NFr, (Ndsc,))
-        jldopen(joinpath(dirout_data, "boosts.jld2"), "r") do ff
+        jldopen(joinpath(dirout_boost, "boosts.jld2"), "r") do ff
             anckey = "ianc$(ianc)"
             astkey = "iast$(iast)"
             for idsc = 1:Ndsc
@@ -426,6 +444,7 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
         ax1 = Axis(lout[1,1]; thmax..., xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))", limits=(tlimits,Rlimits), xticklabelsvisible=false, xlabelvisible=false)
         ax2 = Axis(lout[1,2]; thmax..., xlabel="CCDF", ylabel="𝑅*",ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((Sccdfmin,1.0),Rlimits))
         ax3 = Axis(lout[2,1]; thmax..., xlabel="𝑡", ylabel="RMSE", limits=(tlimits,nothing))
+        # TODO put in a plot of response vs perturbation
 
         tancmax = thist[Sits[ianc]]
         for idsc = 1:Ndsc
@@ -470,6 +489,7 @@ function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::Str
     #uhist, thist = jldopen(ufilename, "r") do f; return f["uhist"],f["thist"]; end
     NFu = typeof(uhist[1,1])
     NFr = typeof(real(uhist[1,1]))
+    kmax = (NFu<:Complex ? size(uhist,1)-1 : div(size(uhist,1),2))
     Nanc = length(Sits)
     asts = collect(range(astmin, astmax; step=aststep))
     Nast = length(asts)
@@ -656,36 +676,46 @@ function main()
                              "compute_intensity_stats" =>   0,
                              "plot_intensity" =>            0,
                              "plot_intensity_stats" =>      0,
-                             "boost" =>                     0,
+                             "boost" =>                     1,
                              "plot_boosts" =>               1,
                             )
+    # ----------- Global constants: numeric types ---
     NFr = Float64
-    NFu = NFr 
-    # ---------------- Output directories -----------
-    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-20/3"
-    mkpath(dirout_base)
-    dirout_data = joinpath(dirout_base, "data")
-    dirout_plot = joinpath(dirout_base, "plot")
-    mkpath.([dirout_data,dirout_plot])
+    NFu = NFr # either NFr or Complex{NFr}, the latter to do spectral calculations with complex arithmetic
     # ----------------- Parameters ------------------
-    kmax = 8 # maximum wavenumber to retain 
+    kmax = 12 # maximum wavenumber to retain 
     ks = collect(0:1:kmax)
+    paramstring_phys = @sprintf("K%d", kmax)
     # ----------------- Simulation parameters -------
     dt = 0.01
     sim_params = (; dt)
-    # ----------------- Ensemble parameters ---------
+    # ----------------- SiMC parameters -------------
     duration_spinup = 15.0
     duration_spinon = 5000.0 
-    duration_spinoff = 6.0 
-    Ndsc_spinoff = 3
+    paramstring_simc = @sprintf("SiMC%.0E", duration_spinon)
+    # ------------- Target parameters -----------
+    threshold_return_period_approx = 50.0 
+    threshold_excprob_approx = dt/threshold_return_period_approx
+    peakbuffer = 20.0
+    Nbin = 30
 
-    boost_params = (; astmin=1/4, astmax=8.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/128, kspert=collect(1:kmax), maxdtpeak=1/4)
+    paramstring_trgt = @sprintf("thrt%d_Nbin%d", threshold_return_period_approx, Nbin)
+    # ------------- Boosting parameters -------------------
+    bpar = (; astmin=1/4, astmax=8.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/128, kspert=collect(1:kmax), maxdtpeak=1/4) # boost params
+    paramstring_boost = @sprintf("ksp%d-%d_dph%.1f_%.1f", bpar.kspert[1], bpar.kspert[end], bpar.maxdphase, bpar.astmax, )
+
     overwrite_boosts = true
 
-    # ------------- Target parameters -----------
-    excprob_approx = 1.0/250
-    peakbuffer = 5.0
-    Nbin = 20
+    # ---------------- Output directories -----------
+    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-20/3"
+    dot2p(s) = replace(s, "."=>"p")
+    dirout_phys = joinpath(dirout_base, paramstring_phys) |> dot2p
+    dirout_simc = joinpath(dirout_phys, paramstring_simc) |> dot2p
+    dirout_trgt = joinpath(dirout_simc, paramstring_trgt) |> dot2p
+    dirout_boost = joinpath(dirout_trgt, paramstring_boost) |> dot2p
+    for dir = (dirout_base, dirout_phys, dirout_simc, dirout_trgt, dirout_boost)
+        mkpath(dir)
+    end
     # ----------------- spinup --------------
     if todo["spinup"]
         rng = Random.MersenneTwister(48401)
@@ -708,32 +738,55 @@ function main()
         t_init = 0.0
         Nt_spinup = round(Int64, duration_spinup/dt) + 1
         uhist_spinup,thist_spinup = integrate_tbh(u_init, t_init, dt, Nt_spinup)
-        write_history(uhist_spinup,thist_spinup,joinpath(dirout_data,"spinup.jld2"))
+        write_history(uhist_spinup,thist_spinup,joinpath(dirout_simc,"spinup.jld2"))
     end
     if todo["plot_spinup"]
-        plot_tbh_hov_trace(joinpath(dirout_data,"spinup.jld2"), joinpath(dirout_plot, "spinup.png"))
+        plot_tbh_hov_trace(joinpath(dirout_simc,"spinup.jld2"), joinpath(dirout_simc, "spinup_hov_trace.png"))
     end
     if todo["spinon"]
-        uhist_spinup,thist_spinup = read_history(joinpath(dirout_data,"spinup.jld2"))
+        uhist_spinup,thist_spinup = read_history(joinpath(dirout_simc,"spinup.jld2"))
         u_init = uhist_spinup[:,end]
         t_init = thist_spinup[end]
         Nt_spinon = round(Int64, duration_spinon/dt) + 1
         uhist_spinon,thist_spinon = integrate_tbh(u_init, t_init, dt, Nt_spinon)
-        write_history(uhist_spinon,thist_spinon,joinpath(dirout_data,"spinon.jld2"))
+        write_history(uhist_spinon,thist_spinon,joinpath(dirout_simc,"spinon.jld2"))
     end
     if todo["compute_intensity"]
-        compute_intensity(joinpath(dirout_data,"spinon.jld2"), joinpath(dirout_data,"spinonR.jld2"))
+        compute_intensity(joinpath(dirout_simc,"spinon.jld2"), joinpath(dirout_trgt,"spinonR.jld2"))
     end
     if todo["plot_spinon"]
-        plot_tbh_hov_trace(joinpath(dirout_data,"spinon.jld2"),joinpath(dirout_plot, "spinon_hov_trace.png"))
+        plot_tbh_hov_trace(joinpath(dirout_simc,"spinon.jld2"),joinpath(dirout_trgt, "spinon_hov_trace.png"))
     end
     if todo["compute_intensity_stats"]
-        compute_intensity_statistics(joinpath.(dirout_data, ["spinonR.jld2","spinonRstats.jld2"])..., excprob_approx, Nbin, peakbuffer)
+        compute_intensity_statistics(joinpath(dirout_trgt, "spinonR.jld2"), joinpath(dirout_trgt,"spinonRstats.jld2"), threshold_excprob_approx, Nbin, peakbuffer)
     end
     if todo["plot_intensity_stats"]
-        plot_tbh_trace_pdf(joinpath.(dirout_data,["spinon.jld2","spinonR.jld2","spinonRstats.jld2"])..., joinpath(dirout_plot, "Rstats_spinon.png"))
+        plot_tbh_trace_pdf(joinpath(dirout_simc,"spinon.jld2"), joinpath(dirout_trgt,"spinonR.jld2"),joinpath(dirout_trgt,"spinonRstats.jld2"), joinpath(dirout_trgt, "Rstats_spinon.png"))
     end
 
+    if todo["boost"]
+        boost_peaks(
+                    joinpath(dirout_simc,"spinon.jld2"),
+                    joinpath(dirout_trgt,"spinonRstats.jld2"),
+                    dirout_boost,
+                    sim_params,
+                    bpar,
+                    ;
+                    overwrite_boosts=overwrite_boosts,
+                   )
+    end
+    if todo["plot_boosts"]
+        plot_boosts(
+                    joinpath(dirout_simc,"spinon.jld2"), 
+                    joinpath(dirout_trgt, "spinonR.jld2"), 
+                    joinpath(dirout_trgt,"spinonRstats.jld2"), 
+                    dirout_boost, 
+                    dirout_boost,
+                    sim_params, 
+                    bpar
+                   )
+    end
+    return 
     if false && todo["spinoff"]
         Nt_spinoff = round(Int64, duration_spinoff/dt) + 1
         rng = Random.MersenneTwister(90193)
@@ -756,21 +809,6 @@ function main()
         end
     end
 
-    if todo["boost"]
-        boost_peaks(
-                    joinpath(dirout_data,"spinon.jld2"),
-                    joinpath(dirout_data,"spinonRstats.jld2"),
-                    dirout_data,
-                    sim_params,
-                    boost_params,
-                    ;
-                    overwrite_boosts=overwrite_boosts,
-                   )
-    end
-    if todo["plot_boosts"]
-        plot_boosts(joinpath(dirout_data,"spinon.jld2"), joinpath(dirout_data, "spinonR.jld2"), joinpath(dirout_data,"spinonRstats.jld2"), dirout_data, dirout_plot, sim_params, boost_params)
-    end
-    return 
 end
 
 main()
