@@ -6,7 +6,18 @@ using JLD2: jldopen, @load
 using Infiltrator: @infiltrate
 using Statistics: quantile, median, mean
 
-function tendency!(dtu::Vector{Complex{NF}}, usq::Vector{Complex{NF}}, u::Vector{Complex{NF}}, kmax::Integer) where NF<:Real
+function get_kmax(u::Vector{NFu}) where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
+    lenu = length(u)
+    @assert lenu%2 == 1
+    if NFu<:Complex
+        return lenu-1
+    else
+        return div(lenu,2)
+    end
+end
+
+
+function tendency!(dtu::Vector{Complex{NFr}}, usq::Vector{Complex{NFr}}, u::Vector{Complex{NFr}}, kmax::Integer) where NFr<:Real
     usq .= 0
     dtu .= 0
     # Fill in the usq array
@@ -15,10 +26,7 @@ function tendency!(dtu::Vector{Complex{NF}}, usq::Vector{Complex{NF}}, u::Vector
         for m = 1:k-1
             usq[k+1] += 2 * u[m+1] * u[(k-m)+1]
         end
-        display(u[1])
-        display(u[k+1])
         usq[k+1] += 2 * u[1] * u[k+1]
-        display(usq[k+1])
         for m = (k+1):kmax
             usq[k+1] += 2 * u[m+1] * conj(u[(m-k)+1])
         end
@@ -27,7 +35,7 @@ function tendency!(dtu::Vector{Complex{NF}}, usq::Vector{Complex{NF}}, u::Vector
     return
 end
 
-function tendency!(dtu::Vector{NF}, usq::Vector{NF}, u::Vector{NF}, kmax::Integer) where NF<:Real
+function tendency!(dtu::Vector{NFr}, usq::Vector{NFr}, u::Vector{NFr}, kmax::Integer) where NFr<:Real
     # u = [u0, Re{u1}, ..., Re{ukmax}, Im{u1}, ..., Im{ukmax}]
     
     u0 = @view(u[1:1])
@@ -51,11 +59,8 @@ function tendency!(dtu::Vector{NF}, usq::Vector{NF}, u::Vector{NF}, kmax::Intege
             usqre[k] += 2 * (ure[m] * ure[k-m] - uim[m]*uim[k-m])
             usqim[k] += 2 * (ure[m] * uim[k-m] + uim[m]*ure[k-m])
         end
-        display(u0[1])
-        display(ure[k]+1im*uim[k])
         usqre[k] += 2 * u0[1] * ure[k] 
         usqim[k] += 2 * u0[1] * uim[k] 
-        display(usqre[k]+1im*usqim[k])
         for m = (k+1):kmax
             usqre[k] += 2 * (ure[m] * ure[m-k] + uim[m] * uim[m-k])
             usqim[k] += 2 * (ure[m] * (-uim[m-k]) + uim[m] * ure[m-k])
@@ -67,14 +72,14 @@ function tendency!(dtu::Vector{NF}, usq::Vector{NF}, u::Vector{NF}, kmax::Intege
 end
 
 function test_tendencies(; ks::AbstractVector{<:Integer}, seed::Integer=6765)
-    NF = Float32
+    NFr = Float32
     kmax = 32
-    cdtu,cusq,cu = carrs = (ntuple(_->zeros(Complex{NF}, kmax+1), 3))
-    rdtu,rusq,ru = rarrs = (ntuple(_->zeros(NF, 2*kmax+1), 3))
+    cdtu,cusq,cu = carrs = (ntuple(_->zeros(Complex{NFr}, kmax+1), 3))
+    rdtu,rusq,ru = rarrs = (ntuple(_->zeros(NFr, 2*kmax+1), 3))
 
     rng = Random.MersenneTwister(seed)
-    uks = zeros(Complex{NF}, 1+kmax)
-    uks[ks.+1] .= rand(rng, Complex{NF}, length(ks))
+    uks = zeros(Complex{NFr}, 1+kmax)
+    uks[ks.+1] .= rand(rng, Complex{NFr}, length(ks))
     uks[1] = real(uks[1])
 
     ru[1] = uks[1]
@@ -98,14 +103,6 @@ function test_tendencies(; ks::AbstractVector{<:Integer}, seed::Integer=6765)
     display(sqrt(sum(abs2.(real_ans .- cplx_ans))))
 end
 
-
-
-
-
-
-    
-
-
 function write_history(uhist::Matrix,thist::Vector,filename::String)
     jldopen(filename,"w") do f
         f["uhist"] = uhist
@@ -120,9 +117,9 @@ function read_history(filename::String)
     return uhist,thist
 end
 
-function compute_peaks_over_threshold(Rhist::Vector{NF}, threshold::Real, buffer::Integer) where NF<:Real
+function compute_peaks_over_threshold(Rhist::Vector{NFr}, threshold::Real, buffer::Integer) where NFr<:Real
     Nt = length(Rhist)
-    Rspeak = Vector{NF}([])
+    Rspeak = Vector{NFr}([])
     itspeak = Vector{Integer}([])
     itprecluster = 0
     incluster = false
@@ -158,7 +155,7 @@ function survival_fun_gpd(x::Real, logscale::Real, shape::Real; loc::Real=0.0)
 end
 
 
-function compute_intensity_statistics(Rfile::String, Rstatsfile::String, excprob_approx::NFR, Nbin::Integer, peakbuffer::NFt) where {NFR<:Real,NFt<:Real}
+function compute_intensity_statistics(Rfile::String, Rstatsfile::String, excprob_approx::NFr, Nbin::Integer, peakbuffer::NFt) where {NFr<:Real,NFt<:Real}
     Rhist,thist = jldopen(Rfile,"r") do f
         return f["Rhist"], f["thist"]
     end
@@ -223,14 +220,17 @@ function compute_intensity(ufile::String, Rfile::String)
 end
 
 function timestep_rk4!(
-        u_new, # final output
-        urk1,urk2,urk3,urk4, # arguments to tendency!
-        dturk1,dturk2,dturk3,dturk4, # tendencies
-        usq, # scratch space for computing u2
-        u, # initial 
-        dt, # timestep
-        kmax, # max wavenumber
-    )
+        u_new::Vu, # final output
+        urk1::Vu,urk2::Vu,urk3::Vu,urk4::Vu, # arguments to tendency!
+        dturk1::Vu,dturk2::Vu,dturk3::Vu,dturk4::Vu, # tendencies
+        usq::Vu, # scratch space for computing u2
+        u::Vu, # initial 
+        dt::NFt, # timestep
+        kmax::Integer, # max wavenumber
+    ) where {
+             NFt<:Real,
+             Vu<:Vector{NFu} where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
+            }
     urk1 .= u
     tendency!(dturk1, usq, urk1, kmax)
     urk2 .= u .+ (dt/2).*dturk1
@@ -249,15 +249,16 @@ function integrate_tbh(u_init::Vector{NFu}, t_init::Real, dt::Real, Nt::Integer)
     # to a finite number of Fourier modes. Don't even do FFT on this simplest of demos. 
     # ----------------- Allocate arrays -------------
     # scratch space for RK4
-    kmax = length(u_init) - 1
+    kmax = get_kmax(u_init)
+    arrsize = NFu<:Complex ? kmax+1 : 2*kmax+1
     (
      u_old,u_new,
      # scratch for RK4
      usq,
      urk1,urk2,urk3,urk4,
      dturk1,dturk2,dturk3,dturk4
-    ) = ntuple(_->zeros(NFu, (kmax+1,)), 11)
-    uhist = zeros(NFu, (kmax+1, Nt)) # u in spectral space 
+    ) = ntuple(_->zeros(NFu, (arrsize,)), 11)
+    uhist = zeros(NFu, (arrsize, Nt)) # u in spectral space 
     thist = collect(t_init .+ (0:Nt-1).*dt)
     # ------- Initialize -------
     u_old .= u_init
@@ -278,18 +279,18 @@ function integrate_tbh(u_init::Vector{NFu}, t_init::Real, dt::Real, Nt::Integer)
 end
 
 function spec2gridpoint(u::Vector{NFu}, x::NFx) where {NFu<:Real,NFx<:Real}
-    kmax = length(u)-1
-    uatx = u[1] + 2*(sum(u[2:kmax+1].*cos.((1:kmax).*x)) - sum(u[(kmax+2):(2*kmax+1)].*sin((1:kmax).*x)))
+    kmax = get_kmax(u)
+    uatx = u[1] + 2*(sum(u[2:kmax+1].*cos.((1:kmax).*x)) - sum(u[(kmax+2):(2*kmax+1)].*sin.((1:kmax).*x)))
     return uatx
 end
 
-function spec2grid(u::Vector{NF}, Nx::Integer) where NF<:Real
+function spec2grid(u::Vector{NFr}, Nx::Integer) where NFr<:Real
     kmax = div(length(u), 2)
-    ug = zeros(NF, Nx)
+    ug = zeros(NFr, Nx)
     ug .+= u[1]
     xs = collect(range(0, 2pi; length=Nx))
     for k = 1:kmax
-        ug .+= 2 * (u[k+1].*cos.(k.*xs) .- u[k+kmax+1].*sin(k.*xs))
+        ug .+= 2 * (u[k+1].*cos.(k.*xs) .- u[k+kmax+1].*sin.(k.*xs))
     end
     return ug
 end
@@ -299,7 +300,7 @@ function spec2grid(uhist::Matrix{NF}, Nx::Integer) where NF<:Real
 end
 
 function spec2grid(u::Vector{Complex{NF}}, Nx::Integer) where NF<:Real
-    kmax = length(u) - 1
+    kmax = get_kmax(u)
     ug = zeros(NF, Nx)
     ug .+= u[1]
     xs = collect(range(0, 2pi; length=Nx))
@@ -310,7 +311,7 @@ function spec2grid(u::Vector{Complex{NF}}, Nx::Integer) where NF<:Real
 end
 
 function spec2gridpoint(u::Vector{Complex{NFu}}, x::NFx) where {NFu<:Real,NFx<:Real}
-    kmax = length(u)-1
+    kmax = get_kmax(u)
     uatx = real(u[1]) + 2*sum(real.(u[2:kmax+1] .* exp.(1im .* (1:kmax) .* x)))
     return uatx
 end
@@ -364,7 +365,7 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
 
 
     NFu = typeof(uhist[1,1])
-    NFreal = typeof(real(uhist[1,1]))
+    NFr = typeof(real(uhist[1,1]))
     NFt = typeof(thist[1])
     Nanc = length(Sits)
     ianc = 2
@@ -379,11 +380,11 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
 
         (Sits[ianc]-asNt <= 0) && continue
 
-        Rhist_dscs = zeros(NFreal, (asNt+bsNt+1,Ndsc))
+        Rhist_dscs = zeros(NFr, (asNt+bsNt+1,Ndsc))
         thist_dscs = zeros(NFt, (asNt+bsNt+1,Ndsc))
         dSit_dscs = zeros(Integer, (Ndsc,))
-        S_dscs = zeros(NFreal, (Ndsc,))
-        Rdsc_at_Sitancs = zeros(NFreal, (Ndsc,))
+        S_dscs = zeros(NFr, (Ndsc,))
+        Rdsc_at_Sitancs = zeros(NFr, (Ndsc,))
         jldopen(joinpath(dirout_data, "boosts.jld2"), "r") do ff
             anckey = "ianc$(ianc)"
             astkey = "iast$(iast)"
@@ -447,7 +448,7 @@ function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::Str
     @load ufilename uhist thist
     #uhist, thist = jldopen(ufilename, "r") do f; return f["uhist"],f["thist"]; end
     NFu = typeof(uhist[1,1])
-    NFreal = typeof(real(uhist[1,1]))
+    NFr = typeof(real(uhist[1,1]))
     Nanc = length(Sits)
     asts = collect(range(astmin, astmax; step=aststep))
     Nast = length(asts)
@@ -476,7 +477,15 @@ function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::Str
                     it_init_dsc = Sits[ianc] - asNt
                     t_init_dsc = thist[it_init_dsc]
                     u_init_dsc .= uhist[:,it_init_dsc]
-                    u_init_dsc[kspert.+1] .*= exp.((2pi*1im*maxdphase) .* (2*rand(rng, NFreal)-1))
+                    Unifs = rand(rng, NFr, length(kspert)) # uniform 
+                    dthetas = 2pi .* (2 .* Unifs .- 1) .* maxdphase
+                    if NFu<:Complex
+                        u_init_dsc[kspert.+1] .*= exp.(1im.*dthetas)
+                    else
+                        ure,uim = u_init_dsc[kspert.+1], u_init_dsc[kmax.+kspert.+1]
+                        u_init_dsc[kspert.+1] .=      ure.*cos.(dthetas) .- uim.*sin.(dthetas)
+                        u_init_dsc[kspert.+kmax+1] .= uim.*cos.(dthetas) .+ ure.*sin.(dthetas)
+                    end
                     uhist_dsc,thist_dsc = integrate_tbh(u_init_dsc, t_init_dsc, dt, asNt+bsNt+1) 
                     Rhist_dsc = intensity(uhist_dsc)
                     S_dsc,dSit_dsc = findmax(Rhist_dsc[(asNt+1).+(-maxdNtpeak:maxdNtpeak)])
@@ -624,9 +633,11 @@ function main()
                              "compute_intensity_stats" =>   0,
                              "plot_intensity" =>            0,
                              "plot_intensity_stats" =>      0,
-                             "boost" =>                     0,
+                             "boost" =>                     1,
                              "plot_boosts" =>               1,
                             )
+    NFr = Float64
+    NFu = NFr 
     # ---------------- Output directories -----------
     dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-20/3"
     mkpath(dirout_base)
@@ -658,11 +669,19 @@ function main()
         init_wavenumbers = [1,2] #,4,8]
         init_amplitudes = [0.5,0.3] #,0.1,0.05]
         init_phases = 2pi .* rand(rng, Float64, length(init_amplitudes)) 
-        u_init = zeros(ComplexF64, (kmax+1,))
+        u_init_cplx = zeros(Complex{NFr}, (kmax+1,))
+        u_init_cplx[1] = 1/3 
         for ik = 1:length(init_wavenumbers)
-            u_init[init_wavenumbers[ik]+1] = init_amplitudes[ik] * exp(1im * init_phases[ik])
+            u_init_cplx[init_wavenumbers[ik]+1] = init_amplitudes[ik] * exp(1im * init_phases[ik])
         end
-        u_init[1] = 1/3 
+        if NFu <: Complex
+            u_init = copy(u_init_cplx)
+        else
+            u_init = zeros(NFu, 2*kmax+1)
+            u_init[1] = real(u_init_cplx[1])
+            u_init[2:(kmax+1)] .= real.(u_init_cplx[2:(kmax+1)])
+            u_init[(kmax+2):(2*kmax+1)] .= imag.(u_init_cplx[2:(kmax+1)])
+        end
         t_init = 0.0
         Nt_spinup = round(Int64, duration_spinup/dt) + 1
         uhist_spinup,thist_spinup = integrate_tbh(u_init, t_init, dt, Nt_spinup)
@@ -731,6 +750,6 @@ function main()
     return 
 end
 
-#main()
+main()
 
 
