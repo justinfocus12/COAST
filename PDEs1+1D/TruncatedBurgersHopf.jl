@@ -16,6 +16,12 @@ function get_kmax(u::Vector{NFu}) where NFu<:Union{Complex{NFr},NFr} where NFr<:
     end
 end
 
+function meansquare(u::Vector{NFu}) where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
+    return u[1]^2 .+ 2*sum(abs2.(u[2:end]))
+end
+function meansquare(uhist::Matrix{NFu}) where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
+    return mapslices(meansquare, uhist; dims=1)[1,:]
+end
 
 function tendency!(dtu::Vector{Complex{NFr}}, usq::Vector{Complex{NFr}}, u::Vector{Complex{NFr}}, kmax::Integer) where NFr<:Real
     usq .= 0
@@ -380,8 +386,10 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
 
         (Sits[ianc]-asNt <= 0) && continue
 
+
         Rhist_dscs = zeros(NFr, (asNt+bsNt+1,Ndsc))
         thist_dscs = zeros(NFt, (asNt+bsNt+1,Ndsc))
+        msd_dscs = zeros(NFr, (asNt+bsNt+1,Ndsc))
         dSit_dscs = zeros(Integer, (Ndsc,))
         S_dscs = zeros(NFr, (Ndsc,))
         Rdsc_at_Sitancs = zeros(NFr, (Ndsc,))
@@ -396,6 +404,7 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
                 thist_dscs[:,idsc] .= ff[joinpath(aadkey,"thist")]
                 dSit_dscs[idsc] = ff[joinpath(aadkey,"dSit_dsc")]
                 Rdsc_at_Sitancs[idsc] = ff[joinpath(aadkey,"Rdsc_at_Sitanc")]
+                msd_dscs[:,idsc] .= ff[joinpath(aadkey,"msd")]
             end
         end
         Sbinwidths = vcat(diff(Sbinlos_unif), maximum(Ss)-Sbinlos_unif[end])
@@ -408,31 +417,43 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
         Sccdfmin = minimum(filter(p->p>0, vcat(Sccdf_empest_unifbins, Sccdf_boost)))
 
         Rlimits = (minimum(Rhist), 2*Sbinlos_unif[end]-Sbinlos_unif[end-1])
+        tlimits = (-asts[end], bst,)
         
         thmax = theme_ax()
         fig = Figure(size=(400,300))
         lout = fig[1,1] = GridLayout()
 
-        ax1 = Axis(lout[1,1]; thmax..., xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))", limits=((-asts[end], bst,),Rlimits))
+        ax1 = Axis(lout[1,1]; thmax..., xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))", limits=(tlimits,Rlimits), xticklabelsvisible=false, xlabelvisible=false)
         ax2 = Axis(lout[1,2]; thmax..., xlabel="CCDF", ylabel="𝑅*",ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((Sccdfmin,1.0),Rlimits))
+        ax3 = Axis(lout[2,1]; thmax..., xlabel="𝑡", ylabel="RMSE", limits=(tlimits,nothing))
 
         tancmax = thist[Sits[ianc]]
         for idsc = 1:Ndsc
             lines!(ax1, thist_dscs[:,idsc].-tancmax, Rhist_dscs[:,idsc]; color=:red, linestyle=:solid)
             scatter!(ax1, dt*dSit_dscs[idsc], S_dscs[idsc]; marker=:star6, color=:red)
         end
-        lines!(ax1, dt.*collect(-(asNts[Nast]):bsNt), Rhist[Sits[ianc].+(-asNts[Nast]:bsNt)]; color=:black, linestyle=(:dash,:dense))
+
+
+        lines!(ax1, dt.*collect((-asNts[Nast]):bsNt), Rhist[Sits[ianc].+(-asNts[Nast]:bsNt)]; color=:black, linestyle=(:dash,:dense))
         scatter!(ax1, 0, Ss[ianc]; marker=:star6, color=:black)
         hlines!(ax1, threshold; color=:grey79)
+        vlines!(ax1, -ast; color=:red, linestyle=(:dash,:dense))
 
         lines!(ax2, Sccdf_empest_unifbins, Sbinlos_unif; color=:black, )
         lines!(ax2, Sccdf_boost, Sbinlos_unif; color=:red, )
         hlines!(ax1, threshold; color=:grey79)
         hlines!(ax2, threshold; color=:grey79)
 
+        for idsc = 1:Ndsc
+            lines!(ax3, dt.*collect(-asNt:bsNt), sqrt.(msd_dscs[:,idsc]); color=:red)
+        end
+        vlines!(ax3, -ast; color=:red, linestyle=(:dash,:dense))
+
 
         linkyaxes!(ax1, ax2)
+        linkxaxes!(ax1, ax3)
         colsize!(lout, 1, Relative(5/6))
+        rowsize!(lout, 1, Relative(5/6))
 
         save(joinpath(dirout_plot, "boosts_ianc$(ianc)_iast$(iast).png"), fig)
     end
@@ -483,8 +504,9 @@ function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::Str
                         u_init_dsc[kspert.+1] .*= exp.(1im.*dthetas)
                     else
                         ure,uim = u_init_dsc[kspert.+1], u_init_dsc[kmax.+kspert.+1]
-                        u_init_dsc[kspert.+1] .=      ure.*cos.(dthetas) .- uim.*sin.(dthetas)
-                        u_init_dsc[kspert.+kmax+1] .= uim.*cos.(dthetas) .+ ure.*sin.(dthetas)
+                        sindth,cosdth = sin.(dthetas),cos.(dthetas)
+                        u_init_dsc[kspert.+1] .=        ure.*cosdth .- uim.*sindth
+                        u_init_dsc[kspert.+(kmax+1)] .= uim.*cosdth .+ ure.*sindth
                     end
                     uhist_dsc,thist_dsc = integrate_tbh(u_init_dsc, t_init_dsc, dt, asNt+bsNt+1) 
                     Rhist_dsc = intensity(uhist_dsc)
@@ -496,6 +518,7 @@ function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::Str
                     ff[joinpath(aadkey,"S_dsc")] = S_dsc
                     ff[joinpath(aadkey,"dSit_dsc")] = dSit_dsc
                     ff[joinpath(aadkey,"Rdsc_at_Sitanc")] = Rhist_dsc[asNt+1]
+                    ff[joinpath(aadkey,"msd")] = meansquare(uhist_dsc .- uhist[:,Sits[ianc].+(-asNt:bsNt)])
                 end
             end
         end
@@ -633,7 +656,7 @@ function main()
                              "compute_intensity_stats" =>   0,
                              "plot_intensity" =>            0,
                              "plot_intensity_stats" =>      0,
-                             "boost" =>                     1,
+                             "boost" =>                     0,
                              "plot_boosts" =>               1,
                             )
     NFr = Float64
@@ -656,7 +679,7 @@ function main()
     duration_spinoff = 6.0 
     Ndsc_spinoff = 3
 
-    boost_params = (; astmin=1/4, astmax=8.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/32, kspert=[kmax,], maxdtpeak=1/4)
+    boost_params = (; astmin=1/4, astmax=8.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/128, kspert=collect(1:kmax), maxdtpeak=1/4)
     overwrite_boosts = true
 
     # ------------- Target parameters -----------
