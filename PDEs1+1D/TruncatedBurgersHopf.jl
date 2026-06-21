@@ -15,7 +15,10 @@ function tendency!(dtu::Vector{Complex{NF}}, usq::Vector{Complex{NF}}, u::Vector
         for m = 1:k-1
             usq[k+1] += 2 * u[m+1] * u[(k-m)+1]
         end
+        display(u[1])
+        display(u[k+1])
         usq[k+1] += 2 * u[1] * u[k+1]
+        display(usq[k+1])
         for m = (k+1):kmax
             usq[k+1] += 2 * u[m+1] * conj(u[(m-k)+1])
         end
@@ -23,6 +26,85 @@ function tendency!(dtu::Vector{Complex{NF}}, usq::Vector{Complex{NF}}, u::Vector
     dtu .= (-1im/2) .* (0:kmax) .* usq
     return
 end
+
+function tendency!(dtu::Vector{NF}, usq::Vector{NF}, u::Vector{NF}, kmax::Integer) where NF<:Real
+    # u = [u0, Re{u1}, ..., Re{ukmax}, Im{u1}, ..., Im{ukmax}]
+    
+    u0 = @view(u[1:1])
+    ure = @view(u[2:(kmax+1)])
+    uim = @view(u[(kmax+2):(2*kmax+1)])
+    
+    usq0 = @view(usq[1:1])
+    usqre = @view(usq[2:(kmax+1)])
+    usqim = @view(usq[(kmax+2):(2*kmax+1)])
+
+    dtu0 = @view(dtu[1:1])
+    dture = @view(dtu[2:(kmax+1)])
+    dtuim = @view(dtu[(kmax+2):(2*kmax+1)])
+
+    usq .= 0
+    dtu .= 0
+    # Fill in the usq array
+    usq0[1] = u0[1]^2 + 4*(sum(ure.^2) + sum(uim.^2))
+    for k = 1:kmax
+        for m = 1:k-1
+            usqre[k] += 2 * (ure[m] * ure[k-m] - uim[m]*uim[k-m])
+            usqim[k] += 2 * (ure[m] * uim[k-m] + uim[m]*ure[k-m])
+        end
+        display(u0[1])
+        display(ure[k]+1im*uim[k])
+        usqre[k] += 2 * u0[1] * ure[k] 
+        usqim[k] += 2 * u0[1] * uim[k] 
+        display(usqre[k]+1im*usqim[k])
+        for m = (k+1):kmax
+            usqre[k] += 2 * (ure[m] * ure[m-k] + uim[m] * uim[m-k])
+            usqim[k] += 2 * (ure[m] * (-uim[m-k]) + uim[m] * ure[m-k])
+        end
+    end
+    dture .= (1/2) .* (1:kmax) .* usqim
+    dtuim .= -(1/2) .* (1:kmax) .* usqre
+    return
+end
+
+function test_tendencies(; ks::AbstractVector{<:Integer}, seed::Integer=6765)
+    NF = Float32
+    kmax = 32
+    cdtu,cusq,cu = carrs = (ntuple(_->zeros(Complex{NF}, kmax+1), 3))
+    rdtu,rusq,ru = rarrs = (ntuple(_->zeros(NF, 2*kmax+1), 3))
+
+    rng = Random.MersenneTwister(seed)
+    uks = zeros(Complex{NF}, 1+kmax)
+    uks[ks.+1] .= rand(rng, Complex{NF}, length(ks))
+    uks[1] = real(uks[1])
+
+    ru[1] = uks[1]
+    ru[2:(kmax+1)] = real.(uks[2:(kmax+1)])
+    ru[(kmax+2):(2*kmax+1)] .= imag.(uks[2:(kmax+1)])
+    cu[1 .+ ks] .= uks 
+
+    tendency!(rarrs..., kmax)
+    tendency!(carrs..., kmax)
+
+    real_ans = vcat(rdtu[1]+0im, rdtu[2:kmax+1].+rdtu[kmax+2:2*kmax+1].*1im)
+    cplx_ans = cdtu
+
+    println("Real result: ")
+    display(real_ans)
+
+    println("Complex result: ")
+    display(cplx_ans)
+
+    println("Disagreement: ")
+    display(sqrt(sum(abs2.(real_ans .- cplx_ans))))
+end
+
+
+
+
+
+
+    
+
 
 function write_history(uhist::Matrix,thist::Vector,filename::String)
     jldopen(filename,"w") do f
@@ -161,8 +243,7 @@ function timestep_rk4!(
     return
 end
 
-function integrate_tbh(u_init, t_init, dt, Nt)
-    NF = Float64
+function integrate_tbh(u_init::Vector{NFu}, t_init::Real, dt::Real, Nt::Integer) where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
     # Simulate the Truncated Burgers-Hopf dynamics, which is a truncation of 
     # u_t + u*u_x = 0
     # to a finite number of Fourier modes. Don't even do FFT on this simplest of demos. 
@@ -175,8 +256,8 @@ function integrate_tbh(u_init, t_init, dt, Nt)
      usq,
      urk1,urk2,urk3,urk4,
      dturk1,dturk2,dturk3,dturk4
-    ) = ntuple(_->zeros(Complex{NF}, (kmax+1,)), 11)
-    uhist = zeros(Complex{NF}, (kmax+1, Nt)) # u in spectral space 
+    ) = ntuple(_->zeros(NFu, (kmax+1,)), 11)
+    uhist = zeros(NFu, (kmax+1, Nt)) # u in spectral space 
     thist = collect(t_init .+ (0:Nt-1).*dt)
     # ------- Initialize -------
     u_old .= u_init
@@ -196,7 +277,28 @@ function integrate_tbh(u_init, t_init, dt, Nt)
     return uhist, thist
 end
 
-function spec2grid(u::Vector{<:Complex{NF}}, Nx::Integer) where NF
+function spec2gridpoint(u::Vector{NFu}, x::NFx) where {NFu<:Real,NFx<:Real}
+    kmax = length(u)-1
+    uatx = u[1] + 2*(sum(u[2:kmax+1].*cos.((1:kmax).*x)) - sum(u[(kmax+2):(2*kmax+1)].*sin((1:kmax).*x)))
+    return uatx
+end
+
+function spec2grid(u::Vector{NF}, Nx::Integer) where NF<:Real
+    kmax = div(length(u), 2)
+    ug = zeros(NF, Nx)
+    ug .+= u[1]
+    xs = collect(range(0, 2pi; length=Nx))
+    for k = 1:kmax
+        ug .+= 2 * (u[k+1].*cos.(k.*xs) .- u[k+kmax+1].*sin(k.*xs))
+    end
+    return ug
+end
+
+function spec2grid(uhist::Matrix{NF}, Nx::Integer) where NF<:Real
+    return mapslices(u->spec2grid(u,Nx), uhist; dims=1) 
+end
+
+function spec2grid(u::Vector{Complex{NF}}, Nx::Integer) where NF<:Real
     kmax = length(u) - 1
     ug = zeros(NF, Nx)
     ug .+= u[1]
@@ -207,7 +309,13 @@ function spec2grid(u::Vector{<:Complex{NF}}, Nx::Integer) where NF
     return ug
 end
 
-function spec2grid(uhist::Matrix{<:Complex{NF}}, Nx::Integer) where NF
+function spec2gridpoint(u::Vector{Complex{NFu}}, x::NFx) where {NFu<:Real,NFx<:Real}
+    kmax = length(u)-1
+    uatx = real(u[1]) + 2*sum(real.(u[2:kmax+1] .* exp.(1im .* (1:kmax) .* x)))
+    return uatx
+end
+
+function spec2grid(uhist::Matrix{Complex{NF}}, Nx::Integer) where NF<:Real
     return mapslices(u->spec2grid(u,Nx), uhist; dims=1) 
 end
 
@@ -230,20 +338,15 @@ end
 
 # ---------- various intensity functions -----------------
 # baseline intensity function for all downstream "local" measures of severity 
-function local_velocity(u::Vector{Complex{NFu}}, x::NFx) where {NFu<:Real,NFx<:Real}
-    kmax = length(u)-1
-    uatx = real(u[1]) + 2*sum(real.(u[2:kmax+1] .* exp.(1im .* (1:kmax) .* x)))
-    return uatx
-end
 
 function magcubed(uloc::NF) where NF<:Real
     return abs(uloc)^3
 end
 
-# For example, in the main function, define intensity(u) = magcubed(local_velocity(u, pi))
+# For example, in the main function, define intensity(u) = magcubed(spec2gridpoint(u, pi))
 
 function intensity(u::Vector{NFu}) where NFu<:Number
-    return magcubed(local_velocity(u, pi))
+    return magcubed(spec2gridpoint(u, pi))
 end
 
 function intensity(uhist::Matrix{NFu}) where NFu<:Number
@@ -258,6 +361,7 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
     @load ufilename uhist thist
     @load Rfilename Rhist
     @load Rstatsfilename Sits Ss threshold Sbinlos_unif Sccdf_empest_unifbins Sbinlos_gpd Sccdf_empest_gpdbins
+
 
     NFu = typeof(uhist[1,1])
     NFreal = typeof(real(uhist[1,1]))
@@ -295,10 +399,12 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
         end
         Sbinwidths = vcat(diff(Sbinlos_unif), maximum(Ss)-Sbinlos_unif[end])
         Spdf = -diff(vcat(Sccdf_empest_unifbins, 0)) ./ Sbinwidths
-        Sccdf_boost = sum(S_dscs .> Sbinlos_unif'; dims=1)[1,:]./Ndsc
+        Sccdf_boost = Float64.(sum(S_dscs .> Sbinlos_unif'; dims=1)[1,:])
+        if Sccdf_boost[1]>0; Sccdf_boost ./= Sccdf_boost[1]; end
         Spdf_boost = -diff(vcat(Sccdf_boost, 0)) ./ Sbinwidths
         Spdfmin = minimum(filter(p->p>0, vcat(Spdf, Spdf_boost)))
         Spdfmax = maximum(vcat(Spdf, Spdf_boost))
+        Sccdfmin = minimum(filter(p->p>0, vcat(Sccdf_empest_unifbins, Sccdf_boost)))
 
         Rlimits = (minimum(Rhist), 2*Sbinlos_unif[end]-Sbinlos_unif[end-1])
         
@@ -307,7 +413,7 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
         lout = fig[1,1] = GridLayout()
 
         ax1 = Axis(lout[1,1]; thmax..., xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))", limits=((-asts[end], bst,),Rlimits))
-        ax2 = Axis(lout[1,2]; thmax..., xlabel="PDF", ylabel="𝑅*",ylabelvisible=false, yticklabelsvisible=false, limits=((Spdfmin,Spdfmax),Rlimits))
+        ax2 = Axis(lout[1,2]; thmax..., xlabel="CCDF", ylabel="𝑅*",ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((Sccdfmin,1.0),Rlimits))
 
         tancmax = thist[Sits[ianc]]
         for idsc = 1:Ndsc
@@ -318,8 +424,8 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
         scatter!(ax1, 0, Ss[ianc]; marker=:star6, color=:black)
         hlines!(ax1, threshold; color=:grey79)
 
-        lines!(ax2, Spdf, Sbinlos_unif.+Sbinwidths./2; color=:black, )
-        lines!(ax2, Spdf_boost, Sbinlos_unif.+Sbinwidths./2; color=:red, )
+        lines!(ax2, Sccdf_empest_unifbins, Sbinlos_unif; color=:black, )
+        lines!(ax2, Sccdf_boost, Sbinlos_unif; color=:red, )
         hlines!(ax1, threshold; color=:grey79)
         hlines!(ax2, threshold; color=:grey79)
 
@@ -477,7 +583,6 @@ function plot_tbh_hov_trace(uhist, thist, outfilename)
     ix = argmin(abs.(xs .- x_target)) # location where the observable is measured 
     uatx = ughist[ix,:]
     Rofu = intensity(uhist)
-    @infiltrate
     Rlimits = [minimum(Rofu), maximum(Rofu)]
 
     thmax = theme_ax()
@@ -498,7 +603,7 @@ function plot_tbh_hov_trace(uhist, thist, outfilename)
 
     Rtickvalues = [Rlimits[1],(Rlimits[1]+Rlimits[2])/2, Rlimits[2]]
     Rticklabels = (R->@sprintf("%.1f", R)).(Rtickvalues)
-    axRofu = Axis(lout[3,1]; thmax..., ylabel="𝑅(𝑢(π,𝑡))", xlabel="𝑡", limits=(tlimits, tuple(Rlimits...)), yticks=(utickvalues, uticklabels), )
+    axRofu = Axis(lout[3,1]; thmax..., ylabel="𝑅(𝑢)(t)", xlabel="𝑡", limits=(tlimits, tuple(Rlimits...)), yticks=(Rtickvalues, Rticklabels), )
     lines!(axRofu, thist, Rofu; color=:black)
 
     linkxaxes!(axhov, axuatx, axRofu)
@@ -511,19 +616,19 @@ end
 
 function main()
     todo = Dict{String,Bool}(
-                             "spinup" =>                    1,
-                             "plot_spinup" =>               1,
-                             "spinon" =>                    1,
-                             "plot_spinon" =>               1,
-                             "compute_intensity" =>         1,
-                             "compute_intensity_stats" =>   1,
-                             "plot_intensity" =>            1,
-                             "plot_intensity_stats" =>      1,
-                             "boost" =>                     1,
+                             "spinup" =>                    0,
+                             "plot_spinup" =>               0,
+                             "spinon" =>                    0,
+                             "plot_spinon" =>               0,
+                             "compute_intensity" =>         0,
+                             "compute_intensity_stats" =>   0,
+                             "plot_intensity" =>            0,
+                             "plot_intensity_stats" =>      0,
+                             "boost" =>                     0,
                              "plot_boosts" =>               1,
                             )
     # ---------------- Output directories -----------
-    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-20/2"
+    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-20/3"
     mkpath(dirout_base)
     dirout_data = joinpath(dirout_base, "data")
     dirout_plot = joinpath(dirout_base, "plot")
@@ -540,7 +645,7 @@ function main()
     duration_spinoff = 6.0 
     Ndsc_spinoff = 3
 
-    boost_params = (; astmin=1/4, astmax=8.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/32, kspert=[kmax,], maxdtpeak=1/2)
+    boost_params = (; astmin=1/4, astmax=8.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/32, kspert=[kmax,], maxdtpeak=1/4)
     overwrite_boosts = true
 
     # ------------- Target parameters -----------
@@ -626,6 +731,6 @@ function main()
     return 
 end
 
-main()
+#main()
 
 
