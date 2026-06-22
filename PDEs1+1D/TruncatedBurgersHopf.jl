@@ -408,6 +408,7 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
         Rhist_dscs = zeros(NFr, (asNt+bsNt+1,Ndsc))
         thist_dscs = zeros(NFt, (asNt+bsNt+1,Ndsc))
         msd_dscs = zeros(NFr, (asNt+bsNt+1,Ndsc))
+        dthetas = zeros(NFr, (length(kspert),Ndsc))
         dSit_dscs = zeros(Integer, (Ndsc,))
         S_dscs = zeros(NFr, (Ndsc,))
         Rdsc_at_Sitancs = zeros(NFr, (Ndsc,))
@@ -423,6 +424,7 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
                 dSit_dscs[idsc] = ff[joinpath(aadkey,"dSit_dsc")]
                 Rdsc_at_Sitancs[idsc] = ff[joinpath(aadkey,"Rdsc_at_Sitanc")]
                 msd_dscs[:,idsc] .= ff[joinpath(aadkey,"msd")]
+                dthetas[:,idsc] .= ff[joinpath(aadkey,"dthetas")]
             end
         end
         Sbinwidths = vcat(diff(Sbinlos_unif), maximum(Ss)-Sbinlos_unif[end])
@@ -442,8 +444,9 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
         lout = fig[1,1] = GridLayout()
 
         ax1 = Axis(lout[1,1]; thmax..., xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))", limits=(tlimits,Rlimits), xticklabelsvisible=false, xlabelvisible=false)
-        ax2 = Axis(lout[1,2]; thmax..., xlabel="CCDF", ylabel="𝑅*",ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((Sccdfmin,1.0),Rlimits))
+        ax2 = Axis(lout[1,2]; thmax..., title="CCDF", ylabel="𝑅*",ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((Sccdfmin,1.0),Rlimits))
         ax3 = Axis(lout[2,1]; thmax..., xlabel="𝑡", ylabel="RMSE", limits=(tlimits,nothing))
+        ax4 = Axis(lout[2,2]; thmax..., xlabel="δϕ[$(kspert[1])]", ylabel="δ𝑅*", limits=((-maxdphase,maxdphase),maximum(abs.(S_dscs.-Ss[ianc])).*(-1,1)))
         # TODO put in a plot of response vs perturbation
 
         tancmax = thist[Sits[ianc]]
@@ -468,11 +471,18 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
         end
         vlines!(ax3, -ast; color=:red, linestyle=(:dash,:dense))
 
+        hlines!(0; color=:black, linestyle=(:dash,:dense))
+        vlines!(0; color=:black, linestyle=(:dash,:dense))
+        @infiltrate
+        scatter!(ax4, dthetas[1,:], S_dscs.-Ss[ianc]; color=:red)
+
 
         linkyaxes!(ax1, ax2)
         linkxaxes!(ax1, ax3)
         colsize!(lout, 1, Relative(5/6))
-        rowsize!(lout, 1, Relative(5/6))
+        rowsize!(lout, 1, Relative(3/5))
+        rowgap!(lout, 1, 10)
+        colgap!(lout, 1, 10)
 
         save(joinpath(dirout_plot, "boosts_ianc$(ianc)_iast$(iast).png"), fig)
     end
@@ -538,6 +548,7 @@ function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::Str
                     ff[joinpath(aadkey,"S_dsc")] = S_dsc
                     ff[joinpath(aadkey,"dSit_dsc")] = dSit_dsc
                     ff[joinpath(aadkey,"Rdsc_at_Sitanc")] = Rhist_dsc[asNt+1]
+                    ff[joinpath(aadkey,"dthetas")] = dthetas
                     ff[joinpath(aadkey,"msd")] = meansquare(uhist_dsc .- uhist[:,Sits[ianc].+(-asNt:bsNt)])
                 end
             end
@@ -676,7 +687,7 @@ function main()
                              "compute_intensity_stats" =>   0,
                              "plot_intensity" =>            0,
                              "plot_intensity_stats" =>      0,
-                             "boost" =>                     1,
+                             "boost" =>                     0,
                              "plot_boosts" =>               1,
                             )
     # ----------- Global constants: numeric types ---
@@ -701,8 +712,8 @@ function main()
 
     paramstring_trgt = @sprintf("thrt%d_Nbin%d", threshold_return_period_approx, Nbin)
     # ------------- Boosting parameters -------------------
-    bpar = (; astmin=1/4, astmax=8.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/128, kspert=collect(1:kmax), maxdtpeak=1/4) # boost params
-    paramstring_boost = @sprintf("ksp%d-%d_dph%.1f_%.1f", bpar.kspert[1], bpar.kspert[end], bpar.maxdphase, bpar.astmax, )
+    bpar = (; astmin=1/4, astmax=8.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/128, kspert=collect(kmax:kmax), maxdtpeak=1/4) # boost params
+    paramstring_boost = @sprintf("ksp%d-%d_dph%.0E_Amax%.1f", bpar.kspert[1], bpar.kspert[end], bpar.maxdphase, bpar.astmax, )
 
     overwrite_boosts = true
 
