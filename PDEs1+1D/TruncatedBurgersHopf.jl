@@ -17,7 +17,7 @@ function get_kmax(u::Vector{NFu}) where NFu<:Union{Complex{NFr},NFr} where NFr<:
 end
 
 function meansquare(u::Vector{NFu}) where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
-    return u[1]^2 .+ 2*sum(abs2.(u[2:end]))
+    return real(u[1])^2 .+ 2*sum(abs2.(u[2:end]))
 end
 function meansquare(uhist::Matrix{NFu}) where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
     return mapslices(meansquare, uhist; dims=1)[1,:]
@@ -27,10 +27,10 @@ function tendency!(dtu::Vector{Complex{NFr}}, usq::Vector{Complex{NFr}}, u::Vect
     usq .= 0
     dtu .= 0
     # Fill in the usq array
-    usq[1] = abs2(u[1]) + 4*sum(abs2.(u[2:kmax+1]))
+    usq[1] = real(u[1])^2 + 2*sum(abs2.(u[2:kmax+1]))
     for k = 1:kmax
         for m = 1:k-1
-            usq[k+1] += 2 * u[m+1] * u[(k-m)+1]
+            usq[k+1] += u[m+1] * u[(k-m)+1]
         end
         usq[k+1] += 2 * u[1] * u[k+1]
         for m = (k+1):kmax
@@ -38,6 +38,7 @@ function tendency!(dtu::Vector{Complex{NFr}}, usq::Vector{Complex{NFr}}, u::Vect
         end
     end
     dtu .= (-1im/2) .* (0:kmax) .* usq
+    @infiltrate
     return
 end
 
@@ -59,11 +60,11 @@ function tendency!(dtu::Vector{NFr}, usq::Vector{NFr}, u::Vector{NFr}, kmax::Int
     usq .= 0
     dtu .= 0
     # Fill in the usq array
-    usq0[1] = u0[1]^2 + 4*(sum(ure.^2) + sum(uim.^2))
+    usq0[1] = u0[1]^2 + 2*(sum(ure.^2) + sum(uim.^2))
     for k = 1:kmax
         for m = 1:k-1
-            usqre[k] += 2 * (ure[m] * ure[k-m] - uim[m]*uim[k-m])
-            usqim[k] += 2 * (ure[m] * uim[k-m] + uim[m]*ure[k-m])
+            usqre[k] += (ure[m] * ure[k-m] - uim[m]*uim[k-m])
+            usqim[k] += (ure[m] * uim[k-m] + uim[m]*ure[k-m])
         end
         usqre[k] += 2 * u0[1] * ure[k] 
         usqim[k] += 2 * u0[1] * uim[k] 
@@ -79,7 +80,7 @@ end
 
 function test_tendencies(; ks::AbstractVector{<:Integer}, seed::Integer=6765)
     NFr = Float32
-    kmax = 32
+    kmax = 8
     cdtu,cusq,cu = carrs = (ntuple(_->zeros(Complex{NFr}, kmax+1), 3))
     rdtu,rusq,ru = rarrs = (ntuple(_->zeros(NFr, 2*kmax+1), 3))
 
@@ -91,7 +92,7 @@ function test_tendencies(; ks::AbstractVector{<:Integer}, seed::Integer=6765)
     ru[1] = uks[1]
     ru[2:(kmax+1)] = real.(uks[2:(kmax+1)])
     ru[(kmax+2):(2*kmax+1)] .= imag.(uks[2:(kmax+1)])
-    cu[1 .+ ks] .= uks 
+    cu[ks.+1] .= uks 
 
     tendency!(rarrs..., kmax)
     tendency!(carrs..., kmax)
@@ -174,7 +175,6 @@ function compute_intensity_statistics(Rfile::String, Rstatsfile::String, excprob
     Rbinlos = Rbineds[1:Nbin]
 
     Rccdf = sum(Rhist .> Rbinlos'; dims=1)[1,:] ./ Nt
-    @infiltrate
     i_bin_thresh = searchsortedfirst(Rccdf, excprob_approx; lt=(x,y)->(x>=y))
     threshold = Rbinlos[i_bin_thresh]
     excprob = Rccdf[i_bin_thresh]
@@ -309,7 +309,7 @@ end
 function spec2grid(u::Vector{Complex{NF}}, Nx::Integer) where NF<:Real
     kmax = get_kmax(u)
     ug = zeros(NF, Nx)
-    ug .+= u[1]
+    ug .+= real(u[1])
     xs = collect(range(0, 2pi; length=Nx))
     for k = 1:kmax
         ug .+= 2 * real.(u[k+1] .* exp.(1im .* k .* xs))
@@ -408,6 +408,7 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
             Rhist_dscs = zeros(NFr, (asNt+bsNt+1,Ndsc))
             thist_dscs = zeros(NFt, (asNt+bsNt+1,Ndsc))
             msd_dscs = zeros(NFr, (asNt+bsNt+1,Ndsc))
+            energy_dscs = zeros(NFr, (asNt+bsNt+1,Ndsc))
             dthetas = zeros(NFr, (length(kspert),Ndsc))
             dSit_dscs = zeros(Integer, (Ndsc,))
             S_dscs = zeros(NFr, (Ndsc,))
@@ -424,9 +425,11 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
                     dSit_dscs[idsc] = ff[joinpath(aadkey,"dSit_dsc")]
                     Rdsc_at_Sitancs[idsc] = ff[joinpath(aadkey,"Rdsc_at_Sitanc")]
                     msd_dscs[:,idsc] .= ff[joinpath(aadkey,"msd")]
+                    energy_dscs[:,idsc] .= meansquare(ff[joinpath(aadkey,"uhist")])
                     dthetas[:,idsc] .= ff[joinpath(aadkey,"dthetas")]
                 end
             end
+            energy_anc = meansquare(uhist[:,Sits[ianc].+(-asNts[Nast]:bsNt)])
             Sbinwidths = vcat(diff(Sbinlos_unif), maximum(Ss)-Sbinlos_unif[end])
             Spdf = -diff(vcat(Sccdf_empest_unifbins, 0)) ./ Sbinwidths
             Sccdf_boost = Float64.(sum(S_dscs .> Sbinlos_unif'; dims=1)[1,:])
@@ -446,7 +449,8 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
             ax1 = Axis(lout[1,1]; thmax..., xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))", limits=(tlimits,Rlimits), xticklabelsvisible=false, xlabelvisible=false)
             ax2 = Axis(lout[1,2]; thmax..., title="CCDF", ylabel="𝑅*",ylabelvisible=false, yticklabelsvisible=true, xticklabelrotation=-pi/2, limits=((Sccdfmin*0.99,1.01),(2*threshold-Rlimits[2],Rlimits[2])))
             ax3 = Axis(lout[1,3]; thmax..., xticklabelrotation=-pi/2, title="δ𝑅*/δϕ", yticklabelsvisible=false, limits=(2pi.*(-maxdphase,maxdphase),(2*threshold-Rlimits[2],Rlimits[2])))
-            ax4 = Axis(lout[2,1]; thmax..., xlabel="𝑡", ylabel="RMSE", limits=(tlimits,nothing), yscale=log10)
+            ax4 = Axis(lout[2,1]; thmax..., xlabel="𝑡", ylabel="MSE", limits=(tlimits,nothing), yscale=log10, xlabelvisible=false, xticklabelsvisible=false)
+            ax5 = Axis(lout[3,1]; thmax..., xlabel="𝑡", ylabel="Energy", limits=(tlimits,nothing),) 
             # TODO put in a plot of response vs perturbation
 
             tancmax = thist[Sits[ianc]]
@@ -470,9 +474,12 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
             vlines!(ax3, 0; color=:black, linestyle=(:dash,:dense))
 
             for idsc = 1:Ndsc
-                lines!(ax4, dt.*collect(-asNt:bsNt), sqrt.(msd_dscs[:,idsc]); color=:red)
+                lines!(ax4, dt.*collect(-asNt:bsNt), msd_dscs[:,idsc]; color=:red)
+                lines!(ax5, dt.*collect(-asNt:bsNt), energy_dscs[:,idsc]; color=:red)
             end
+            lines!(ax5, dt.*collect(-asNts[Nast]:bsNt), energy_anc; color=:black, linestyle=(:dash,:dense))
             vlines!(ax4, -ast; color=:red, linestyle=(:dash,:dense))
+            vlines!(ax5, -ast; color=:red, linestyle=(:dash,:dense))
 
             perm = sortperm(dthetas[1,:])
             scatterlines!(ax3, dthetas[1,perm], S_dscs[perm]; color=:firebrick, marker=:star6, markersize=9)
@@ -480,7 +487,7 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
 
 
             linkyaxes!(ax2, ax3)
-            linkxaxes!(ax1, ax4)
+            linkxaxes!(ax1, ax4, ax5)
             colsize!(lout, 1, Relative(1/2))
             rowsize!(lout, 1, Relative(3/5))
             rowgap!(lout, 1, 5)
@@ -651,6 +658,8 @@ function plot_tbh_hov_trace(uhist, thist, outfilename)
     uatx = ughist[ix,:]
     Rofu = intensity(uhist)
     Rlimits = [minimum(Rofu), maximum(Rofu)]
+    Eofu = meansquare(uhist)./2
+    Elimits = [0, 2*maximum(Eofu)]
 
     thmax = theme_ax()
     xlimits = (0, 2pi)
@@ -668,16 +677,23 @@ function plot_tbh_hov_trace(uhist, thist, outfilename)
     axuatx = Axis(lout[2,1]; thmax..., ylabel="𝑢(π,𝑡)", xlabel="𝑡", limits=(tlimits, tuple(uglimits...)), yticks=(utickvalues, uticklabels), xlabelvisible=false, xticklabelsvisible=false)
     lines!(axuatx, thist, uatx; color=:black)
 
+    Etickvalues = [Elimits[1],(Elimits[1]+Elimits[2])/2, Elimits[2]]
+    Eticklabels = (E->@sprintf("%.1f", E)).(Etickvalues)
+    axEofu = Axis(lout[3,1]; thmax..., ylabel="𝐸(𝑢)(t)", xlabel="𝑡", limits=(tlimits, tuple(Elimits...)), yticks=(Etickvalues, Eticklabels), xlabelvisible=false, xticklabelsvisible=false)
+    lines!(axEofu, thist, Eofu; color=:black)
+
     Rtickvalues = [Rlimits[1],(Rlimits[1]+Rlimits[2])/2, Rlimits[2]]
     Rticklabels = (R->@sprintf("%.1f", R)).(Rtickvalues)
-    axRofu = Axis(lout[3,1]; thmax..., ylabel="𝑅(𝑢)(t)", xlabel="𝑡", limits=(tlimits, tuple(Rlimits...)), yticks=(Rtickvalues, Rticklabels), )
+    axRofu = Axis(lout[4,1]; thmax..., ylabel="𝑅(𝑢)(t)", xlabel="𝑡", limits=(tlimits, tuple(Rlimits...)), yticks=(Rtickvalues, Rticklabels), )
     lines!(axRofu, thist, Rofu; color=:black)
 
-    linkxaxes!(axhov, axuatx, axRofu)
-    rowsize!(lout, 1, Relative(3/5))
+    linkxaxes!(axhov, axuatx, axEofu, axRofu)
+    rowsize!(lout, 1, Relative(2/5))
     rowsize!(lout, 2, Relative(1/5))
+    rowsize!(lout, 3, Relative(1/5))
     rowgap!(lout, 1, 10)
     rowgap!(lout, 2, 0)
+    rowgap!(lout, 3, 0)
     save(outfilename, fig)
 end
 
@@ -691,7 +707,7 @@ function main()
                              "compute_intensity_stats" =>   0,
                              "plot_intensity" =>            0,
                              "plot_intensity_stats" =>      0,
-                             "boost" =>                     0,
+                             "boost" =>                     1,
                              "plot_boosts" =>               1,
                             )
     # ----------- Global constants: numeric types ---
@@ -716,13 +732,13 @@ function main()
 
     paramstring_trgt = @sprintf("thrt%d_Nbin%d", threshold_return_period_approx, Nbin)
     # ------------- Boosting parameters -------------------
-    bpar = (; astmin=1/4, astmax=8.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/128, kspert=collect(kmax:kmax), maxdtpeak=1/4) # boost params
+    bpar = (; astmin=1/4, astmax=8.0, bst=1.0, aststep=1/4, Ndsc=24, maxdphase=1/32, kspert=collect(kmax:kmax), maxdtpeak=1/4) # boost params
     paramstring_boost = @sprintf("ksp%d-%d_dph%.0E_Amax%.1f", bpar.kspert[1], bpar.kspert[end], bpar.maxdphase, bpar.astmax, )
 
     overwrite_boosts = true
 
     # ---------------- Output directories -----------
-    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-20/3"
+    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-22/3"
     dot2p(s) = replace(s, "."=>"p")
     dirout_phys = joinpath(dirout_base, paramstring_phys) |> dot2p
     dirout_simc = joinpath(dirout_phys, paramstring_simc) |> dot2p
@@ -826,6 +842,6 @@ function main()
 
 end
 
-main()
+#main()
 
 
