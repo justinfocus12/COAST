@@ -392,99 +392,103 @@ function plot_boosts(ufilename::String, Rfilename::String, Rstatsfilename::Strin
     NFr = typeof(real(uhist[1,1]))
     NFt = typeof(thist[1])
     Nanc = length(Sits)
-    ianc = 2
-    bsNt = round(Integer, bst/dt)
-    asts = collect(range(astmin, astmax; step=aststep))
-    asNts = round.(Integer, asts./dt)
-    Nast = findlast(asNts .< Sits[ianc])
-    maxdNtpeak = round(Integer, maxdtpeak/dt)
-    for iast = 1:Nast
-        ast = asts[iast]
-        asNt = asNts[iast]
+    for ianc = 1:min(Nanc,3)
+        bsNt = round(Integer, bst/dt)
+        asts = collect(range(astmin, astmax; step=aststep))
+        asNts = round.(Integer, asts./dt)
+        Nast = findlast(asNts .< Sits[ianc])
+        maxdNtpeak = round(Integer, maxdtpeak/dt)
+        for iast = 1:Nast #round.(Integer, collect(range(1, Nast; length=6)))
+            ast = asts[iast]
+            asNt = asNts[iast]
 
-        (Sits[ianc]-asNt <= 0) && continue
+            (Sits[ianc]-asNt <= 0) && continue
 
 
-        Rhist_dscs = zeros(NFr, (asNt+bsNt+1,Ndsc))
-        thist_dscs = zeros(NFt, (asNt+bsNt+1,Ndsc))
-        msd_dscs = zeros(NFr, (asNt+bsNt+1,Ndsc))
-        dthetas = zeros(NFr, (length(kspert),Ndsc))
-        dSit_dscs = zeros(Integer, (Ndsc,))
-        S_dscs = zeros(NFr, (Ndsc,))
-        Rdsc_at_Sitancs = zeros(NFr, (Ndsc,))
-        jldopen(joinpath(dirout_boost, "boosts.jld2"), "r") do ff
-            anckey = "ianc$(ianc)"
-            astkey = "iast$(iast)"
-            for idsc = 1:Ndsc
-                dsckey = "idsc$(idsc)"
-                aadkey = joinpath(anckey,astkey,dsckey)
-                Rhist_dscs[:,idsc] .= ff[joinpath(aadkey,"Rhist")]
-                S_dscs[idsc] = ff[joinpath(aadkey,"S_dsc")]
-                thist_dscs[:,idsc] .= ff[joinpath(aadkey,"thist")]
-                dSit_dscs[idsc] = ff[joinpath(aadkey,"dSit_dsc")]
-                Rdsc_at_Sitancs[idsc] = ff[joinpath(aadkey,"Rdsc_at_Sitanc")]
-                msd_dscs[:,idsc] .= ff[joinpath(aadkey,"msd")]
-                dthetas[:,idsc] .= ff[joinpath(aadkey,"dthetas")]
+            Rhist_dscs = zeros(NFr, (asNt+bsNt+1,Ndsc))
+            thist_dscs = zeros(NFt, (asNt+bsNt+1,Ndsc))
+            msd_dscs = zeros(NFr, (asNt+bsNt+1,Ndsc))
+            dthetas = zeros(NFr, (length(kspert),Ndsc))
+            dSit_dscs = zeros(Integer, (Ndsc,))
+            S_dscs = zeros(NFr, (Ndsc,))
+            Rdsc_at_Sitancs = zeros(NFr, (Ndsc,))
+            jldopen(joinpath(dirout_boost, "boosts.jld2"), "r") do ff
+                anckey = "ianc$(ianc)"
+                astkey = "iast$(iast)"
+                for idsc = 1:Ndsc
+                    dsckey = "idsc$(idsc)"
+                    aadkey = joinpath(anckey,astkey,dsckey)
+                    Rhist_dscs[:,idsc] .= ff[joinpath(aadkey,"Rhist")]
+                    S_dscs[idsc] = ff[joinpath(aadkey,"S_dsc")]
+                    thist_dscs[:,idsc] .= ff[joinpath(aadkey,"thist")]
+                    dSit_dscs[idsc] = ff[joinpath(aadkey,"dSit_dsc")]
+                    Rdsc_at_Sitancs[idsc] = ff[joinpath(aadkey,"Rdsc_at_Sitanc")]
+                    msd_dscs[:,idsc] .= ff[joinpath(aadkey,"msd")]
+                    dthetas[:,idsc] .= ff[joinpath(aadkey,"dthetas")]
+                end
             end
+            Sbinwidths = vcat(diff(Sbinlos_unif), maximum(Ss)-Sbinlos_unif[end])
+            Spdf = -diff(vcat(Sccdf_empest_unifbins, 0)) ./ Sbinwidths
+            Sccdf_boost = Float64.(sum(S_dscs .> Sbinlos_unif'; dims=1)[1,:])
+            if Sccdf_boost[1]>0; Sccdf_boost ./= Sccdf_boost[1]; end
+            Spdf_boost = -diff(vcat(Sccdf_boost, 0)) ./ Sbinwidths
+            Spdfmin = minimum(filter(p->p>0, vcat(Spdf, Spdf_boost)))
+            Spdfmax = maximum(vcat(Spdf, Spdf_boost))
+            Sccdfmin = minimum(filter(p->p>0, vcat(Sccdf_empest_unifbins, Sccdf_boost)))
+
+            Rlimits = (minimum(Rhist), 2*Sbinlos_unif[end]-Sbinlos_unif[end-1])
+            tlimits = (-asts[end], bst,)
+            
+            thmax = theme_ax()
+            fig = Figure(size=(800,500))
+            lout = fig[1,1] = GridLayout()
+
+            ax1 = Axis(lout[1,1]; thmax..., xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))", limits=(tlimits,Rlimits), xticklabelsvisible=false, xlabelvisible=false)
+            ax2 = Axis(lout[1,2]; thmax..., title="CCDF", ylabel="𝑅*",ylabelvisible=false, yticklabelsvisible=true, xticklabelrotation=-pi/2, limits=((Sccdfmin*0.99,1.01),(2*threshold-Rlimits[2],Rlimits[2])))
+            ax3 = Axis(lout[1,3]; thmax..., xticklabelrotation=-pi/2, title="δ𝑅*/δϕ", yticklabelsvisible=false, limits=(2pi.*(-maxdphase,maxdphase),(2*threshold-Rlimits[2],Rlimits[2])))
+            ax4 = Axis(lout[2,1]; thmax..., xlabel="𝑡", ylabel="RMSE", limits=(tlimits,nothing), yscale=log10)
+            # TODO put in a plot of response vs perturbation
+
+            tancmax = thist[Sits[ianc]]
+            for idsc = 1:Ndsc
+                lines!(ax1, thist_dscs[:,idsc].-tancmax, Rhist_dscs[:,idsc]; color=:red, linestyle=:solid)
+            end
+            scatter!(ax1, dt*dSit_dscs, S_dscs; marker=:star6, color=:firebrick)
+            lines!(ax1, dt.*collect((-asNts[Nast]):bsNt), Rhist[Sits[ianc].+(-asNts[Nast]:bsNt)]; color=:black, linestyle=(:dash,:dense))
+            scatter!(ax1, 0, Ss[ianc]; marker=:star6, color=:black)
+            hlines!(ax1, threshold; color=:grey79)
+            vlines!(ax1, -ast; color=:red, linestyle=(:dash,:dense))
+            lines!(ax2, Sccdf_boost, Sbinlos_unif; color=:red, )
+
+            lines!(ax2, Sccdf_empest_unifbins, Sbinlos_unif; color=:black, )
+            hlines!(ax1, threshold; color=:grey79)
+            hlines!(ax2, threshold; color=:grey79)
+            hlines!(ax2, Ss[ianc]; color=:black, linestyle=(:dash,:dense))
+
+            hlines!(ax3, threshold; color=:grey79)
+            hlines!(ax3, Ss[ianc]; color=:black, linestyle=(:dash,:dense))
+            vlines!(ax3, 0; color=:black, linestyle=(:dash,:dense))
+
+            for idsc = 1:Ndsc
+                lines!(ax4, dt.*collect(-asNt:bsNt), sqrt.(msd_dscs[:,idsc]); color=:red)
+            end
+            vlines!(ax4, -ast; color=:red, linestyle=(:dash,:dense))
+
+            perm = sortperm(dthetas[1,:])
+            scatterlines!(ax3, dthetas[1,perm], S_dscs[perm]; color=:firebrick, marker=:star6, markersize=9)
+            scatter!(ax3, 0, Ss[ianc]; color=:black, marker=:star6, markersize=9)
+
+
+            linkyaxes!(ax2, ax3)
+            linkxaxes!(ax1, ax4)
+            colsize!(lout, 1, Relative(1/2))
+            rowsize!(lout, 1, Relative(3/5))
+            rowgap!(lout, 1, 5)
+            colgap!(lout, 1, 5)
+            colgap!(lout, 2, 0)
+
+            save(joinpath(dirout_plot, "boosts_ianc$(ianc)_iast$(iast).png"), fig)
         end
-        Sbinwidths = vcat(diff(Sbinlos_unif), maximum(Ss)-Sbinlos_unif[end])
-        Spdf = -diff(vcat(Sccdf_empest_unifbins, 0)) ./ Sbinwidths
-        Sccdf_boost = Float64.(sum(S_dscs .> Sbinlos_unif'; dims=1)[1,:])
-        if Sccdf_boost[1]>0; Sccdf_boost ./= Sccdf_boost[1]; end
-        Spdf_boost = -diff(vcat(Sccdf_boost, 0)) ./ Sbinwidths
-        Spdfmin = minimum(filter(p->p>0, vcat(Spdf, Spdf_boost)))
-        Spdfmax = maximum(vcat(Spdf, Spdf_boost))
-        Sccdfmin = minimum(filter(p->p>0, vcat(Sccdf_empest_unifbins, Sccdf_boost)))
-
-        Rlimits = (minimum(Rhist), 2*Sbinlos_unif[end]-Sbinlos_unif[end-1])
-        tlimits = (-asts[end], bst,)
-        
-        thmax = theme_ax()
-        fig = Figure(size=(400,300))
-        lout = fig[1,1] = GridLayout()
-
-        ax1 = Axis(lout[1,1]; thmax..., xlabel="𝑡", ylabel="𝑅(𝑥(𝑡))", limits=(tlimits,Rlimits), xticklabelsvisible=false, xlabelvisible=false)
-        ax2 = Axis(lout[1,2]; thmax..., title="CCDF", ylabel="𝑅*",ylabelvisible=false, yticklabelsvisible=false, xticklabelrotation=-pi/2, limits=((Sccdfmin,1.0),Rlimits))
-        ax3 = Axis(lout[2,1]; thmax..., xlabel="𝑡", ylabel="RMSE", limits=(tlimits,nothing))
-        ax4 = Axis(lout[2,2]; thmax..., xlabel="δϕ[$(kspert[1])]", ylabel="δ𝑅*", limits=((-maxdphase,maxdphase),maximum(abs.(S_dscs.-Ss[ianc])).*(-1,1)))
-        # TODO put in a plot of response vs perturbation
-
-        tancmax = thist[Sits[ianc]]
-        for idsc = 1:Ndsc
-            lines!(ax1, thist_dscs[:,idsc].-tancmax, Rhist_dscs[:,idsc]; color=:red, linestyle=:solid)
-            scatter!(ax1, dt*dSit_dscs[idsc], S_dscs[idsc]; marker=:star6, color=:red)
-        end
-
-
-        lines!(ax1, dt.*collect((-asNts[Nast]):bsNt), Rhist[Sits[ianc].+(-asNts[Nast]:bsNt)]; color=:black, linestyle=(:dash,:dense))
-        scatter!(ax1, 0, Ss[ianc]; marker=:star6, color=:black)
-        hlines!(ax1, threshold; color=:grey79)
-        vlines!(ax1, -ast; color=:red, linestyle=(:dash,:dense))
-
-        lines!(ax2, Sccdf_empest_unifbins, Sbinlos_unif; color=:black, )
-        lines!(ax2, Sccdf_boost, Sbinlos_unif; color=:red, )
-        hlines!(ax1, threshold; color=:grey79)
-        hlines!(ax2, threshold; color=:grey79)
-
-        for idsc = 1:Ndsc
-            lines!(ax3, dt.*collect(-asNt:bsNt), sqrt.(msd_dscs[:,idsc]); color=:red)
-        end
-        vlines!(ax3, -ast; color=:red, linestyle=(:dash,:dense))
-
-        hlines!(0; color=:black, linestyle=(:dash,:dense))
-        vlines!(0; color=:black, linestyle=(:dash,:dense))
-        @infiltrate
-        scatter!(ax4, dthetas[1,:], S_dscs.-Ss[ianc]; color=:red)
-
-
-        linkyaxes!(ax1, ax2)
-        linkxaxes!(ax1, ax3)
-        colsize!(lout, 1, Relative(5/6))
-        rowsize!(lout, 1, Relative(3/5))
-        rowgap!(lout, 1, 10)
-        colgap!(lout, 1, 10)
-
-        save(joinpath(dirout_plot, "boosts_ianc$(ianc)_iast$(iast).png"), fig)
     end
     return
 end
@@ -507,7 +511,7 @@ function boost_peaks(ufilename::String, Rstatsfilename::String, dirout_data::Str
     maxdNtpeak = round(Integer, maxdtpeak/dt)
     boostfilename = joinpath(dirout_data,"boosts.jld2") 
     overwrite_boosts && ispath(boostfilename) && rm(boostfilename)
-    for ianc = 1:2 #Nanc
+    for ianc = 1:min(3,Nanc)
         anckey = "ianc$(ianc)"
         for iast = 1:Nast
             astkey = "iast$(iast)"
