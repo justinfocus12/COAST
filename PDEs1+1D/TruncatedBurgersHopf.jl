@@ -23,7 +23,12 @@ function meansquare(uhist::Matrix{NFu}) where NFu<:Union{Complex{NFr},NFr} where
     return mapslices(meansquare, uhist; dims=1)[1,:]
 end
 
-function tendency!(dtu::Vector{Complex{NFr}}, usq::Vector{Complex{NFr}}, u::Vector{Complex{NFr}}, kmax::Integer) where NFr<:Real
+function tendency_inviscid!(
+        dtu::Vector{Complex{NFr}}, 
+        usq::Vector{Complex{NFr}}, 
+        u::Vector{Complex{NFr}}, 
+        kmax::Integer,
+    ) where NFr<:Real
     usq .= 0
     dtu .= 0
     # Fill in the usq array
@@ -38,11 +43,10 @@ function tendency!(dtu::Vector{Complex{NFr}}, usq::Vector{Complex{NFr}}, u::Vect
         end
     end
     dtu .= (-1im/2) .* (0:kmax) .* usq
-    @infiltrate
     return
 end
 
-function tendency!(dtu::Vector{NFr}, usq::Vector{NFr}, u::Vector{NFr}, kmax::Integer) where NFr<:Real
+function tendency_inviscid!(dtu::Vector{NFr}, usq::Vector{NFr}, u::Vector{NFr}, kmax::Integer) where NFr<:Real
     # u = [u0, Re{u1}, ..., Re{ukmax}, Im{u1}, ..., Im{ukmax}]
     
     u0 = @view(u[1:1])
@@ -94,8 +98,8 @@ function test_tendencies(; ks::AbstractVector{<:Integer}, seed::Integer=6765)
     ru[(kmax+2):(2*kmax+1)] .= imag.(uks[2:(kmax+1)])
     cu[ks.+1] .= uks 
 
-    tendency!(rarrs..., kmax)
-    tendency!(carrs..., kmax)
+    tendency_inviscid!(rarrs..., kmax)
+    tendency_inviscid!(carrs..., kmax)
 
     real_ans = vcat(rdtu[1]+0im, rdtu[2:kmax+1].+rdtu[kmax+2:2*kmax+1].*1im)
     cplx_ans = cdtu
@@ -226,9 +230,9 @@ function compute_intensity(ufile::String, Rfile::String)
     return
 end
 
-function timestep_rk4!(
+function timestep_rk4_invsicid!(
         u_new::Vu, # final output
-        urk1::Vu,urk2::Vu,urk3::Vu,urk4::Vu, # arguments to tendency!
+        urk1::Vu,urk2::Vu,urk3::Vu,urk4::Vu, # arguments to tendency_inviscid!
         dturk1::Vu,dturk2::Vu,dturk3::Vu,dturk4::Vu, # tendencies
         usq::Vu, # scratch space for computing u2
         u::Vu, # initial 
@@ -239,16 +243,39 @@ function timestep_rk4!(
              Vu<:Vector{NFu} where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
             }
     urk1 .= u
-    tendency!(dturk1, usq, urk1, kmax)
+    tendency_inviscid!(dturk1, usq, urk1, kmax)
     urk2 .= u .+ (dt/2).*dturk1
-    tendency!(dturk2, usq, urk2, kmax)
+    tendency_inviscid!(dturk2, usq, urk2, kmax)
     urk3 .= u .+ (dt/2).*dturk2
-    tendency!(dturk3, usq, urk3, kmax)
+    tendency_inviscid!(dturk3, usq, urk3, kmax)
     urk4 .= u .+ dt.*dturk3
-    tendency!(dturk4, usq, urk4, kmax)
+    tendency_inviscid!(dturk4, usq, urk4, kmax)
     u_new .= u .+ (dt/6).*(dturk1 .+ 2 .* (dturk2 .+ dturk3) .+ dturk4)
     return
 end
+
+function timestep_imex_burgers(
+    u_new::Vu, # final output
+    urk1::Vu,urk2::Vu,urk3::Vu,urk4::Vu, # arguments to tendency_inviscid!
+    dturk1::Vu,dturk2::Vu,dturk3::Vu,dturk4::Vu, # tendencies
+    usq::Vu, # scratch space for computing u2
+    u::Vu, # initial 
+    dt::NFt, # timestep
+    kmax::Integer, # max wavenumber
+    kfrc::Integer,
+    nu::NFr,
+    ;
+    implicitude::NFr = 1.0,
+    ) where {
+             NFt<:Real,
+             Vu<:Vector{NFu} where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
+            }
+    tendency_inviscid!(dtu, usq, u, kmax)
+    L = nu.*(0:kmax).^2
+    u_new  (1 .+ dt.*(1-implicitude)
+           
+
+
 
 function integrate_tbh(u_init::Vector{NFu}, t_init::Real, dt::Real, Nt::Integer) where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
     # Simulate the Truncated Burgers-Hopf dynamics, which is a truncation of 
@@ -715,6 +742,8 @@ function main()
     NFu = NFr # either NFr or Complex{NFr}, the latter to do spectral calculations with complex arithmetic
     # ----------------- Parameters ------------------
     kmax = 12 # maximum wavenumber to retain 
+    kfrc = 1 # forcing wavenumber where energy is input
+    nu = 0.1 # viscosity 
     ks = collect(0:1:kmax)
     paramstring_phys = @sprintf("K%d", kmax)
     # ----------------- Simulation parameters -------
