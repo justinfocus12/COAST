@@ -23,6 +23,13 @@ function meansquare(uhist::Matrix{NFu}) where NFu<:Union{Complex{NFr},NFr} where
     return mapslices(meansquare, uhist; dims=1)[1,:]
 end
 
+function tendency_inviscid(u::Vector{NFu}) where NFu<:Union{NFr,Complex{NFr}} where NFr<:Real
+    kmax = get_kmax(u)
+    dtu,usq = ntuple(_->zeros(NFu,length(u)), 2)
+    tendency_inviscid!(dtu,usq,u,kmax)
+    return dtu
+end
+
 function tendency_inviscid!(
         dtu::Vector{Complex{NFr}}, 
         usq::Vector{Complex{NFr}}, 
@@ -254,6 +261,36 @@ function timestep_rk4_invsicid!(
     return
 end
 
+function timestep_burgers_imex(
+    u_old::Vu, # initial 
+    dt::NFt, # timestep
+    kfrc::Integer, # forcing wavenumber
+    fatk::NFr, # forcing magnitude (total forcing should be fatk*cos(kfrc*x))
+    nu::NFr, # viscosity
+    ) where {
+             NFt<:Real,
+             NFr<:Real,
+             NFu<:Union{Complex{NFr},NFr},
+             Vu<:Vector{NFu}
+            }
+    kmax = get_kmax(u_old)
+    if NFu<:Complex
+        arrsize = kmax+1
+        ks = 0:kmax
+    else
+        arrsize = 2*kmax+1
+        ks = vcat(0, 1:kmax, 1:kmax)
+    end
+    arrsize = length(u_old)
+    (
+     u_new,
+     dtuexpl, usq, linop
+    ) = ntuple(_->zeros(NFu, (arrsize,)), 4)
+    linop .= -nu.*ks.^2
+    timestep_burgers_imex!(u_new, dtuexpl, usq, u_old, linop, dt, kmax, kfrc, fatk, nu)
+    return u_new
+end
+
 function timestep_burgers_imex!(
     u_new::Vu, # final output
     dtuexpl::Vu, usq::Vu, # scratch space
@@ -276,7 +313,7 @@ function timestep_burgers_imex!(
     # viscosity (implicit timestep)
     implicitude = 1.0
     u_new .= 1.0 ./ (1 .- (dt*implicitude).*linop).*(1 .+ (dt*(1-implicitude)).*linop) .* u
-    u_new .+= 1.0 ./ (1 .- (dt*implicitude).*linop) .* dtuexpl 
+    u_new .+= 1.0 ./ (1 .- (dt*implicitude).*linop) .* dtuexpl .* dt
     return
 end
 
@@ -779,14 +816,14 @@ function main()
     todo = Dict{String,Bool}(
                              "spinup" =>                    1,
                              "plot_spinup" =>               1,
-                             "spinon" =>                    1,
-                             "plot_spinon" =>               1,
-                             "compute_intensity" =>         1,
-                             "compute_intensity_stats" =>   1,
-                             "plot_intensity" =>            1,
-                             "plot_intensity_stats" =>      1,
-                             "boost" =>                     1,
-                             "plot_boosts" =>               1,
+                             "spinon" =>                    0,
+                             "plot_spinon" =>               0,
+                             "compute_intensity" =>         0,
+                             "compute_intensity_stats" =>   0,
+                             "plot_intensity" =>            0,
+                             "plot_intensity_stats" =>      0,
+                             "boost" =>                     0,
+                             "plot_boosts" =>               0,
                             )
     # ----------- Global constants: numeric types ---
     NFr = Float64
@@ -794,13 +831,12 @@ function main()
     # ----------------- Parameters ------------------
     kmax = 12 # maximum wavenumber to retain 
     kfrc = 1 # forcing wavenumber where energy is input
-    fatk = 0.5 # forcing magnitude 
-    nu = 0.1 # viscosity 
-    ks = collect(0:1:kmax)
-    paramstring_phys = @sprintf("K%d_frc%.1fat%d_nu%.1f", kmax, fatk, kfrc, nu)
+    fatk = NFr(0.1) # forcing magnitude 
+    nu = NFr(0.0) # viscosity 
+    paramstring_phys = @sprintf("K%d_frc%.0Eat%d_nu%.0E", kmax, fatk, kfrc, nu)
     # ----------------- Simulation parameters -------
-    dt = 0.01
-    dtout = 0.25
+    dt = 0.001
+    dtout = 0.05
     outper = round(Integer, dtout/dt)
     sim_params = (; dt, outper)
     # ----------------- SiMC parameters -------------
@@ -821,7 +857,7 @@ function main()
     overwrite_boosts = true
 
     # ---------------- Output directories -----------
-    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-22/3"
+    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-23/1"
     dot2p(s) = replace(s, "."=>"p")
     dirout_phys = joinpath(dirout_base, paramstring_phys) |> dot2p
     dirout_simc = joinpath(dirout_phys, paramstring_simc) |> dot2p
