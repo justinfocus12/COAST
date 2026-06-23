@@ -237,7 +237,7 @@ function compute_intensity(ufile::String, Rfile::String)
     return
 end
 
-function timestep_rk4_invsicid!(
+function timestep_tbh_rk4!(
         u_new::Vu, # final output
         urk1::Vu,urk2::Vu,urk3::Vu,urk4::Vu, # arguments to tendency_inviscid!
         dturk1::Vu,dturk2::Vu,dturk3::Vu,dturk4::Vu, # tendencies
@@ -314,6 +314,7 @@ function timestep_burgers_imex!(
     implicitude = 1.0
     u_new .= 1.0 ./ (1 .- (dt*implicitude).*linop).*(1 .+ (dt*(1-implicitude)).*linop) .* u
     u_new .+= 1.0 ./ (1 .- (dt*implicitude).*linop) .* dtuexpl .* dt
+    # TODO make a stabler timestep even if no viscosity 
     return
 end
 
@@ -323,7 +324,7 @@ function integrate_burgers_imex(
         dt::Real, 
         outper::Integer, 
         Ntout::Integer,
-        kmax::Integer, # max wavenumber
+        ;
         kfrc::Integer, # forcing wavenumber
         fatk::NFr, # forcing magnitude (total forcing should be fatk*cos(kfrc*x))
         nu::NFr, # viscosity
@@ -386,7 +387,7 @@ function integrate_tbh(u_init::Vector{NFu}, t_init::Real, dt::Real, Nt::Integer)
     u_old .= u_init
     uhist[:,1] .= u_init
     for it = 2:Nt
-        timestep_rk4!(u_new,
+        timestep_tbh_rk4!(u_new,
                       urk1,urk2,urk3,urk4,
                       dturk1,dturk2,dturk3,dturk4,
                       usq,
@@ -688,7 +689,7 @@ end
 
 
 
-function plot_tbh_trace_pdf(ufilename, Rfilename, Rstatsfilename, outfilename)
+function plot_trace_pdf(ufilename, Rfilename, Rstatsfilename, outfilename)
     uhist,thist = read_history(ufilename)
     Rhist = jldopen(Rfilename,"r") do f; return f["Rhist"]; end
 
@@ -696,14 +697,14 @@ function plot_tbh_trace_pdf(ufilename, Rfilename, Rstatsfilename, outfilename)
     Npeak = length(Ss)
     tspan_plot_R = thist[Sits[div(Npeak,2)]] .+ [-20,20] #[thist[Sits[1]],thist[1]+30]
     tspan_plot_S = thist[Sits[div(Npeak,2)]] .+ [-100,100] #[thist[1],thist[1]+100]
-    plot_tbh_trace_pdf(thist, Rhist, Ss, Sits,
+    plot_trace_pdf(thist, Rhist, Ss, Sits,
                        Rbinlos, Rccdf,
                        Sbinlos_unif, Sccdf_empest_unifbins, Sccdf_gpdest_unifbins, 
                        tspan_plot_R,tspan_plot_S,threshold,
                        outfilename)
 end
 
-function plot_tbh_trace_pdf(
+function plot_trace_pdf(
         thist, Rhist, Ss, Sits,
         Rbinlos, Rccdf,
         Sbinlos_unif, Sccdf_empest_unifbins, Sccdf_gpdest_unifbins,
@@ -755,12 +756,12 @@ function plot_tbh_trace_pdf(
     save(outfilename, fig)
 end
     
-function plot_tbh_hov_trace(ufilename::String, outfilename::String)
+function plot_hov_trace(ufilename::String, outfilename::String)
     uhist,thist = read_history(ufilename)
-    plot_tbh_hov_trace(uhist,thist,outfilename)
+    plot_hov_trace(uhist,thist,outfilename)
 end
 
-function plot_tbh_hov_trace(uhist, thist, outfilename)
+function plot_hov_trace(uhist, thist, outfilename)
     Nk,Nt = size(uhist)
     Nx = 251
     ughist = spec2grid(uhist, Nx)
@@ -787,6 +788,10 @@ function plot_tbh_hov_trace(uhist, thist, outfilename)
     heatmap!(axhov, thist, xs, ughist'; colormap=:coolwarm, colorrange=uglimits)
     hlines!(axhov, xs[ix]; color=:black, linestyle=(:dash,:dense))
 
+    axmean = Axis(lout[1,2]; thmax..., xlabel="⟨𝑢⟩", ylabel="𝑥", ylabelvisible=false, yticklabelsvisible=false, limits=(tuple(uglimits...),xlimits))
+    #band!(axmean, Point2f.(map(q->mapslices(u->quantile(u,q), ughist; dims=2)[:,1], (0.25, 0.75)))...; color=:grey79, )
+    lines!(axmean, mean(ughist; dims=2)[:,1], xs; color=:black)
+
     utickvalues = [uglimits[1], 0, uglimits[2]]
     uticklabels = (uval->@sprintf("%.1f", uval)).(utickvalues)
     axuatx = Axis(lout[2,1]; thmax..., ylabel="𝑢(π,𝑡)", xlabel="𝑡", limits=(tlimits, tuple(uglimits...)), yticks=(utickvalues, uticklabels), xlabelvisible=false, xticklabelsvisible=false)
@@ -803,9 +808,11 @@ function plot_tbh_hov_trace(uhist, thist, outfilename)
     lines!(axRofu, thist, Rofu; color=:black)
 
     linkxaxes!(axhov, axuatx, axEofu, axRofu)
+    linkyaxes!(axhov, axmean)
     rowsize!(lout, 1, Relative(2/5))
     rowsize!(lout, 2, Relative(1/5))
     rowsize!(lout, 3, Relative(1/5))
+    colsize!(lout, 1, Relative(4/5))
     rowgap!(lout, 1, 10)
     rowgap!(lout, 2, 0)
     rowgap!(lout, 3, 0)
@@ -816,8 +823,8 @@ function main()
     todo = Dict{String,Bool}(
                              "spinup" =>                    1,
                              "plot_spinup" =>               1,
-                             "spinon" =>                    0,
-                             "plot_spinon" =>               0,
+                             "spinon" =>                    1,
+                             "plot_spinon" =>               1,
                              "compute_intensity" =>         0,
                              "compute_intensity_stats" =>   0,
                              "plot_intensity" =>            0,
@@ -829,19 +836,20 @@ function main()
     NFr = Float64
     NFu = NFr # either NFr or Complex{NFr}, the latter to do spectral calculations with complex arithmetic
     # ----------------- Parameters ------------------
-    kmax = 12 # maximum wavenumber to retain 
     kfrc = 1 # forcing wavenumber where energy is input
-    fatk = NFr(0.1) # forcing magnitude 
-    nu = NFr(0.0) # viscosity 
-    paramstring_phys = @sprintf("K%d_frc%.0Eat%d_nu%.0E", kmax, fatk, kfrc, nu)
+    fatk = NFr(0.001) # forcing magnitude 
+    nu = NFr(0.01) # viscosity 
+    phys_params = (; kfrc, fatk, nu)
+    paramstring_phys = @sprintf("frc%.0Eat%d_nu%.0E", fatk, kfrc, nu)
     # ----------------- Simulation parameters -------
-    dt = 0.001
+    kmax = 24 # maximum wavenumber to retain 
+    dt = 0.005
     dtout = 0.05
     outper = round(Integer, dtout/dt)
-    sim_params = (; dt, outper)
+    sim_params = (; kmax, dt, outper)
     # ----------------- SiMC parameters -------------
     duration_spinup = 15.0
-    duration_spinon = 5000.0 
+    duration_spinon = 300.0 
     paramstring_simc = @sprintf("SiMC%.0E", duration_spinon)
     # ------------- Target parameters -----------
     threshold_return_period_approx = 50.0 
@@ -857,7 +865,7 @@ function main()
     overwrite_boosts = true
 
     # ---------------- Output directories -----------
-    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-23/1"
+    dirout_base = "/Users/justinfinkel/Documents/postdoc_mit/computing/COAST_results/PDEs1+1D/2026-06-23/2"
     dot2p(s) = replace(s, "."=>"p")
     dirout_phys = joinpath(dirout_base, paramstring_phys) |> dot2p
     dirout_simc = joinpath(dirout_phys, paramstring_simc) |> dot2p
@@ -887,31 +895,31 @@ function main()
         end
         t_init = 0.0
         Ntout_spinup = round(Int64, duration_spinup/(dt*outper)) + 1
-        uhist_spinup,thist_spinup = integrate_burgers_imex(u_init, t_init, dt, outper, Ntout_spinup, kmax, kfrc, fatk, nu)
+        uhist_spinup,thist_spinup = integrate_burgers_imex(u_init, t_init, dt, outper, Ntout_spinup; phys_params...)
         write_history(uhist_spinup,thist_spinup,joinpath(dirout_simc,"spinup.jld2"))
     end
     if todo["plot_spinup"]
-        plot_tbh_hov_trace(joinpath(dirout_simc,"spinup.jld2"), joinpath(dirout_simc, "spinup_hov_trace.png"))
+        plot_hov_trace(joinpath(dirout_simc,"spinup.jld2"), joinpath(dirout_simc, "spinup_hov_trace.png"))
     end
     if todo["spinon"]
         uhist_spinup,thist_spinup = read_history(joinpath(dirout_simc,"spinup.jld2"))
         u_init = uhist_spinup[:,end]
         t_init = thist_spinup[end]
         Nt_spinon = round(Int64, duration_spinon/dt) + 1
-        uhist_spinon,thist_spinon = integrate_tbh(u_init, t_init, dt, Nt_spinon)
+        uhist_spinon,thist_spinon = integrate_burgers_imex(u_init, t_init, dt, outper, Nt_spinon; phys_params...)
         write_history(uhist_spinon,thist_spinon,joinpath(dirout_simc,"spinon.jld2"))
     end
     if todo["compute_intensity"]
         compute_intensity(joinpath(dirout_simc,"spinon.jld2"), joinpath(dirout_trgt,"spinonR.jld2"))
     end
     if todo["plot_spinon"]
-        plot_tbh_hov_trace(joinpath(dirout_simc,"spinon.jld2"),joinpath(dirout_trgt, "spinon_hov_trace.png"))
+        plot_hov_trace(joinpath(dirout_simc,"spinon.jld2"),joinpath(dirout_trgt, "spinon_hov_trace.png"))
     end
     if todo["compute_intensity_stats"]
         compute_intensity_statistics(joinpath(dirout_trgt, "spinonR.jld2"), joinpath(dirout_trgt,"spinonRstats.jld2"), threshold_excprob_approx, Nbin, peakbuffer)
     end
     if todo["plot_intensity_stats"]
-        plot_tbh_trace_pdf(joinpath(dirout_simc,"spinon.jld2"), joinpath(dirout_trgt,"spinonR.jld2"),joinpath(dirout_trgt,"spinonRstats.jld2"), joinpath(dirout_trgt, "Rstats_spinon.png"))
+        plot_trace_pdf(joinpath(dirout_simc,"spinon.jld2"), joinpath(dirout_trgt,"spinonR.jld2"),joinpath(dirout_trgt,"spinonRstats.jld2"), joinpath(dirout_trgt, "Rstats_spinon.png"))
     end
 
     if todo["boost"]
@@ -955,7 +963,7 @@ function main()
     if false && todo["plot_spinoffs"]
         for i_dsc = 1:Ndsc_spinoff
             uhist_spinoff,thist_spinoff = read_history(joinpath(dirout_data,"spinoff_dsc$(i_dsc).jld2"))
-            plot_tbh_hov_trace(joinpath(dirout_data,"spinoff_dsc$(i_dsc).jld2"), joinpath(dirout_plot,"spinoff_dsc$(i_dsc).png"))
+            plot_hov_trace(joinpath(dirout_data,"spinoff_dsc$(i_dsc).jld2"), joinpath(dirout_plot,"spinoff_dsc$(i_dsc).png"))
         end
     end
 
