@@ -254,26 +254,77 @@ function timestep_rk4_invsicid!(
     return
 end
 
-function timestep_imex_burgers(
+function timestep_burgers_imex!(
     u_new::Vu, # final output
-    urk1::Vu,urk2::Vu,urk3::Vu,urk4::Vu, # arguments to tendency_inviscid!
-    dturk1::Vu,dturk2::Vu,dturk3::Vu,dturk4::Vu, # tendencies
-    usq::Vu, # scratch space for computing u2
+    dtuexpl::Vu, usq::Vu, # scratch space
     u::Vu, # initial 
+    linop::Vu, # linear operator
     dt::NFt, # timestep
     kmax::Integer, # max wavenumber
-    kfrc::Integer,
-    nu::NFr,
-    ;
-    implicitude::NFr = 1.0,
+    kfrc::Integer, # forcing wavenumber
+    fatk::NFr, # forcing magnitude (total forcing should be fatk*cos(kfrc*x))
+    nu::NFr, # viscosity
     ) where {
              NFt<:Real,
-             Vu<:Vector{NFu} where NFu<:Union{Complex{NFr},NFr} where NFr<:Real
+             NFr<:Real,
+             Vu<:Vector{NFu} where NFu<:Union{Complex{NFr},NFr},
             }
-    tendency_inviscid!(dtu, usq, u, kmax)
-    L = nu.*(0:kmax).^2
-    u_new  (1 .+ dt.*(1-implicitude)
-           
+    # inviscid tendency
+    tendency_inviscid!(dtuexpl, usq, u, kmax)
+    # forcing 
+    dtuexpl[kfrc+1] += fatk/2
+    # viscosity (implicit timestep)
+    implicitude = 1.0
+    u_new .= 1.0 ./ (1 .- (dt*implicitude).*linop).*(1 .+ (dt*(1-implicitude)).*linop) .* u
+    u_new .+= 1.0 ./ (1 .- (dt*implicitude).*linop) .* dtuexpl 
+    return
+end
+
+function integrate_burgers_imex(
+        u_init::Vector{NFu}, 
+        t_init::Real, 
+        dt::Real, 
+        outper::Integer, 
+        Ntout::Integer,
+        kmax::Integer, # max wavenumber
+        kfrc::Integer, # forcing wavenumber
+        fatk::NFr, # forcing magnitude (total forcing should be fatk*cos(kfrc*x))
+        nu::NFr, # viscosity
+    ) where {NFr<:Real, NFu<:Union{NFr,Complex{NFr}}}
+    kmax = get_kmax(u_init)
+    if NFu<:Complex
+        arrsize = kmax+1
+        ks = 0:kmax
+    else
+        arrsize = 2*kmax+1
+        ks = vcat(0, 1:kmax, 1:kmax)
+    end
+    (
+     u_old,u_new,
+     dtuexpl, usq, linop
+    ) = ntuple(_->zeros(NFu, (arrsize,)), 5)
+    linop .= -nu.*ks.^2
+    uhist = zeros(NFu, (arrsize, Ntout)) # u in spectral space 
+    thist = collect(t_init .+ (0:Ntout-1).*(dt*outper))
+    u_old .= u_init
+    uhist[:,1] .= u_init
+    for itout = 2:Ntout
+        for itstep = 1:outper
+            timestep_burgers_imex!(
+                                   # intent(out)
+                                   u_new,
+                                   # intent(inout)
+                                   dtuexpl, usq, 
+                                   # intent(in)
+                                   u_old, linop,
+                                   dt, kmax, kfrc, fatk, nu,
+                                  )
+            u_old .= u_new
+        end
+        uhist[:,itout] .= u_new
+    end
+    return uhist, thist
+end
 
 
 
@@ -726,14 +777,14 @@ end
 
 function main()
     todo = Dict{String,Bool}(
-                             "spinup" =>                    0,
-                             "plot_spinup" =>               0,
-                             "spinon" =>                    0,
-                             "plot_spinon" =>               0,
-                             "compute_intensity" =>         0,
-                             "compute_intensity_stats" =>   0,
-                             "plot_intensity" =>            0,
-                             "plot_intensity_stats" =>      0,
+                             "spinup" =>                    1,
+                             "plot_spinup" =>               1,
+                             "spinon" =>                    1,
+                             "plot_spinon" =>               1,
+                             "compute_intensity" =>         1,
+                             "compute_intensity_stats" =>   1,
+                             "plot_intensity" =>            1,
+                             "plot_intensity_stats" =>      1,
                              "boost" =>                     1,
                              "plot_boosts" =>               1,
                             )
@@ -743,19 +794,22 @@ function main()
     # ----------------- Parameters ------------------
     kmax = 12 # maximum wavenumber to retain 
     kfrc = 1 # forcing wavenumber where energy is input
+    fatk = 0.5 # forcing magnitude 
     nu = 0.1 # viscosity 
     ks = collect(0:1:kmax)
-    paramstring_phys = @sprintf("K%d", kmax)
+    paramstring_phys = @sprintf("K%d_frc%.1fat%d_nu%.1f", kmax, fatk, kfrc, nu)
     # ----------------- Simulation parameters -------
     dt = 0.01
-    sim_params = (; dt)
+    dtout = 0.25
+    outper = round(Integer, dtout/dt)
+    sim_params = (; dt, outper)
     # ----------------- SiMC parameters -------------
     duration_spinup = 15.0
     duration_spinon = 5000.0 
     paramstring_simc = @sprintf("SiMC%.0E", duration_spinon)
     # ------------- Target parameters -----------
     threshold_return_period_approx = 50.0 
-    threshold_excprob_approx = dt/threshold_return_period_approx
+    threshold_excprob_approx = dt*outper/threshold_return_period_approx
     peakbuffer = 20.0
     Nbin = 30
 
@@ -796,8 +850,8 @@ function main()
             u_init[(kmax+2):(2*kmax+1)] .= imag.(u_init_cplx[2:(kmax+1)])
         end
         t_init = 0.0
-        Nt_spinup = round(Int64, duration_spinup/dt) + 1
-        uhist_spinup,thist_spinup = integrate_tbh(u_init, t_init, dt, Nt_spinup)
+        Ntout_spinup = round(Int64, duration_spinup/(dt*outper)) + 1
+        uhist_spinup,thist_spinup = integrate_burgers_imex(u_init, t_init, dt, outper, Ntout_spinup, kmax, kfrc, fatk, nu)
         write_history(uhist_spinup,thist_spinup,joinpath(dirout_simc,"spinup.jld2"))
     end
     if todo["plot_spinup"]
