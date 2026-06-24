@@ -27,7 +27,7 @@ function BoostParams()
             ast_max = 12,
             bst = 2,
             num_descendants = 16,
-            latentize_bins = true,
+            latentize_bins = false,
             bin_width_neglog = 13,
            )
 end
@@ -84,7 +84,7 @@ function illustrate_map(plotdir::String)
     X0 = conjugate_bwd(Z0)
     rng = Random.MersenneTwister(238)
     F(X) = uint32_to_float64(logisticmap(float64_to_uint32(X)))
-    illustrate_map(X0, F, simulate, rng, "𝐿", "𝑥", "Logistic map", plotdir, "logisticmap.png")
+    illustrate_map(X0, F, simulate, rng, "𝐿", "𝑥", "Logistic Map", plotdir, "logisticmap.png")
     return
 end
 
@@ -121,16 +121,16 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           0,
+                             "illustrate_map" =>           1,
                              "run_dns_valid" =>            0,
                              "plot_dns_valid" =>           0,
                              "run_dns_ancgen" =>           0,
                              "plot_dns_ancgen" =>          0,
-                             "analyze_peaks_valid" =>      1,
-                             "analyze_peaks_ancgen" =>     1,
+                             "analyze_peaks_valid" =>      0,
+                             "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
                              "mix_conditional_tails" =>    0,
-                             "plot_moctails" =>            1,
+                             "plot_moctails" =>            0,
                              "plot_boosts" =>              0,
                             )
 

@@ -179,11 +179,11 @@ function plot_peaks_over_threshold(thresh::Float64, duration_spinup::Int64, dura
     hlines!(ax_Rs, thresh; color=:black, linewidth=1, linestyle=(:dash,:dense))
     scatter!(ax_Rs, ts_peak[peaks2plot], Rs_peak[peaks2plot]; color=:black, marker=:star5, markersize=4)
     if !isnothing(pdf_wholetruth)
-        lines!(ax_hist_Rs, pdf_wholetruth[bins2plot], bin_centers_Rs[bins2plot]; color=:gray79, linewidth=4, label="Whole\nTruth")
+        lines!(ax_hist_Rs, pdf_wholetruth[bins2plot], bin_centers_Rs[bins2plot]; color=:gray79, linewidth=4, label="Truth")
     end
     simlength = length(ts)-duration_spinup
     log2simlength = round(Int, log2(simlength))
-    lines!(ax_hist_Rs, hist_Rs.weights[bins2plot], bin_centers_Rs[bins2plot]; color=:black, label=@sprintf("SiMC\n%.1f×%s", simlength/2^log2simlength, poweroftwostring(log2simlength)))
+    lines!(ax_hist_Rs, hist_Rs.weights[bins2plot], bin_centers_Rs[bins2plot]; color=:black, label=@sprintf("DS\n%.1f×%s", simlength/2^log2simlength, poweroftwostring(log2simlength)))
     for ax = (ax_Rs,ax_hist_Rs)
         hlines!(ax, thresh; color=:black, linewidth=1, linestyle=(:dash,:dense), label=@sprintf("Thresh\n1-2%s", supscr(-round(Int64,nlg1m(thresh)))))
     end
@@ -617,13 +617,26 @@ function plot_moctails(
     ax_N = Axis(lout[1,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="𝑁", ylabel="KL divergence", xgridvisible=false, ygridvisible=false, xscale=log2, yscale=klyscale, limits=((1,Ns_anc_boot_valid[end]), (ylo,yhi)), xticks=(xtickvalues_N,xticklabels_N), yticks=(ytickvalues,yticklabels), titlealign=:left)
     ax_C = Axis(lout[2,1]; theme_ax..., title=@sprintf("𝐾=%d, 𝑀=%d", perturbation_neglog, threshold_neglog), xlabel="Cost", ylabel="KL divergence", xscale=log2, yscale=klyscale, limits=((mean_return_period,max(Ns_anc_boot_valid[end]*mean_return_period, Ns_anc_boot[end]*(mean_return_period+N_dsc*asts[end]))), (ylo,yhi)), yticks=(ytickvalues,yticklabels), xticks=(xtickvalues_C,xticklabels_C), titlealign=:left, )
     # all non-optimal uniform ASTs 
-    for i_ast = 1:N_ast
+    for i_ast = [div(i_uncoast,2),i_uncoast,div(i_uncoast+N_ast,2)] #1:N_ast
+        if i_ast == i_uncoast
+            color = astcols["astunif"]
+            label = @sprintf("𝐴=𝐾−𝑀=%d", uncoast)
+            alpha = 0.5 
+        elseif i_ast < i_uncoast
+            label = @sprintf("𝐴=%d", asts[i_ast])
+            color = :lightsalmon
+            alpha = 0.25
+        else
+            label = @sprintf("𝐴=%d", asts[i_ast])
+            color = :salmon4
+            alpha = 0.25
+        end
         draw_bands!(ax_N, ax_C, 
                     Ns_anc_boot, mean_return_period+N_dsc*asts[i_ast], 
                     losses_astunif_lomidhi[i_ast],     
-                    i_ast==i_uncoast ? astcols["astunif"] : i_ast<i_uncoast ? :lightsalmon : :salmon4,
-                    i_ast in [1,N_ast,i_uncoast] ? @sprintf("𝐴%s𝐾−𝑀", i_ast==i_uncoast ? "=" : i_ast==1 ? "<" : ">") : nothing,
-                    alpha=(i_ast==i_uncoast ? 0.5 : 0.25),
+                    color,
+                    label,
+                    alpha=alpha,
                    )
     end
     # Optimal unconditional advance split time (un-COAST)
@@ -634,9 +647,9 @@ function plot_moctails(
     # Validation 
     draw_bands!(ax_N, ax_C, 
                 Ns_anc_boot_valid, mean_return_period, 
-                losses_valid_lomidhi, astcols["valid"],  "SiMC"; alpha=0.5)
+                losses_valid_lomidhi, astcols["valid"],  "DS"; alpha=0.5)
     # Ancestors only 
-    draw_bands!(ax_N, ax_C,
+    false && draw_bands!(ax_N, ax_C,
                Ns_anc_boot, mean_return_period,
                losses_anconly_lomidhi, astcols["anconly"],  "No\nboosting")
     # XclEnt
@@ -652,7 +665,7 @@ function plot_moctails(
     
     !(todo["moctail"]) && return
 
-    # -----------------------------------------
+    # -------- MoCTail plot -----------
 
     Rmax = maximum(Rs_peak_valid)
 
@@ -745,7 +758,7 @@ function plot_moctails(
                   color=astcols["XclEnt"], alpha=0.25
                  )
         end
-        scatterlines!(ax, (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth), bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=1.5, linestyle=(:dash,:dense), label=(isnothing(ccdf_peak_wholetruth) ? "Ground truth" : "Whole truth"), marker=:cross, markersize=6)
+        scatterlines!(ax, (isnothing(ccdf_peak_wholetruth) ? ccdf_peak_valid : ccdf_peak_wholetruth), bin_edges[i_bin_thresh:N_bin]; color=:black, linewidth=1.5, linestyle=(:dash,:dense), label=(isnothing(ccdf_peak_wholetruth) ? "Ground truth" : "Truth"), marker=:cross, markersize=6)
         if i_ast == i_coast_mean
             legtitle = @sprintf("𝑁 = %d ancestors\nmedians & %d%% CIs\n(%d-ancestor bootstraps)", N_anc, round(Int,confint_width*100), Ns_anc_boot[i_boot_size], )
             Legend(lout[1,N_ast+1], ax, legtitle; theme_leg..., )
@@ -765,9 +778,9 @@ function plot_moctails(
     ax = Axis(lout[2,1:N_ast]; theme_ax..., xlabel="−AST", title="Extreme-conditional entropy (XclEnt)", ylabel="[bits]", ylabelrotation=pi/2, xgridvisible=false, ygridvisible=false, xticks=(-asts, string.(-asts)), yticks=round.(Int64, [0,1/2,1].*log2(N_dsc)), limits=((-(1.5*asts[end]-0.5*asts[end-1]), -(1.5*asts[1]-0.5*asts[2])),(-1,round(Int64,log2(N_dsc)+1))), xlabelvisible=false, xticklabelsvisible=false)
     hlines!(ax, [0,round(Int64,log2(N_dsc))]; color=:grey79)
     for i_anc = 1:N_anc
-        scatterlines!(ax, -asts, extreme_conditional_entropy[:,i_anc]; color=astcols["XclEntOne"], label=(i_anc==1 ? "Single-family" : nothing))
+        lines!(ax, -asts, extreme_conditional_entropy[:,i_anc]; color=astcols["XclEntOne"], label=(i_anc==1 ? "Single-family" : nothing))
     end
-    scatterlines!(ax, -asts, mean(extreme_conditional_entropy; dims=2)[:,1]; color=astcols["XclEnt"], linewidth=3, label="Multi-family\nmean")
+    scatterlines!(ax, -asts, mean(extreme_conditional_entropy; dims=2)[:,1]; color=astcols["XclEnt"], linewidth=3, linestyle=(:dash,:dense), label="Multi-family\nmean")
     Legend(lout[2,N_ast+1], ax; theme_leg...,)
 
     coast_freq = zeros(Int64, N_ast)
@@ -1153,7 +1166,7 @@ function mix_conditional_tails(
         end
     end
 
-    # TODO compute costs, and make an equal-cost SiMC estimator 
+    # TODO compute costs, and make an equal-cost DS estimator 
 
     # Save results to file 
 

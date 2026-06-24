@@ -73,7 +73,7 @@ function illustrate_map(plotdir::String)
     X0 = 0.23
     rng = Random.MersenneTwister(238)
     F(X) = uint32_to_float64(tentmap(float64_to_uint32(X)))
-    illustrate_map(X0, F, simulate, rng, "𝑇", "𝑧", "Tent map", plotdir, "tentmap.png")
+    illustrate_map(X0, F, simulate, rng, "𝑇", "𝑧", "Tent Map", plotdir, "tentmap.png")
     return
 end
 
@@ -111,16 +111,16 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           0,
+                             "illustrate_map" =>           1,
                              "run_dns_valid" =>            0,
                              "plot_dns_valid" =>           0,
                              "run_dns_ancgen" =>           0,
                              "plot_dns_ancgen" =>          0,
-                             "analyze_peaks_valid" =>      1,
-                             "analyze_peaks_ancgen" =>     1,
+                             "analyze_peaks_valid" =>      0,
+                             "analyze_peaks_ancgen" =>     0,
                              "boost_peaks" =>              0,
                              "mix_conditional_tails" =>    0,
-                             "plot_moctails" =>            1,
+                             "plot_moctails" =>            0,
                              "plot_boosts" =>              0,
                             )
 
