@@ -27,7 +27,7 @@ function BoostParams()
             ast_max = 12,
             bst = 2,
             num_descendants = 16,
-            latentize_bins = false,
+            latentize_bins = true,
             bin_width_neglog = 13,
            )
 end
@@ -121,13 +121,15 @@ end
 
 function main(bpar_adj)
     todo = Dict{String,Bool}(
-                             "illustrate_map" =>           1,
+                             "illustrate_map" =>           0,
                              "run_dns_valid" =>            0,
                              "plot_dns_valid" =>           0,
                              "run_dns_ancgen" =>           0,
                              "plot_dns_ancgen" =>          0,
                              "analyze_peaks_valid" =>      0,
+                             "plot_peaks_valid" =>         1,
                              "analyze_peaks_ancgen" =>     0,
+                             "plot_peaks_ancgen" =>        1,
                              "boost_peaks" =>              0,
                              "mix_conditional_tails" =>    0,
                              "plot_moctails" =>            0,
@@ -195,11 +197,15 @@ function main(bpar_adj)
 
     if todo["analyze_peaks_valid"]
         find_peaks_over_threshold(threshold, bpar.duration_spinup, bpar.duration_valid, bpar.min_cluster_gap, datadir, "valid")
+    end
+    if todo["plot_peaks_valid"]
         plot_peaks_over_threshold(threshold, bpar.duration_spinup, duration_plot, datadir, figdir, "valid"; bin_edges=bin_edges, i_bin_thresh=i_bin_thresh, ccdf_peak_wholetruth=ccdf_peak_wholetruth, pdf_wholetruth=pdf_wholetruth)
     end
 
     if todo["analyze_peaks_ancgen"]
         find_peaks_over_threshold(threshold, bpar.duration_spinup, bpar.duration_ancgen, bpar.min_cluster_gap, datadir, "ancgen")
+    end
+    if todo["plot_peaks_ancgen"]
         plot_peaks_over_threshold(threshold, bpar.duration_spinup, duration_plot, datadir, figdir, "ancgen"; bin_edges=bin_edges, i_bin_thresh=i_bin_thresh, ccdf_peak_wholetruth=ccdf_peak_wholetruth, pdf_wholetruth=pdf_wholetruth)
     end
 
